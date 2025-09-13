@@ -5,7 +5,11 @@ import { useState } from 'react';
 export default function Page() {
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
-  const apiBase = process.env.NEXT_PUBLIC_BACKEND_URL;
+  const apiBase =
+    process.env.NEXT_PUBLIC_BACKEND_URL ||
+    process.env.NEXT_PUBLIC_FORGE_API ||
+    process.env.NEXT_PUBLIC_STL_API ||
+    process.env.NEXT_PUBLIC_STL_SERVICE_URL || '';
 
   const handleGenerate = async () => {
     if (!apiBase) {

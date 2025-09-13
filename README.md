@@ -1,15 +1,16 @@
-# Teknovashop App
 
-Frontend en Next.js para consumir el servicio STL en Render.
+# Teknovashop App (Next.js)
 
-## Instrucciones
+Frontend minimal que llama al backend `/generate` desplegado en Render.
 
-1. Copia `.env.example` a `.env.local` y ajusta la URL de la API si es necesario.
-2. Instala dependencias:
+## Variables de entorno (Vercel)
 
-```bash
-npm install
-npm run dev
-```
-3. Despliega en Vercel y configura la variable de entorno:
-   - `NEXT_PUBLIC_STL_SERVICE_URL`
+Configura al menos una de estas (en **All Environments**):
+
+- `NEXT_PUBLIC_BACKEND_URL` (recomendado) → p.ej. `https://teknovashop-forge.onrender.com`
+- `NEXT_PUBLIC_FORGE_API` (opcional, compatibilidad)
+- `NEXT_PUBLIC_STL_API` (opcional, compatibilidad)
+- `NEXT_PUBLIC_STL_SERVICE_URL` (opcional, compatibilidad)
+
+El botón **Generar STL** hace un `POST` con un payload de ejemplo y muestra el JSON devuelto.
+
