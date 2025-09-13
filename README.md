@@ -1,16 +1,10 @@
 
-# Teknovashop App (Next.js)
+# Teknovashop App (App Router, JS)
 
-Frontend minimal que llama al backend `/generate` desplegado en Render.
-
-## Variables de entorno (Vercel)
-
-Configura al menos una de estas (en **All Environments**):
-
-- `NEXT_PUBLIC_BACKEND_URL` (recomendado) → p.ej. `https://teknovashop-forge.onrender.com`
-- `NEXT_PUBLIC_FORGE_API` (opcional, compatibilidad)
-- `NEXT_PUBLIC_STL_API` (opcional, compatibilidad)
-- `NEXT_PUBLIC_STL_SERVICE_URL` (opcional, compatibilidad)
-
-El botón **Generar STL** hace un `POST` con un payload de ejemplo y muestra el JSON devuelto.
+- Solo **App Router** (`/app/page.jsx`). No existe `/pages`, así se evita el conflicto.
+- Variables en Vercel: define **una** de estas (mejor `NEXT_PUBLIC_BACKEND_URL`):
+  - `NEXT_PUBLIC_BACKEND_URL` (recomendado)
+  - `NEXT_PUBLIC_FORGE_API`
+  - `NEXT_PUBLIC_STL_API`
+  - `NEXT_PUBLIC_STL_SERVICE_URL`
 
