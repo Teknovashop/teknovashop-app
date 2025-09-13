@@ -1,6 +1,6 @@
 'use client';
 
-import GenerateForm from '@/components/GenerateForm';
+import GenerateForm from '../components/GenerateForm';
 
 export default function Page() {
   return (
