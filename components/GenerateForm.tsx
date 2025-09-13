@@ -16,11 +16,10 @@ const apiBase =
   process.env.NEXT_PUBLIC_STL_SERVICE_URL ||
   '';
 
-/** Valores por defecto por modelo */
 const DEFAULTS: Record<ModelSlug, any> = {
   'vesa-adapter': { width: 180, height: 180, thickness: 6, pattern: '100x100' },
   'router-mount': { width: 160, height: 220, depth: 40, thickness: 4 },
-  'cable-tray'  : { width: 60, height: 25, length: 180, thickness: 3, slots: true },
+  'cable-tray': { width: 60, height: 25, length: 180, thickness: 3, slots: true },
 };
 
 export default function GenerateForm() {
@@ -36,7 +35,7 @@ export default function GenerateForm() {
 
   const onChangeModel = useCallback((value: ModelSlug) => {
     setModel(value);
-    setParams(DEFAULTS[value]); // reset con defaults del modelo
+    setParams(DEFAULTS[value]);
     setResult(null);
   }, []);
 
@@ -60,8 +59,8 @@ export default function GenerateForm() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model,          // <-- slugs tal cual espera el backend
-          params,         // <-- parámetros del modelo
+          model,          // 'vesa-adapter' | 'router-mount' | 'cable-tray'
+          params,         // parámetros según el modelo
           order_id: 'demo-order',
           license: 'personal',
         }),
@@ -77,7 +76,6 @@ export default function GenerateForm() {
 
   return (
     <div style={{ maxWidth: 600 }}>
-      {/* Selector de modelo */}
       <label style={{ display: 'block', fontWeight: 600, marginBottom: 6 }}>Modelo</label>
       <select
         value={model}
@@ -89,34 +87,13 @@ export default function GenerateForm() {
         <option value="cable-tray">Bandeja pasa-cables</option>
       </select>
 
-      {/* Controles específicos por modelo */}
       {model === 'vesa-adapter' && (
         <>
-          <Slider
-            label={`Ancho (mm): ${params.width}`}
-            min={100}
-            max={300}
-            value={params.width}
-            onChange={(v) => setNumber('width', v)}
-          />
-          <Slider
-            label={`Alto (mm): ${params.height}`}
-            min={100}
-            max={300}
-            value={params.height}
-            onChange={(v) => setNumber('height', v)}
-          />
-          <Slider
-            label={`Espesor (mm): ${params.thickness}`}
-            min={3}
-            max={10}
-            value={params.thickness}
-            onChange={(v) => setNumber('thickness', v)}
-          />
+          <Slider label={`Ancho (mm): ${params.width}`} min={100} max={300} value={params.width} onChange={(v) => setNumber('width', v)} />
+          <Slider label={`Alto (mm): ${params.height}`} min={100} max={300} value={params.height} onChange={(v) => setNumber('height', v)} />
+          <Slider label={`Espesor (mm): ${params.thickness}`} min={3} max={10} value={params.thickness} onChange={(v) => setNumber('thickness', v)} />
 
-          <label style={{ display: 'block', fontWeight: 600, marginTop: 18, marginBottom: 6 }}>
-            Patrón agujeros
-          </label>
+          <label style={{ display: 'block', fontWeight: 600, marginTop: 18, marginBottom: 6 }}>Patrón agujeros</label>
           <select
             value={params.pattern}
             onChange={(e) => setString('pattern', e.target.value)}
@@ -133,75 +110,21 @@ export default function GenerateForm() {
 
       {model === 'router-mount' && (
         <>
-          <Slider
-            label={`Ancho (mm): ${params.width}`}
-            min={80}
-            max={260}
-            value={params.width}
-            onChange={(v) => setNumber('width', v)}
-          />
-          <Slider
-            label={`Alto (mm): ${params.height}`}
-            min={120}
-            max={300}
-            value={params.height}
-            onChange={(v) => setNumber('height', v)}
-          />
-          <Slider
-            label={`Fondo (mm): ${params.depth}`}
-            min={20}
-            max={80}
-            value={params.depth}
-            onChange={(v) => setNumber('depth', v)}
-          />
-          <Slider
-            label={`Espesor (mm): ${params.thickness}`}
-            min={3}
-            max={8}
-            value={params.thickness}
-            onChange={(v) => setNumber('thickness', v)}
-          />
+          <Slider label={`Ancho (mm): ${params.width}`} min={80} max={260} value={params.width} onChange={(v) => setNumber('width', v)} />
+          <Slider label={`Alto (mm): ${params.height}`} min={120} max={300} value={params.height} onChange={(v) => setNumber('height', v)} />
+          <Slider label={`Fondo (mm): ${params.depth}`} min={20} max={80} value={params.depth} onChange={(v) => setNumber('depth', v)} />
+          <Slider label={`Espesor (mm): ${params.thickness}`} min={3} max={8} value={params.thickness} onChange={(v) => setNumber('thickness', v)} />
         </>
       )}
 
       {model === 'cable-tray' && (
         <>
-          <Slider
-            label={`Ancho (mm): ${params.width}`}
-            min={30}
-            max={120}
-            value={params.width}
-            onChange={(v) => setNumber('width', v)}
-          />
-          <Slider
-            label={`Alto (mm): ${params.height}`}
-            min={15}
-            max={60}
-            value={params.height}
-            onChange={(v) => setNumber('height', v)}
-          />
-          <Slider
-            label={`Largo (mm): ${params.length}`}
-            min={120}
-            max={400}
-            value={params.length}
-            onChange={(v) => setNumber('length', v)}
-          />
-          <Slider
-            label={`Espesor (mm): ${params.thickness}`}
-            min={2}
-            max={6}
-            value={params.thickness}
-            onChange={(v) => setNumber('thickness', v)}
-          />
-
+          <Slider label={`Ancho (mm): ${params.width}`} min={30} max={120} value={params.width} onChange={(v) => setNumber('width', v)} />
+          <Slider label={`Alto (mm): ${params.height}`} min={15} max={60} value={params.height} onChange={(v) => setNumber('height', v)} />
+          <Slider label={`Largo (mm): ${params.length}`} min={120} max={400} value={params.length} onChange={(v) => setNumber('length', v)} />
+          <Slider label={`Espesor (mm): ${params.thickness}`} min={2} max={6} value={params.thickness} onChange={(v) => setNumber('thickness', v)} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
-            <input
-              id="slots"
-              type="checkbox"
-              checked={!!params.slots}
-              onChange={(e) => setBool('slots', e.target.checked)}
-            />
+            <input id="slots" type="checkbox" checked={!!params.slots} onChange={(e) => setBool('slots', e.target.checked)} />
             <label htmlFor="slots">Ranuras de ventilación</label>
           </div>
         </>
@@ -226,16 +149,7 @@ export default function GenerateForm() {
         {loading ? 'Generando…' : 'Generar STL'}
       </button>
 
-      <pre
-        style={{
-          marginTop: 16,
-          padding: 14,
-          background: '#f6f6f6',
-          borderRadius: 8,
-          overflow: 'auto',
-          fontSize: 13,
-        }}
-      >
+      <pre style={{ marginTop: 16, padding: 14, background: '#f6f6f6', borderRadius: 8, overflow: 'auto', fontSize: 13 }}>
         {JSON.stringify(result || {}, null, 2)}
       </pre>
 
@@ -250,7 +164,6 @@ export default function GenerateForm() {
   );
 }
 
-/** Pequeño slider reutilizable */
 function Slider({
   label,
   min,
@@ -267,14 +180,7 @@ function Slider({
   return (
     <div style={{ marginBottom: 16 }}>
       <div style={{ fontWeight: 600, marginBottom: 6 }}>{label}</div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        style={{ width: '100%' }}
-      />
+      <input type="range" min={min} max={max} value={value} onChange={(e) => onChange(Number(e.target.value))} style={{ width: '100%' }} />
     </div>
   );
 }
