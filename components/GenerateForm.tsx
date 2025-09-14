@@ -1,372 +1,193 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import STLViewer from './STLViewer';
+
+type BackendResponse =
+  | { status: 'ok'; stl_url: string; meta?: any }
+  | { status: 'error'; detail?: string; message?: string };
+
+const BACKEND =
+  process.env.NEXT_PUBLIC_FORGE_BACKEND ||
+  process.env.NEXT_PUBLIC_BACKEND_URL ||
+  'https://<TU-RENDER-O-BACKEND>/'; // termina sin /; ajusta si quieres
+
+type VesaParams = { width: number; height: number; thickness: number; pattern: string };
+type RouterParams = { width: number; height: number; depth: number; thickness: number };
+type CableParams = { width: number; height: number; length: number; thickness: number; slots: boolean };
 
 type ModelKey = 'vesa-adapter' | 'router-mount' | 'cable-tray';
 
-type ResultOk = { status: 'ok'; stl_url: string };
-type ResultErr = { status: 'error'; detail?: string; message?: string };
-type Result = ResultOk | ResultErr | null;
-
-const API_BASE =
-  process.env.NEXT_PUBLIC_BACKEND_URL ||
-  process.env.NEXT_PUBLIC_FORGE_API ||
-  process.env.NEXT_PUBLIC_STL_API ||
-  process.env.NEXT_PUBLIC_STL_SERVICE_URL ||
-  '';
-
 export default function GenerateForm() {
-  // --------- UI state ----------
-
   const [model, setModel] = useState<ModelKey>('vesa-adapter');
 
-  // VESA params
-  const [vesaWidth, setVesaWidth] = useState(180);
-  const [vesaHeight, setVesaHeight] = useState(180);
-  const [vesaThickness, setVesaThickness] = useState(6);
-  const [vesaPattern, setVesaPattern] = useState('100x100');
+  // params por modelo
+  const [vesa, setVesa] = useState<VesaParams>({ width: 180, height: 180, thickness: 6, pattern: '100x100' });
+  const [router, setRouter] = useState<RouterParams>({ width: 160, height: 220, depth: 40, thickness: 4 });
+  const [cable, setCable] = useState<CableParams>({ width: 60, height: 25, length: 180, thickness: 3, slots: true });
 
-  // Router mount params
-  const [rWidth, setRWidth] = useState(160);
-  const [rHeight, setRHeight] = useState(220);
-  const [rDepth, setRDepth] = useState(40);
-  const [rThickness, setRThickness] = useState(4);
+  const [busy, setBusy] = useState(false);
+  const [jsonOut, setJsonOut] = useState<string>('');
+  const [stlUrl, setStlUrl] = useState<string>('');
 
-  // Cable tray params
-  const [cWidth, setCWidth] = useState(60);
-  const [cHeight, setCHeight] = useState(25);
-  const [cLength, setCLength] = useState(180);
-  const [cThickness, setCThickness] = useState(3);
-  const [cSlots, setCSlots] = useState(true);
+  const paramBlock = useMemo(() => {
+    if (model === 'vesa-adapter') {
+      return (
+        <>
+          <label className="block mt-3 font-medium">Ancho (mm): {vesa.width}</label>
+          <input type="range" min={80} max={300} value={vesa.width}
+            onChange={(e) => setVesa({ ...vesa, width: +e.target.value })} className="w-full" />
 
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<Result>(null);
+          <label className="block mt-3 font-medium">Alto (mm): {vesa.height}</label>
+          <input type="range" min={80} max={300} value={vesa.height}
+            onChange={(e) => setVesa({ ...vesa, height: +e.target.value })} className="w-full" />
 
-  const isVesa = model === 'vesa-adapter';
-  const isRouter = model === 'router-mount';
-  const isCable = model === 'cable-tray';
+          <label className="block mt-3 font-medium">Espesor (mm): {vesa.thickness}</label>
+          <input type="range" min={3} max={16} value={vesa.thickness}
+            onChange={(e) => setVesa({ ...vesa, thickness: +e.target.value })} className="w-full" />
 
-  const canSubmit = useMemo(() => {
-    if (!API_BASE) return false;
-
-    if (isVesa) {
-      return vesaWidth >= 50 && vesaHeight >= 50 && vesaThickness >= 3;
+          <label className="block mt-3 font-medium">Patrón agujeros</label>
+          <select
+            value={vesa.pattern}
+            onChange={(e) => setVesa({ ...vesa, pattern: e.target.value })}
+            className="border rounded px-2 py-1"
+          >
+            <option value="75x75">75 × 75 mm</option>
+            <option value="100x100">100 × 100 mm</option>
+            <option value="100x200">100 × 200 mm</option>
+            <option value="200x200">200 × 200 mm</option>
+          </select>
+        </>
+      );
     }
-    if (isRouter) {
-      return rWidth >= 60 && rHeight >= 80 && rDepth >= 10 && rThickness >= 2;
+
+    if (model === 'router-mount') {
+      return (
+        <>
+          <label className="block mt-3 font-medium">Ancho base (mm): {router.width}</label>
+          <input type="range" min={100} max={300} value={router.width}
+            onChange={(e) => setRouter({ ...router, width: +e.target.value })} className="w-full" />
+
+          <label className="block mt-3 font-medium">Alto base (mm): {router.height}</label>
+          <input type="range" min={120} max={400} value={router.height}
+            onChange={(e) => setRouter({ ...router, height: +e.target.value })} className="w-full" />
+
+          <label className="block mt-3 font-medium">Fondo (mm): {router.depth}</label>
+          <input type="range" min={20} max={120} value={router.depth}
+            onChange={(e) => setRouter({ ...router, depth: +e.target.value })} className="w-full" />
+
+          <label className="block mt-3 font-medium">Espesor (mm): {router.thickness}</label>
+          <input type="range" min={3} max={12} value={router.thickness}
+            onChange={(e) => setRouter({ ...router, thickness: +e.target.value })} className="w-full" />
+        </>
+      );
     }
-    if (isCable) {
-      return cWidth >= 20 && cHeight >= 10 && cLength >= 60 && cThickness >= 2;
-    }
-    return false;
-  }, [
-    isVesa,
-    isRouter,
-    isCable,
-    vesaWidth,
-    vesaHeight,
-    vesaThickness,
-    rWidth,
-    rHeight,
-    rDepth,
-    rThickness,
-    cWidth,
-    cHeight,
-    cLength,
-    cThickness,
-  ]);
+
+    // cable-tray
+    return (
+      <>
+        <label className="block mt-3 font-medium">Ancho (mm): {cable.width}</label>
+        <input type="range" min={30} max={120} value={cable.width}
+          onChange={(e) => setCable({ ...cable, width: +e.target.value })} className="w-full" />
+
+        <label className="block mt-3 font-medium">Alto (mm): {cable.height}</label>
+        <input type="range" min={15} max={60} value={cable.height}
+          onChange={(e) => setCable({ ...cable, height: +e.target.value })} className="w-full" />
+
+        <label className="block mt-3 font-medium">Longitud (mm): {cable.length}</label>
+        <input type="range" min={80} max={400} value={cable.length}
+          onChange={(e) => setCable({ ...cable, length: +e.target.value })} className="w-full" />
+
+        <label className="block mt-3 font-medium">Espesor (mm): {cable.thickness}</label>
+        <input type="range" min={2} max={10} value={cable.thickness}
+          onChange={(e) => setCable({ ...cable, thickness: +e.target.value })} className="w-full" />
+
+        <label className="inline-flex items-center gap-2 mt-3">
+          <input type="checkbox" checked={cable.slots}
+            onChange={(e) => setCable({ ...cable, slots: e.target.checked })} />
+          Con ranuras de ventilación
+        </label>
+      </>
+    );
+  }, [model, vesa, router, cable]);
 
   async function handleGenerate() {
-    if (!API_BASE) {
-      setResult({ status: 'error', message: 'Falta NEXT_PUBLIC_BACKEND_URL' });
-      return;
-    }
+    setBusy(true);
+    setJsonOut('');
+    setStlUrl('');
 
-    setLoading(true);
-    setResult(null);
-
-    // Mapear params por modelo
-    let params: Record<string, any> = {};
-    if (isVesa) {
-      params = {
-        width: vesaWidth,
-        height: vesaHeight,
-        thickness: vesaThickness,
-        pattern: vesaPattern,
-      };
-    } else if (isRouter) {
-      params = {
-        width: rWidth,
-        height: rHeight,
-        depth: rDepth,
-        thickness: rThickness,
-      };
-    } else if (isCable) {
-      params = {
-        width: cWidth,
-        height: cHeight,
-        length: cLength,
-        thickness: cThickness,
-        slots: cSlots,
-      };
-    }
+    const params =
+      model === 'vesa-adapter' ? vesa :
+      model === 'router-mount' ? router :
+      cable;
 
     try {
-      const res = await fetch(`${API_BASE}/generate`, {
+      const res = await fetch(`${BACKEND.replace(/\/$/,'')}/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          // el backend acepta model o model_slug
           model,
           params,
-          order_id: 'demo-order-001',
           license: 'personal',
+          order_id: '',
         }),
       });
 
-      const json = (await res.json()) as Result;
-      setResult(json);
+      const json = (await res.json()) as BackendResponse;
+      setJsonOut(JSON.stringify(json, null, 2));
+      if ((json as any)?.status === 'ok' && (json as any)?.stl_url) {
+        setStlUrl((json as any).stl_url);
+      }
     } catch (err: any) {
-      setResult({ status: 'error', message: err?.message || 'Failed to fetch' });
+      setJsonOut(JSON.stringify({ status: 'error', message: err?.message || String(err) }, null, 2));
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   }
 
   return (
-    <div
-      style={{
-        maxWidth: 560,
-        background: '#fff',
-        border: '1px solid #eee',
-        borderRadius: 12,
-        padding: 16,
-      }}
-    >
-      {/* Selector de modelo */}
-      <label style={{ fontWeight: 600, display: 'block', marginBottom: 8 }}>
-        Modelo
-      </label>
+    <div className="max-w-2xl">
+      <label className="block font-medium">Modelo</label>
       <select
+        className="border rounded px-2 py-1"
         value={model}
         onChange={(e) => setModel(e.target.value as ModelKey)}
-        style={{
-          width: '100%',
-          padding: '10px 12px',
-          borderRadius: 8,
-          border: '1px solid #c9c9c9',
-          marginBottom: 16,
-        }}
       >
         <option value="vesa-adapter">VESA Adapter</option>
         <option value="router-mount">Router Mount</option>
         <option value="cable-tray">Cable Tray</option>
       </select>
 
-      {/* Parámetros según modelo */}
-      {isVesa && (
-        <>
-          <Slider
-            label={`Ancho (mm): ${vesaWidth}`}
-            value={vesaWidth}
-            min={80}
-            max={300}
-            step={1}
-            onChange={setVesaWidth}
-          />
-          <Slider
-            label={`Alto (mm): ${vesaHeight}`}
-            value={vesaHeight}
-            min={80}
-            max={300}
-            step={1}
-            onChange={setVesaHeight}
-          />
-          <Slider
-            label={`Espesor (mm): ${vesaThickness}`}
-            value={vesaThickness}
-            min={3}
-            max={12}
-            step={1}
-            onChange={setVesaThickness}
-          />
-
-          <label style={{ fontWeight: 600, display: 'block', marginTop: 8 }}>
-            Patrón agujeros
-          </label>
-          <select
-            value={vesaPattern}
-            onChange={(e) => setVesaPattern(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '10px 12px',
-              borderRadius: 8,
-              border: '1px solid #c9c9c9',
-              marginBottom: 16,
-            }}
-          >
-            <option value="100x100">100 × 100 mm</option>
-            <option value="75x75">75 × 75 mm</option>
-            <option value="200x100">200 × 100 mm</option>
-            <option value="200x200">200 × 200 mm</option>
-          </select>
-        </>
-      )}
-
-      {isRouter && (
-        <>
-          <Slider
-            label={`Ancho base (mm): ${rWidth}`}
-            value={rWidth}
-            min={80}
-            max={300}
-            step={1}
-            onChange={setRWidth}
-          />
-          <Slider
-            label={`Alto base (mm): ${rHeight}`}
-            value={rHeight}
-            min={100}
-            max={350}
-            step={1}
-            onChange={setRHeight}
-          />
-          <Slider
-            label={`Fondo (mm): ${rDepth}`}
-            value={rDepth}
-            min={20}
-            max={120}
-            step={1}
-            onChange={setRDepth}
-          />
-          <Slider
-            label={`Espesor (mm): ${rThickness}`}
-            value={rThickness}
-            min={2}
-            max={10}
-            step={1}
-            onChange={setRThickness}
-          />
-        </>
-      )}
-
-      {isCable && (
-        <>
-          <Slider
-            label={`Ancho (mm): ${cWidth}`}
-            value={cWidth}
-            min={20}
-            max={120}
-            step={1}
-            onChange={setCWidth}
-          />
-          <Slider
-            label={`Alto (mm): ${cHeight}`}
-            value={cHeight}
-            min={10}
-            max={80}
-            step={1}
-            onChange={setCHeight}
-          />
-          <Slider
-            label={`Longitud (mm): ${cLength}`}
-            value={cLength}
-            min={60}
-            max={400}
-            step={5}
-            onChange={setCLength}
-          />
-          <Slider
-            label={`Espesor (mm): ${cThickness}`}
-            value={cThickness}
-            min={2}
-            max={10}
-            step={1}
-            onChange={setCThickness}
-          />
-
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-            <input
-              type="checkbox"
-              checked={cSlots}
-              onChange={(e) => setCSlots(e.target.checked)}
-            />
-            Con ranuras de ventilación
-          </label>
-        </>
-      )}
+      {paramBlock}
 
       <button
+        disabled={busy}
         onClick={handleGenerate}
-        disabled={loading || !canSubmit}
-        style={{
-          width: '100%',
-          marginTop: 16,
-          padding: '12px 16px',
-          borderRadius: 10,
-          border: '1px solid #0f172a',
-          background: loading || !canSubmit ? '#cbd5e1' : '#0f172a',
-          color: '#fff',
-          cursor: loading || !canSubmit ? 'not-allowed' : 'pointer',
-          fontWeight: 600,
-        }}
+        className="mt-6 w-full rounded-lg bg-slate-900 text-white py-3 disabled:opacity-60"
       >
-        {loading ? 'Generando…' : 'Generar STL'}
+        {busy ? 'Generando…' : 'Generar STL'}
       </button>
 
-      {/* Resultado JSON */}
-      <pre
-        style={{
-          marginTop: 16,
-          padding: 12,
-          background: '#f6f6f6',
-          borderRadius: 8,
-          overflow: 'auto',
-        }}
-      >
-        {JSON.stringify(result || {}, null, 2)}
-      </pre>
-
-      {/* Link y visor */}
-      {result && result.status === 'ok' && (result as ResultOk).stl_url && (
+      {jsonOut && (
         <>
-          <p style={{ marginTop: 10 }}>
-            <a href={(result as ResultOk).stl_url} target="_blank" rel="noreferrer">
+          <pre className="mt-4 p-3 bg-gray-50 rounded border overflow-auto text-sm">{jsonOut}</pre>
+          {stlUrl && (
+            <a
+              href={stlUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-blue-600 underline inline-block mt-2"
+            >
               Descargar STL (en Supabase)
             </a>
-          </p>
-
-          <div style={{ marginTop: 16, border: '1px solid #eee', borderRadius: 8 }}>
-            <STLViewer url={(result as ResultOk).stl_url} height={360} />
-          </div>
+          )}
+          {stlUrl && (
+            <div className="mt-4">
+              <STLViewer url={stlUrl} height={420} />
+            </div>
+          )}
         </>
       )}
-    </div>
-  );
-}
-
-function Slider(props: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step?: number;
-  onChange: (v: number) => void;
-}) {
-  const { label, value, min, max, step = 1, onChange } = props;
-  return (
-    <div style={{ marginBottom: 12 }}>
-      <div style={{ fontWeight: 600, marginBottom: 8 }}>{label}</div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(parseInt(e.target.value, 10))}
-        style={{ width: '100%' }}
-      />
     </div>
   );
 }
