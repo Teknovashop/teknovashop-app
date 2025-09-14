@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 
-// Runtime imports
+// Runtime imports (sin tipos estrictos para evitar incompatibilidades de three en Vercel)
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
@@ -11,6 +11,8 @@ type Props = {
   url?: string;
   height?: number;
   background?: string;
+  showEdges?: boolean;
+  showGrid?: boolean;
 };
 
 type DebugInfo = {
@@ -18,15 +20,21 @@ type DebugInfo = {
   bbox: { x: number; y: number; z: number };
 };
 
-export default function STLPreview({ url, height = 520, background = "#ffffff" }: Props) {
+export default function STLPreview({
+  url,
+  height = 520,
+  background = "#ffffff",
+  showEdges = true,
+  showGrid = false,
+}: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
 
-  // Refs como any para blindarnos de cambios de tipos entre versiones de three
   const sceneRef = useRef<any>(null);
   const cameraRef = useRef<any>(null);
   const rendererRef = useRef<any>(null);
   const controlsRef = useRef<any>(null);
   const meshRef = useRef<any>(null);
+  const edgesRef = useRef<any>(null);
 
   const [status, setStatus] = useState<"idle" | "loading" | "ok" | "error">("idle");
   const [msg, setMsg] = useState("");
@@ -54,10 +62,23 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     container.appendChild(renderer.domElement);
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-    const dir = new THREE.DirectionalLight(0xffffff, 1.0);
-    dir.position.set(1, 1, 1);
-    scene.add(dir);
+    // Luces
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const k = 1.2;
+    const lights = [
+      new THREE.DirectionalLight(0xffffff, 0.8),
+      new THREE.DirectionalLight(0xffffff, 0.5),
+      new THREE.DirectionalLight(0xffffff, 0.4),
+    ];
+    lights[0].position.set(k, k, k);
+    lights[1].position.set(-k, k, k);
+    lights[2].position.set(k, -k, k);
+    lights.forEach((l) => scene.add(l));
+
+    if (showGrid) {
+      const grid = new THREE.GridHelper(400, 20, 0xdddddd, 0xeeeeee);
+      scene.add(grid);
+    }
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
@@ -90,7 +111,6 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
       controls.dispose();
       renderer.dispose();
 
-      // Limpieza de recursos
       scene.traverse((obj: any) => {
         if (obj.isMesh) {
           obj.geometry?.dispose?.();
@@ -103,9 +123,9 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
         container.removeChild(renderer.domElement);
       } catch {}
     };
-  }, [height, background]);
+  }, [height, background, showGrid]);
 
-  // Carga del STL (siempre con fetch + parse para evitar problemas de CORS/manager)
+  // Carga STL (fetch + parse)
   useEffect(() => {
     const scene = sceneRef.current;
     const camera = cameraRef.current;
@@ -118,6 +138,12 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
     setDebug(null);
 
     const clearOld = () => {
+      if (edgesRef.current) {
+        scene.remove(edgesRef.current);
+        edgesRef.current.geometry?.dispose?.();
+        (edgesRef.current.material as any)?.dispose?.();
+        edgesRef.current = null;
+      }
       if (meshRef.current) {
         const old: any = meshRef.current;
         scene.remove(old);
@@ -134,8 +160,14 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
       const size = new THREE.Vector3();
       bb.getSize(size);
 
+      // Centrar al origen:
+      const center = new THREE.Vector3();
+      bb.getCenter(center);
+      geom.translate(-center.x, -center.y, -center.z);
+
       const maxDim = Math.max(size.x, size.y, size.z, 1);
       const dist = maxDim / (2 * Math.tan((camera.fov * Math.PI) / 360));
+
       camera.near = Math.max(maxDim / 1000, 0.01);
       camera.far = Math.max(maxDim * 1000, 1000);
       camera.position.set(dist * 1.35, dist * 1.1, dist * 1.6);
@@ -153,25 +185,31 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
     };
 
     const material = new THREE.MeshStandardMaterial({
-      color: 0x3a3f46,
+      color: 0x30343a,
       roughness: 0.6,
       metalness: 0.2,
+      flatShading: true,
+      side: THREE.DoubleSide, // <-- clave para láminas finas/caras invertidas
     });
 
     const onGeomReady = (geom: any) => {
       if (disposed) return;
       clearOld();
 
+      // Orientación habitual de STL (Z arriba)
       const mesh = new THREE.Mesh(geom, material);
       mesh.rotation.x = -Math.PI / 2;
-
-      geom.computeBoundingBox();
-      const center = new THREE.Vector3();
-      geom.boundingBox!.getCenter(center);
-      geom.translate(-center.x, -center.y, -center.z);
-
       scene.add(mesh);
       meshRef.current = mesh;
+
+      if (showEdges) {
+        const eg = new THREE.EdgesGeometry(geom, 15); // umbral de ángulo
+        const em = new THREE.LineBasicMaterial({ color: 0x111111, transparent: true, opacity: 0.35 });
+        const edges = new THREE.LineSegments(eg, em);
+        edges.rotation.copy(mesh.rotation);
+        scene.add(edges);
+        edgesRef.current = edges;
+      }
 
       fitCamera(geom);
       setStatus("ok");
@@ -197,7 +235,7 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
     return () => {
       disposed = true;
     };
-  }, [url]);
+  }, [url, showEdges]);
 
   return (
     <div>
