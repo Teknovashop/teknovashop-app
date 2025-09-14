@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 
-// Librerías runtime
+// Runtime imports
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
@@ -21,7 +21,7 @@ type DebugInfo = {
 export default function STLPreview({ url, height = 520, background = "#ffffff" }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
 
-  // Refs como any para blindarnos ante cambios de tipos en three
+  // Refs como any para blindarnos de cambios de tipos entre versiones de three
   const sceneRef = useRef<any>(null);
   const cameraRef = useRef<any>(null);
   const rendererRef = useRef<any>(null);
@@ -32,7 +32,7 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
   const [msg, setMsg] = useState("");
   const [debug, setDebug] = useState<DebugInfo | null>(null);
 
-  // --- bootstrap three ---
+  // Bootstrap three
   useEffect(() => {
     const container = mountRef.current;
     if (!container) return;
@@ -90,7 +90,7 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
       controls.dispose();
       renderer.dispose();
 
-      // Limpia recursos (param tipado como any para evitar errores de TS)
+      // Limpieza de recursos
       scene.traverse((obj: any) => {
         if (obj.isMesh) {
           obj.geometry?.dispose?.();
@@ -105,7 +105,7 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
     };
   }, [height, background]);
 
-  // --- carga del STL ---
+  // Carga del STL (siempre con fetch + parse para evitar problemas de CORS/manager)
   useEffect(() => {
     const scene = sceneRef.current;
     const camera = cameraRef.current;
@@ -128,7 +128,6 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
       }
     };
 
-    // ⚠️ Tipamos como any: tres cambios de tipos entre versiones habían roto el build
     const fitCamera = (geom: any) => {
       geom.computeBoundingBox();
       const bb = geom.boundingBox!;
@@ -179,28 +178,21 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
       setMsg("");
     };
 
-    const loader = new STLLoader();
-    loader.manager.setCrossOrigin("anonymous");
-
-    loader.load(
-      url,
-      (geom) => onGeomReady(geom),
-      undefined,
-      async () => {
-        try {
-          const res = await fetch(url, { mode: "cors", cache: "no-store" });
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const buf = await res.arrayBuffer();
-          const geom = loader.parse(buf);
-          onGeomReady(geom);
-        } catch (e: any) {
-          if (!disposed) {
-            setStatus("error");
-            setMsg(e?.message ?? "No se pudo cargar el STL");
-          }
+    (async () => {
+      try {
+        const res = await fetch(url, { mode: "cors", cache: "no-store" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const buf = await res.arrayBuffer();
+        const loader = new STLLoader();
+        const geom = loader.parse(buf);
+        onGeomReady(geom);
+      } catch (e: any) {
+        if (!disposed) {
+          setStatus("error");
+          setMsg(e?.message ?? "No se pudo cargar el STL");
         }
       }
-    );
+    })();
 
     return () => {
       disposed = true;
