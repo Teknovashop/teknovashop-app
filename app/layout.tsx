@@ -1,14 +1,10 @@
-export const metadata = {
-  title: "Teknovashop Forge",
-  description: "Generador paramétrico (Cable Tray, VESA, Router Mount)"
-};
+// app/layout.tsx
+import type { ReactNode } from "react";
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="es">
-      <body style={{ margin: 0, fontFamily: "system-ui, Arial, sans-serif" }}>
-        {children}
-      </body>
+    <html lang="en">
+      <body>{children}</body>
     </html>
   );
 }
