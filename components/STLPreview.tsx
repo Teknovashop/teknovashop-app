@@ -1,9 +1,14 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+
+// Import runtime de three y helpers
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
+
+// Import de TIPOS para TypeScript (clave para el error de Vercel)
+import type { Scene, PerspectiveCamera, WebGLRenderer, BufferGeometry } from "three";
 
 type Props = {
   url?: string;
@@ -19,9 +24,10 @@ type DebugInfo = {
 export default function STLPreview({ url, height = 520, background = "#ffffff" }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
 
-  const sceneRef = useRef<THREE.Scene | null>(null);
-  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  // ✅ Usa tipos importados directamente, no THREE.Scene, etc.
+  const sceneRef = useRef<Scene | null>(null);
+  const cameraRef = useRef<PerspectiveCamera | null>(null);
+  const rendererRef = useRef<WebGLRenderer | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const meshRef = useRef<THREE.Mesh | null>(null);
 
@@ -29,20 +35,25 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
   const [msg, setMsg] = useState("");
   const [debug, setDebug] = useState<DebugInfo | null>(null);
 
+  // Inicializa escena/cámara/renderer
   useEffect(() => {
     const container = mountRef.current;
     if (!container) return;
 
-    const scene = new THREE.Scene();
+    const scene: Scene = new THREE.Scene();
     scene.background = new THREE.Color(background);
 
-    const w = container.clientWidth || 800;
-    const camera = new THREE.PerspectiveCamera(45, w / height, 0.1, 10000);
+    const width = container.clientWidth || 800;
+    const camera: PerspectiveCamera = new THREE.PerspectiveCamera(45, width / height, 0.1, 10000);
     camera.position.set(0, 0, 200);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
+    const renderer: WebGLRenderer = new THREE.WebGLRenderer({
+      antialias: true,
+      alpha: false,
+      powerPreference: "high-performance",
+    });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setSize(w, height);
+    renderer.setSize(width, height);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     container.appendChild(renderer.domElement);
 
@@ -60,7 +71,7 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
     rendererRef.current = renderer;
     controlsRef.current = controls;
 
-    // animación
+    // render loop
     let raf = 0;
     const tick = () => {
       controls.update();
@@ -71,7 +82,7 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
 
     // resize
     const onResize = () => {
-      const w2 = container.clientWidth || w;
+      const w2 = container.clientWidth || width;
       renderer.setSize(w2, height);
       camera.aspect = w2 / height;
       camera.updateProjectionMatrix();
@@ -84,7 +95,7 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
       ro.disconnect();
       controls.dispose();
       renderer.dispose();
-      // limpia geometrías/materiales
+      // limpia recursos
       scene.traverse((obj: THREE.Object3D) => {
         const anyObj = obj as any;
         if (anyObj.isMesh) {
@@ -93,11 +104,13 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
           mats.forEach((m: any) => m?.dispose?.());
         }
       });
-      try { container.removeChild(renderer.domElement); } catch {}
+      try {
+        container.removeChild(renderer.domElement);
+      } catch {}
     };
   }, [height, background]);
 
-  // Carga del STL (dos vías)
+  // Carga STL (XHR + fallback fetch+parse)
   useEffect(() => {
     const scene = sceneRef.current;
     const camera = cameraRef.current;
@@ -109,7 +122,6 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
     setMsg("Cargando STL…");
     setDebug(null);
 
-    // Limpia mesh anterior
     const clearOld = () => {
       if (meshRef.current) {
         const old = meshRef.current as any;
@@ -121,11 +133,12 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
       }
     };
 
-    const fitCamera = (geom: THREE.BufferGeometry) => {
+    const fitCamera = (geom: BufferGeometry) => {
       geom.computeBoundingBox();
       const bb = geom.boundingBox!;
       const size = new THREE.Vector3();
       bb.getSize(size);
+
       const maxDim = Math.max(size.x, size.y, size.z, 1);
       const dist = maxDim / (2 * Math.tan((camera.fov * Math.PI) / 360));
       camera.near = Math.max(maxDim / 1000, 0.01);
@@ -133,24 +146,32 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
       camera.position.set(dist * 1.35, dist * 1.1, dist * 1.6);
       camera.lookAt(0, 0, 0);
       camera.updateProjectionMatrix();
+
       controls.target.set(0, 0, 0);
       controls.update();
 
       const triCount = (geom.getAttribute("position")?.count ?? 0) / 3;
-      setDebug({ triangles: Math.round(triCount), bbox: { x: +size.x.toFixed(2), y: +size.y.toFixed(2), z: +size.z.toFixed(2) } });
+      setDebug({
+        triangles: Math.round(triCount),
+        bbox: { x: +size.x.toFixed(2), y: +size.y.toFixed(2), z: +size.z.toFixed(2) },
+      });
     };
 
-    const material = new THREE.MeshStandardMaterial({ color: 0x3a3f46, roughness: 0.6, metalness: 0.2 });
+    const material = new THREE.MeshStandardMaterial({
+      color: 0x3a3f46,
+      roughness: 0.6,
+      metalness: 0.2,
+    });
 
-    const onGeomReady = (geom: THREE.BufferGeometry) => {
+    const onGeomReady = (geom: BufferGeometry) => {
       if (disposed) return;
       clearOld();
 
-      // algunos STL salen Z-up; pasamos a Y-up
+      // Y-up
       const mesh = new THREE.Mesh(geom, material);
       mesh.rotation.x = -Math.PI / 2;
 
-      // centrar en origen
+      // centrar
       geom.computeBoundingBox();
       const center = new THREE.Vector3();
       geom.boundingBox!.getCenter(center);
@@ -165,14 +186,15 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
     };
 
     const loader = new STLLoader();
-    // Modo 1: XHR directo
     loader.manager.setCrossOrigin("anonymous");
+
+    // 1) XHR directo
     loader.load(
       url,
       (geom) => onGeomReady(geom),
       undefined,
       async () => {
-        // Fallback: fetch + parse
+        // 2) Fallback: fetch + parse
         try {
           const res = await fetch(url, { mode: "cors", cache: "no-store" });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -188,7 +210,9 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
       }
     );
 
-    return () => { disposed = true; };
+    return () => {
+      disposed = true;
+    };
   }, [url]);
 
   return (
@@ -206,7 +230,6 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
           background,
         }}
       >
-        {/* Overlay debug */}
         {debug && (
           <div
             style={{
@@ -221,8 +244,12 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
               color: "#111827",
             }}
           >
-            <div><strong>triángulos:</strong> {debug.triangles}</div>
-            <div><strong>bbox:</strong> {debug.bbox.x} × {debug.bbox.y} × {debug.bbox.z}</div>
+            <div>
+              <strong>triángulos:</strong> {debug.triangles}
+            </div>
+            <div>
+              <strong>bbox:</strong> {debug.bbox.x} × {debug.bbox.y} × {debug.bbox.z}
+            </div>
           </div>
         )}
       </div>
