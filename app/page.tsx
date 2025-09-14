@@ -1,11 +1,9 @@
-'use client';
-
-import GenerateForm from '../components/GenerateForm';
+import GenerateForm from '@/components/GenerateForm';
 
 export default function Page() {
   return (
-    <main style={{ padding: 24, fontFamily: 'system-ui, sans-serif' }}>
-      <h1>Teknovashop Forge</h1>
+    <main className="min-h-screen p-6">
+      <h1 className="text-3xl font-bold mb-6">Teknovashop Forge</h1>
       <GenerateForm />
     </main>
   );
