@@ -26,7 +26,8 @@ export default function STLViewer({ url, height = 520, background = "#ffffff" }:
     scene.background = new THREE.Color(background);
     const camera = new THREE.PerspectiveCamera(50, container.clientWidth / height, 0.1, 2000);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(background || "#ffffff");
     renderer.setPixelRatio(Math.min(window.devicePixelRatio ?? 1, 2));
     renderer.setSize(container.clientWidth, height);
     container.appendChild(renderer.domElement);
