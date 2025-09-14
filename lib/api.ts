@@ -12,22 +12,20 @@ export type GenerateResponse =
   | { status: "error"; detail?: string; message?: string };
 
 const baseURL =
-  process.env.NEXT_PUBLIC_BACKEND_URL || "https://teknovashop-forge.onrender.com";
+  process.env.NEXT_PUBLIC_FORGE_API_URL ||
+  process.env.NEXT_PUBLIC_BACKEND_URL || // por si lo tenías con este nombre
+  "https://teknovashop-forge.onrender.com"; // fallback seguro
 
 export async function generateSTL(payload: CableTrayPayload): Promise<GenerateResponse> {
-  try {
-    const res = await fetch(`${baseURL}/generate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      cache: "no-store"
-    });
+  const res = await fetch(`${baseURL}/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store"
+  });
 
-    if (!res.ok) {
-      return { status: "error", detail: `HTTP ${res.status}` };
-    }
-    return (await res.json()) as GenerateResponse;
-  } catch (e: any) {
-    return { status: "error", detail: e?.message ?? "fetch error" };
+  if (!res.ok) {
+    return { status: "error", detail: `HTTP ${res.status}` };
   }
+  return (await res.json()) as GenerateResponse;
 }
