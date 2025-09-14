@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 
-// Runtime libs
+// Librerías runtime
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
@@ -21,7 +21,7 @@ type DebugInfo = {
 export default function STLPreview({ url, height = 520, background = "#ffffff" }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
 
-  // usar any en refs para evitar fallos de tipos en build
+  // Refs como any para blindarnos ante cambios de tipos en three
   const sceneRef = useRef<any>(null);
   const cameraRef = useRef<any>(null);
   const rendererRef = useRef<any>(null);
@@ -32,6 +32,7 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
   const [msg, setMsg] = useState("");
   const [debug, setDebug] = useState<DebugInfo | null>(null);
 
+  // --- bootstrap three ---
   useEffect(() => {
     const container = mountRef.current;
     if (!container) return;
@@ -89,7 +90,7 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
       controls.dispose();
       renderer.dispose();
 
-      // 🔧 Tipado explícito del parámetro:
+      // Limpia recursos (param tipado como any para evitar errores de TS)
       scene.traverse((obj: any) => {
         if (obj.isMesh) {
           obj.geometry?.dispose?.();
@@ -104,6 +105,7 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
     };
   }, [height, background]);
 
+  // --- carga del STL ---
   useEffect(() => {
     const scene = sceneRef.current;
     const camera = cameraRef.current;
@@ -126,7 +128,8 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
       }
     };
 
-    const fitCamera = (geom: THREE.BufferGeometry) => {
+    // ⚠️ Tipamos como any: tres cambios de tipos entre versiones habían roto el build
+    const fitCamera = (geom: any) => {
       geom.computeBoundingBox();
       const bb = geom.boundingBox!;
       const size = new THREE.Vector3();
@@ -156,7 +159,7 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
       metalness: 0.2,
     });
 
-    const onGeomReady = (geom: THREE.BufferGeometry) => {
+    const onGeomReady = (geom: any) => {
       if (disposed) return;
       clearOld();
 
