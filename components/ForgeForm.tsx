@@ -2,22 +2,20 @@
 "use client";
 
 import { useState } from "react";
-import { generateSTL, type GenerateResponse } from "@/lib/api";
-import STLViewer from "@/components/STLViewer";
+import { generateSTL, type GenerateResponse } from "../lib/api";
+import STLViewer from "./STLViewer";
 
 type ModelKind = "cable_tray"; // futuros: "vesa_adapter" | "router_mount"
 
 export default function ForgeForm() {
   const [model, setModel] = useState<ModelKind>("cable_tray");
 
-  // sliders
   const [width, setWidth] = useState(60);
   const [height, setHeight] = useState(25);
   const [length, setLength] = useState(180);
   const [thickness, setThickness] = useState(3);
   const [ventilated, setVentilated] = useState(true);
 
-  // resultado
   const [stlUrl, setStlUrl] = useState<string | null>(null);
   const [jsonOpen, setJsonOpen] = useState(false);
   const [lastResponse, setLastResponse] = useState<GenerateResponse | null>(null);
@@ -41,7 +39,6 @@ export default function ForgeForm() {
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
-      {/* Modelo (por ahora sólo Cable Tray) */}
       <div>
         <label style={{ fontSize: 14, color: "#374151" }}>Modelo&nbsp;</label>
         <select
@@ -53,40 +50,11 @@ export default function ForgeForm() {
         </select>
       </div>
 
-      {/* Sliders */}
       <div style={{ display: "grid", gap: 12 }}>
-        <Slider
-          label="Ancho (mm)"
-          value={width}
-          min={30}
-          max={120}
-          step={1}
-          onChange={setWidth}
-        />
-        <Slider
-          label="Alto (mm)"
-          value={height}
-          min={15}
-          max={60}
-          step={1}
-          onChange={setHeight}
-        />
-        <Slider
-          label="Longitud (mm)"
-          value={length}
-          min={120}
-          max={360}
-          step={5}
-          onChange={setLength}
-        />
-        <Slider
-          label="Espesor (mm)"
-          value={thickness}
-          min={2}
-          max={10}
-          step={1}
-          onChange={setThickness}
-        />
+        <Slider label="Ancho (mm)" value={width} min={30} max={120} step={1} onChange={setWidth} />
+        <Slider label="Alto (mm)" value={height} min={15} max={60} step={1} onChange={setHeight} />
+        <Slider label="Longitud (mm)" value={length} min={120} max={360} step={5} onChange={setLength} />
+        <Slider label="Espesor (mm)" value={thickness} min={2} max={10} step={1} onChange={setThickness} />
 
         <label style={{ userSelect: "none", display: "inline-flex", gap: 8 }}>
           <input
@@ -125,13 +93,11 @@ export default function ForgeForm() {
         </div>
       </div>
 
-      {/* Visor */}
       <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: 12 }}>
-        {/* IMPORTANTE: convertimos null -> undefined para el tipado de la prop */}
+        {/* Convertimos null -> undefined por tipado de la prop */}
         <STLViewer url={stlUrl || undefined} height={520} background="#ffffff" />
       </div>
 
-      {/* JSON */}
       <details open={jsonOpen} onToggle={(e) => setJsonOpen((e.target as any).open)}>
         <summary>Ver respuesta JSON</summary>
         <pre
