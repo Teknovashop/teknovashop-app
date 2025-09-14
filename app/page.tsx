@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import STLPreview from "@/components/STLPreview";
-import { generateSTL, type GenerateResponse } from "@/lib/api";
+import STLPreview from "../components/STLPreview";
+import { generateSTL, type GenerateResponse } from "../lib/api";
 import "./globals.css";
 
 type ModelKind = "cable_tray" | "vesa_adapter" | "router_mount";
@@ -19,7 +19,6 @@ export default function Page() {
 
   const [resp, setResp] = useState<GenerateResponse | null>(null);
   const [loading, setLoading] = useState(false);
-  const [showJson, setShowJson] = useState(false);
 
   const stlUrl = useMemo(() => (resp && resp.status === "ok" ? resp.stl_url : undefined), [resp]);
 
@@ -66,32 +65,23 @@ export default function Page() {
           </select>
         </div>
 
-        {/* Controles del Cable Tray */}
         {model === "cable_tray" && (
           <>
             <div className="row">
               <div>
-                <label>
-                  Ancho (mm): {width}
-                </label>
+                <label>Ancho (mm): {width}</label>
                 <input type="range" min={30} max={300} value={width} onChange={(e) => setWidth(+e.target.value)} />
               </div>
               <div>
-                <label>
-                  Alto (mm): {height}
-                </label>
+                <label>Alto (mm): {height}</label>
                 <input type="range" min={10} max={200} value={height} onChange={(e) => setHeight(+e.target.value)} />
               </div>
               <div>
-                <label>
-                  Longitud (mm): {length}
-                </label>
+                <label>Longitud (mm): {length}</label>
                 <input type="range" min={60} max={1200} value={length} onChange={(e) => setLength(+e.target.value)} />
               </div>
               <div>
-                <label>
-                  Espesor (mm): {thickness}
-                </label>
+                <label>Espesor (mm): {thickness}</label>
                 <input type="range" min={2} max={10} value={thickness} onChange={(e) => setThickness(+e.target.value)} />
               </div>
             </div>
@@ -122,14 +112,12 @@ export default function Page() {
           </>
         )}
 
-        {/* Visor */}
         <div style={{ marginTop: 16 }}>
           <STLPreview url={stlUrl} height={560} background="#ffffff" showEdges={true} />
         </div>
 
-        {/* Respuesta JSON */}
         <div style={{ marginTop: 12 }}>
-          <details open={false}>
+          <details>
             <summary>Ver respuesta JSON</summary>
             <pre style={{ whiteSpace: "pre-wrap", overflowX: "auto" }}>
               {resp ? JSON.stringify(resp, null, 2) : "{}"}
