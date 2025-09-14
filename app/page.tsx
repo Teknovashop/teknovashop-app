@@ -1,5 +1,5 @@
 // /app/page.tsx
-import ForgeForm from "@/components/ForgeForm";
+import ForgeForm from "../components/ForgeForm";
 
 export default function HomePage() {
   return (
