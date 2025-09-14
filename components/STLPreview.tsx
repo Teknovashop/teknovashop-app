@@ -10,119 +10,153 @@ type Props = {
   url?: string;
   /** Alto del canvas en px */
   height?: number;
-  /** Color de fondo (CSS) */
+  /** Color de fondo */
   background?: string;
 };
 
 export default function STLPreview({ url, height = 520, background = "#ffffff" }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
+
+  // refs de three
+  const sceneRef = useRef<any>(null);
+  const cameraRef = useRef<any>(null);
+  const rendererRef = useRef<any>(null);
+  const controlsRef = useRef<any>(null);
+  const meshRef = useRef<any>(null);
+
   const [status, setStatus] = useState<"idle" | "loading" | "ok" | "error">("idle");
   const [msg, setMsg] = useState<string>("");
 
+  // Inicializar escena una vez
   useEffect(() => {
-    if (!mountRef.current) return;
+    const container = mountRef.current;
+    if (!container) return;
 
-    // --- Escena básica ---
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(background);
 
-    const container = mountRef.current;
-    const width = container.clientWidth || container.offsetWidth || 800;
-    const heightPx = height;
+    const w = container.clientWidth || container.offsetWidth || 800;
+    const h = height;
 
-    // Cámara
-    const camera = new THREE.PerspectiveCamera(45, width / heightPx, 0.1, 1000);
+    const camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 5000);
     camera.position.set(0, 0, 200);
 
-    // Renderer
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      alpha: false,
+      powerPreference: "high-performance",
+    });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setSize(width, heightPx);
+    renderer.setSize(w, h);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     container.appendChild(renderer.domElement);
 
-    // Luces
-    const key = new THREE.DirectionalLight(0xffffff, 1.0);
+    // Luces sencillas
+    const key = new THREE.DirectionalLight(0xffffff, 1);
     key.position.set(1, 1, 1);
     const fill = new THREE.DirectionalLight(0xffffff, 0.6);
     fill.position.set(-1, 0.5, -0.5);
     const amb = new THREE.AmbientLight(0xffffff, 0.4);
     scene.add(key, fill, amb);
 
-    // Controles
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
-    controls.dampingFactor = 0.05;
-    controls.rotateSpeed = 0.8;
-    controls.zoomSpeed = 0.8;
-    controls.panSpeed = 0.8;
+    controls.dampingFactor = 0.06;
+    controls.rotateSpeed = 0.9;
+    controls.zoomSpeed = 0.9;
+    controls.panSpeed = 0.9;
 
-    let frameId: number | null = null;
+    sceneRef.current = scene;
+    cameraRef.current = camera;
+    rendererRef.current = renderer;
+    controlsRef.current = controls;
+
+    let raf: number;
     const animate = () => {
       controls.update();
       renderer.render(scene, camera);
-      frameId = requestAnimationFrame(animate);
+      raf = requestAnimationFrame(animate);
     };
     animate();
 
     // Resize
     const onResize = () => {
-      const w = container.clientWidth || container.offsetWidth || width;
-      renderer.setSize(w, heightPx);
-      camera.aspect = w / heightPx;
+      const ww = container.clientWidth || w;
+      renderer.setSize(ww, h);
+      camera.aspect = ww / h;
       camera.updateProjectionMatrix();
     };
     const ro = new ResizeObserver(onResize);
     ro.observe(container);
 
-    // Limpieza
     return () => {
-      if (frameId) cancelAnimationFrame(frameId);
+      cancelAnimationFrame(raf);
       ro.disconnect();
       controls.dispose();
       renderer.dispose();
-      scene.traverse((obj) => {
-        if ((obj as THREE.Mesh).geometry) (obj as THREE.Mesh).geometry.dispose();
-        if ((obj as THREE.Mesh).material) {
-          const m = (obj as THREE.Mesh).material as THREE.Material | THREE.Material[];
-          (Array.isArray(m) ? m : [m]).forEach((mm) => mm.dispose());
+      scene.traverse((obj: any) => {
+        if (obj.isMesh) {
+          obj.geometry?.dispose?.();
+          if (obj.material) {
+            const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+            mats.forEach((m) => m?.dispose?.());
+          }
         }
       });
-      container.removeChild(renderer.domElement);
+      try {
+        container.removeChild(renderer.domElement);
+      } catch {}
     };
   }, [height, background]);
 
-  // Cargar STL con fetch + parse
+  // Cargar/actualizar el STL cuando cambie la URL
   useEffect(() => {
-    if (!url || !mountRef.current) return;
+    const scene = sceneRef.current;
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
 
+    if (!scene || !camera || !controls) return;
+    if (!url) return;
+
+    let disposed = false;
     setStatus("loading");
     setMsg("Descargando STL…");
 
-    let disposed = false;
-
     (async () => {
       try {
+        // Descargar binario (evita CORS raros del loader con URLs firmadas)
         const res = await fetch(url, { mode: "cors", cache: "no-store" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const buf = await res.arrayBuffer();
-
         if (disposed) return;
 
+        // Parsear
         const loader = new STLLoader();
         const geom = loader.parse(buf);
 
-        // Material sobrio
+        // Limpiar mesh anterior si lo hubiera
+        if (meshRef.current) {
+          const old = meshRef.current;
+          scene.remove(old);
+          old.geometry?.dispose?.();
+          const mats = Array.isArray(old.material) ? old.material : [old.material];
+          mats.forEach((m: any) => m?.dispose?.());
+          meshRef.current = null;
+        }
+
+        // Material
         const mat = new THREE.MeshStandardMaterial({
           color: 0x0d1b2a,
           roughness: 0.6,
           metalness: 0.2,
         });
+
         const mesh = new THREE.Mesh(geom, mat);
-        // Orientación típica de STL (Z-up) a Three (Y-up)
+
+        // Los STL suelen venir en Z-up; pasamos a Y-up
         mesh.rotation.x = -Math.PI / 2;
 
-        // Centrar y escalar a un tamaño agradable
+        // Centrar
         geom.computeBoundingBox();
         const bb = geom.boundingBox!;
         const size = new THREE.Vector3();
@@ -131,59 +165,26 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
         bb.getCenter(center);
         geom.translate(-center.x, -center.y, -center.z);
 
-        // Colocar escena
-        const scene = (mountRef.current.firstChild as HTMLCanvasElement).__threeObj?.scene as THREE.Scene | undefined;
-        // NOTA: no confiamos en esa propiedad, mejor buscamos el renderer del div:
-        // Recorremos hijos hasta encontrar el canvas con renderer
-        let renderer: THREE.WebGLRenderer | null = null;
-        let camera: THREE.PerspectiveCamera | null = null;
-        let orbit: OrbitControls | null = null;
+        // Añadir a escena
+        scene.add(mesh);
+        meshRef.current = mesh;
 
-        // @ts-ignore – guardamos referencias en el div para reuso
-        renderer = (mountRef.current as any).__renderer;
-        // @ts-ignore
-        camera = (mountRef.current as any).__camera;
-        // @ts-ignore
-        orbit = (mountRef.current as any).__orbit;
-        // Si no están aún, las cogemos de forma segura:
-        if (!renderer || !camera || !orbit) {
-          // Los creamos en el primer effect; aquí intentamos recuperarlos del canvas
-          const canvas = mountRef.current.querySelector("canvas");
-          if (!canvas) throw new Error("Renderer no inicializado");
-          // @ts-ignore – las guardamos al inicializar (abajo)
-        }
-
-        // Como guardamos refs en el primer useEffect, las tomamos ahora:
-        // @ts-ignore
-        const three = (mountRef.current as any).__three as {
-          scene: THREE.Scene;
-          camera: THREE.PerspectiveCamera;
-          renderer: THREE.WebGLRenderer;
-          controls: OrbitControls;
-        };
-        if (!three) throw new Error("Three context no disponible");
-
-        three.scene.add(mesh);
-
-        // Ajustar cámara al modelo
+        // Ajustar cámara al modelo (fit)
         const maxDim = Math.max(size.x, size.y, size.z);
-        const fitDist = maxDim / (2 * Math.tan((three.camera.fov * Math.PI) / 360));
-        three.camera.position.set(fitDist * 1.4, fitDist * 1.2, fitDist * 1.6);
-        three.camera.near = maxDim / 1000;
-        three.camera.far = maxDim * 1000;
-        three.camera.updateProjectionMatrix();
+        // Si el STL está en micras o mm gigantes, evita cámara dentro:
+        const safe = Math.max(maxDim, 1);
+        const dist = safe / (2 * Math.tan((camera.fov * Math.PI) / 360));
+        camera.near = safe / 1000;
+        camera.far = safe * 1000;
+        camera.position.set(dist * 1.35, dist * 1.15, dist * 1.6);
+        camera.lookAt(0, 0, 0);
+        camera.updateProjectionMatrix();
 
-        three.controls.target.set(0, 0, 0);
-        three.controls.update();
+        controls.target.set(0, 0, 0);
+        controls.update();
 
         setStatus("ok");
         setMsg("");
-
-        // Limpieza parcial si se desmonta mientras carga
-        return () => {
-          geom.dispose();
-          mat.dispose();
-        };
       } catch (err: any) {
         if (disposed) return;
         setStatus("error");
@@ -195,34 +196,6 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
       disposed = true;
     };
   }, [url]);
-
-  // Guardamos refs del “contexto three” (scene, camera, renderer, controls)
-  useEffect(() => {
-    if (!mountRef.current) return;
-    const container = mountRef.current;
-    if ((container as any).__three) return; // ya inicializado por el effect de arriba
-
-    // Recuperar lo creado en el primer effect:
-    const canvas = container.querySelector("canvas");
-    if (!canvas) return;
-
-    // “Hack” para obtener scene/camera/renderer/controls del renderer actual:
-    // Creamos unos nuevos y los guardamos aquí para tenerlos a mano.
-    // Más sencillo: volvemos a montar una referencia mínima.
-    const width = container.clientWidth || 800;
-    const heightPx = height;
-
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(45, width / heightPx, 0.1, 1000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    // NO los usamos para pintar (usamos los ya creados), solo guardamos estructura:
-    const controls = new OrbitControls(camera, canvas);
-
-    (container as any).__three = { scene, camera, renderer, controls };
-    (container as any).__renderer = renderer;
-    (container as any).__camera = camera;
-    (container as any).__orbit = controls;
-  }, [height]);
 
   return (
     <div>
