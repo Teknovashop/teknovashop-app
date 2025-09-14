@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 
-// Runtime imports de three y helpers (sin tipos nombrados)
+// Runtime libs
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
@@ -21,7 +21,7 @@ type DebugInfo = {
 export default function STLPreview({ url, height = 520, background = "#ffffff" }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
 
-  // 👇 Importante: usar `any` en los refs para evitar el fallo de tipos en Vercel
+  // usar any en refs para evitar fallos de tipos en build
   const sceneRef = useRef<any>(null);
   const cameraRef = useRef<any>(null);
   const rendererRef = useRef<any>(null);
@@ -32,7 +32,6 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
   const [msg, setMsg] = useState("");
   const [debug, setDebug] = useState<DebugInfo | null>(null);
 
-  // Inicializa escena/cámara/renderer
   useEffect(() => {
     const container = mountRef.current;
     if (!container) return;
@@ -54,7 +53,6 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     container.appendChild(renderer.domElement);
 
-    // Luces
     scene.add(new THREE.AmbientLight(0xffffff, 0.5));
     const dir = new THREE.DirectionalLight(0xffffff, 1.0);
     dir.position.set(1, 1, 1);
@@ -68,7 +66,6 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
     rendererRef.current = renderer;
     controlsRef.current = controls;
 
-    // render loop
     let raf = 0;
     const tick = () => {
       controls.update();
@@ -77,7 +74,6 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
     };
     tick();
 
-    // resize
     const onResize = () => {
       const w2 = container.clientWidth || width;
       renderer.setSize(w2, height);
@@ -92,22 +88,22 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
       ro.disconnect();
       controls.dispose();
       renderer.dispose();
-      // limpia recursos
-      scene.traverse((obj) => {
-        const anyObj: any = obj;
-        if (anyObj.isMesh) {
-          anyObj.geometry?.dispose?.();
-          const mats = Array.isArray(anyObj.material) ? anyObj.material : [anyObj.material];
+
+      // 🔧 Tipado explícito del parámetro:
+      scene.traverse((obj: any) => {
+        if (obj.isMesh) {
+          obj.geometry?.dispose?.();
+          const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
           mats.forEach((m: any) => m?.dispose?.());
         }
       });
+
       try {
         container.removeChild(renderer.domElement);
       } catch {}
     };
   }, [height, background]);
 
-  // Carga STL (XHR + fallback fetch+parse)
   useEffect(() => {
     const scene = sceneRef.current;
     const camera = cameraRef.current;
@@ -164,11 +160,9 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
       if (disposed) return;
       clearOld();
 
-      // Y-up
       const mesh = new THREE.Mesh(geom, material);
       mesh.rotation.x = -Math.PI / 2;
 
-      // centrar
       geom.computeBoundingBox();
       const center = new THREE.Vector3();
       geom.boundingBox!.getCenter(center);
@@ -185,13 +179,11 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
     const loader = new STLLoader();
     loader.manager.setCrossOrigin("anonymous");
 
-    // 1) XHR directo
     loader.load(
       url,
       (geom) => onGeomReady(geom),
       undefined,
       async () => {
-        // 2) Fallback: fetch + parse
         try {
           const res = await fetch(url, { mode: "cors", cache: "no-store" });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
