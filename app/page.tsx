@@ -1,16 +1,16 @@
 "use client";
 
+import "./globals.css";
 import React, { useMemo, useState } from "react";
 import STLPreview from "../components/STLPreview";
 import { generateSTL, type GenerateResponse } from "../lib/api";
-import "./globals.css";
 
 type ModelKind = "cable_tray" | "vesa_adapter" | "router_mount";
 
 export default function Page() {
   const [model, setModel] = useState<ModelKind>("cable_tray");
 
-  // Parámetros Cable Tray (defaults razonables)
+  // Parámetros del Cable Tray
   const [width, setWidth] = useState(60);
   const [height, setHeight] = useState(25);
   const [length, setLength] = useState(180);
@@ -20,11 +20,14 @@ export default function Page() {
   const [resp, setResp] = useState<GenerateResponse | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const stlUrl = useMemo(() => (resp && resp.status === "ok" ? resp.stl_url : undefined), [resp]);
+  const stlUrl = useMemo(
+    () => (resp && resp.status === "ok" ? resp.stl_url : undefined),
+    [resp]
+  );
 
   const handleGenerate = async () => {
     if (model !== "cable_tray") {
-      alert("De momento solo Cable Tray genera STL. VESA y Router Mount llegarán.");
+      alert("De momento solo Cable Tray genera STL. VESA y Router Mount quedan listos en UI.");
       return;
     }
     setLoading(true);
@@ -36,7 +39,7 @@ export default function Page() {
       height_mm: height,
       length_mm: length,
       thickness_mm: thickness,
-      ventilated,
+      ventilated
     };
 
     const r = await generateSTL(payload);
@@ -48,7 +51,7 @@ export default function Page() {
     <main className="container">
       <h1 style={{ marginBottom: 6 }}>Teknovashop Forge</h1>
       <p className="muted" style={{ marginTop: 0 }}>
-        Generador paramétrico (v1). Cable Tray listo; VESA y Router Mount quedan preparados en la UI.
+        Generador paramétrico (v1). Cable Tray operativo. VESA y Router Mount quedarán listos en la UI.
       </p>
 
       <div className="card" style={{ marginTop: 16 }}>
@@ -112,21 +115,20 @@ export default function Page() {
           </>
         )}
 
+        {/* Visor */}
         <div style={{ marginTop: 16 }}>
-          <STLPreview url={stlUrl} height={560} background="#ffffff" showEdges={true} />
+          <STLPreview url={stlUrl} height={560} background="#ffffff" showEdges />
         </div>
 
+        {/* JSON */}
         <div style={{ marginTop: 12 }}>
           <details>
             <summary>Ver respuesta JSON</summary>
-            <pre style={{ whiteSpace: "pre-wrap", overflowX: "auto" }}>
-              {resp ? JSON.stringify(resp, null, 2) : "{}"}
-            </pre>
+            <pre>{resp ? JSON.stringify(resp, null, 2) : "{}"}</pre>
           </details>
         </div>
 
         <hr />
-
         <small className="muted">
           Backend: <code>{process.env.NEXT_PUBLIC_BACKEND_URL ?? "NO CONFIGURADO"}</code>
         </small>
