@@ -6,28 +6,29 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 
 type Props = {
-  /** URL firmada del STL (Supabase) */
   url?: string;
-  /** Alto del canvas en px */
   height?: number;
-  /** Color de fondo */
   background?: string;
+};
+
+type DebugInfo = {
+  triangles: number;
+  bbox: { x: number; y: number; z: number };
 };
 
 export default function STLPreview({ url, height = 520, background = "#ffffff" }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
 
-  // refs de three
-  const sceneRef = useRef<any>(null);
-  const cameraRef = useRef<any>(null);
-  const rendererRef = useRef<any>(null);
-  const controlsRef = useRef<any>(null);
-  const meshRef = useRef<any>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const controlsRef = useRef<OrbitControls | null>(null);
+  const meshRef = useRef<THREE.Mesh | null>(null);
 
   const [status, setStatus] = useState<"idle" | "loading" | "ok" | "error">("idle");
-  const [msg, setMsg] = useState<string>("");
+  const [msg, setMsg] = useState("");
+  const [debug, setDebug] = useState<DebugInfo | null>(null);
 
-  // Inicializar escena una vez
   useEffect(() => {
     const container = mountRef.current;
     if (!container) return;
@@ -35,55 +36,44 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(background);
 
-    const w = container.clientWidth || container.offsetWidth || 800;
-    const h = height;
-
-    const camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 5000);
+    const w = container.clientWidth || 800;
+    const camera = new THREE.PerspectiveCamera(45, w / height, 0.1, 10000);
     camera.position.set(0, 0, 200);
 
-    const renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      alpha: false,
-      powerPreference: "high-performance",
-    });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setSize(w, h);
+    renderer.setSize(w, height);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     container.appendChild(renderer.domElement);
 
     // Luces
-    const key = new THREE.DirectionalLight(0xffffff, 1);
-    key.position.set(1, 1, 1);
-    const fill = new THREE.DirectionalLight(0xffffff, 0.6);
-    fill.position.set(-1, 0.5, -0.5);
-    const amb = new THREE.AmbientLight(0xffffff, 0.4);
-    scene.add(key, fill, amb);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+    const dir = new THREE.DirectionalLight(0xffffff, 1.0);
+    dir.position.set(1, 1, 1);
+    scene.add(dir);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
-    controls.dampingFactor = 0.06;
-    controls.rotateSpeed = 0.9;
-    controls.zoomSpeed = 0.9;
-    controls.panSpeed = 0.9;
 
     sceneRef.current = scene;
     cameraRef.current = camera;
     rendererRef.current = renderer;
     controlsRef.current = controls;
 
-    let raf: number;
-    const animate = () => {
+    // animación
+    let raf = 0;
+    const tick = () => {
       controls.update();
       renderer.render(scene, camera);
-      raf = requestAnimationFrame(animate);
+      raf = requestAnimationFrame(tick);
     };
-    animate();
+    tick();
 
-    // Resize
+    // resize
     const onResize = () => {
-      const ww = container.clientWidth || w;
-      renderer.setSize(ww, h);
-      camera.aspect = ww / h;
+      const w2 = container.clientWidth || w;
+      renderer.setSize(w2, height);
+      camera.aspect = w2 / height;
       camera.updateProjectionMatrix();
     };
     const ro = new ResizeObserver(onResize);
@@ -94,106 +84,111 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
       ro.disconnect();
       controls.dispose();
       renderer.dispose();
-      scene.traverse((obj: any) => {
-        if (obj.isMesh) {
-          obj.geometry?.dispose?.();
-          if (obj.material) {
-            const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-            mats.forEach((m: any) => m?.dispose?.());
-          }
+      // limpia geometrías/materiales
+      scene.traverse((obj: THREE.Object3D) => {
+        const anyObj = obj as any;
+        if (anyObj.isMesh) {
+          anyObj.geometry?.dispose?.();
+          const mats = Array.isArray(anyObj.material) ? anyObj.material : [anyObj.material];
+          mats.forEach((m: any) => m?.dispose?.());
         }
       });
-      try {
-        container.removeChild(renderer.domElement);
-      } catch {}
+      try { container.removeChild(renderer.domElement); } catch {}
     };
   }, [height, background]);
 
-  // Cargar/actualizar el STL cuando cambie la URL
+  // Carga del STL (dos vías)
   useEffect(() => {
     const scene = sceneRef.current;
     const camera = cameraRef.current;
     const controls = controlsRef.current;
-
-    if (!scene || !camera || !controls) return;
-    if (!url) return;
+    if (!scene || !camera || !controls || !url) return;
 
     let disposed = false;
     setStatus("loading");
-    setMsg("Descargando STL…");
+    setMsg("Cargando STL…");
+    setDebug(null);
 
-    (async () => {
-      try {
-        // Descargar binario (evita CORS raros del loader con URLs firmadas)
-        const res = await fetch(url, { mode: "cors", cache: "no-store" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const buf = await res.arrayBuffer();
-        if (disposed) return;
-
-        // Parsear
-        const loader = new STLLoader();
-        const geom = loader.parse(buf);
-
-        // Limpiar mesh anterior si lo hubiera
-        if (meshRef.current) {
-          const old = meshRef.current;
-          scene.remove(old);
-          old.geometry?.dispose?.();
-          const mats = Array.isArray(old.material) ? old.material : [old.material];
-          mats.forEach((m: any) => m?.dispose?.());
-          meshRef.current = null;
-        }
-
-        // Material
-        const mat = new THREE.MeshStandardMaterial({
-          color: 0x0d1b2a,
-          roughness: 0.6,
-          metalness: 0.2,
-        });
-
-        const mesh = new THREE.Mesh(geom, mat);
-
-        // Los STL suelen venir en Z-up; pasamos a Y-up
-        mesh.rotation.x = -Math.PI / 2;
-
-        // Centrar
-        geom.computeBoundingBox();
-        const bb = geom.boundingBox!;
-        const size = new THREE.Vector3();
-        bb.getSize(size);
-        const center = new THREE.Vector3();
-        bb.getCenter(center);
-        geom.translate(-center.x, -center.y, -center.z);
-
-        // Añadir a escena
-        scene.add(mesh);
-        meshRef.current = mesh;
-
-        // Ajustar cámara (fit)
-        const maxDim = Math.max(size.x, size.y, size.z);
-        const safe = Math.max(maxDim, 1);
-        const dist = safe / (2 * Math.tan((camera.fov * Math.PI) / 360));
-        camera.near = safe / 1000;
-        camera.far = safe * 1000;
-        camera.position.set(dist * 1.35, dist * 1.15, dist * 1.6);
-        camera.lookAt(0, 0, 0);
-        camera.updateProjectionMatrix();
-
-        controls.target.set(0, 0, 0);
-        controls.update();
-
-        setStatus("ok");
-        setMsg("");
-      } catch (err: any) {
-        if (disposed) return;
-        setStatus("error");
-        setMsg(err?.message ?? "Error cargando STL");
+    // Limpia mesh anterior
+    const clearOld = () => {
+      if (meshRef.current) {
+        const old = meshRef.current as any;
+        scene.remove(old);
+        old.geometry?.dispose?.();
+        const mats = Array.isArray(old.material) ? old.material : [old.material];
+        mats.forEach((m: any) => m?.dispose?.());
+        meshRef.current = null;
       }
-    })();
-
-    return () => {
-      disposed = true;
     };
+
+    const fitCamera = (geom: THREE.BufferGeometry) => {
+      geom.computeBoundingBox();
+      const bb = geom.boundingBox!;
+      const size = new THREE.Vector3();
+      bb.getSize(size);
+      const maxDim = Math.max(size.x, size.y, size.z, 1);
+      const dist = maxDim / (2 * Math.tan((camera.fov * Math.PI) / 360));
+      camera.near = Math.max(maxDim / 1000, 0.01);
+      camera.far = Math.max(maxDim * 1000, 1000);
+      camera.position.set(dist * 1.35, dist * 1.1, dist * 1.6);
+      camera.lookAt(0, 0, 0);
+      camera.updateProjectionMatrix();
+      controls.target.set(0, 0, 0);
+      controls.update();
+
+      const triCount = (geom.getAttribute("position")?.count ?? 0) / 3;
+      setDebug({ triangles: Math.round(triCount), bbox: { x: +size.x.toFixed(2), y: +size.y.toFixed(2), z: +size.z.toFixed(2) } });
+    };
+
+    const material = new THREE.MeshStandardMaterial({ color: 0x3a3f46, roughness: 0.6, metalness: 0.2 });
+
+    const onGeomReady = (geom: THREE.BufferGeometry) => {
+      if (disposed) return;
+      clearOld();
+
+      // algunos STL salen Z-up; pasamos a Y-up
+      const mesh = new THREE.Mesh(geom, material);
+      mesh.rotation.x = -Math.PI / 2;
+
+      // centrar en origen
+      geom.computeBoundingBox();
+      const center = new THREE.Vector3();
+      geom.boundingBox!.getCenter(center);
+      geom.translate(-center.x, -center.y, -center.z);
+
+      scene.add(mesh);
+      meshRef.current = mesh;
+
+      fitCamera(geom);
+      setStatus("ok");
+      setMsg("");
+    };
+
+    const loader = new STLLoader();
+    // Modo 1: XHR directo
+    loader.manager.setCrossOrigin("anonymous");
+    loader.load(
+      url,
+      (geom) => onGeomReady(geom),
+      undefined,
+      async () => {
+        // Fallback: fetch + parse
+        try {
+          const res = await fetch(url, { mode: "cors", cache: "no-store" });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const buf = await res.arrayBuffer();
+          const geom = loader.parse(buf);
+          onGeomReady(geom);
+        } catch (e: any) {
+          if (!disposed) {
+            setStatus("error");
+            setMsg(e?.message ?? "No se pudo cargar el STL");
+          }
+        }
+      }
+    );
+
+    return () => { disposed = true; };
   }, [url]);
 
   return (
@@ -210,7 +205,28 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
           position: "relative",
           background,
         }}
-      />
+      >
+        {/* Overlay debug */}
+        {debug && (
+          <div
+            style={{
+              position: "absolute",
+              top: 8,
+              left: 8,
+              padding: "6px 8px",
+              background: "rgba(255,255,255,0.85)",
+              border: "1px solid #e5e7eb",
+              borderRadius: 6,
+              fontSize: 12,
+              color: "#111827",
+            }}
+          >
+            <div><strong>triángulos:</strong> {debug.triangles}</div>
+            <div><strong>bbox:</strong> {debug.bbox.x} × {debug.bbox.y} × {debug.bbox.z}</div>
+          </div>
+        )}
+      </div>
+
       <div style={{ fontSize: 12, color: "#6b7280", marginTop: 8 }}>
         {status === "loading" && (msg || "Cargando STL…")}
         {status === "error" && `Error: ${msg}`}
