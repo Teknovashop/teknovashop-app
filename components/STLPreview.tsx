@@ -1,231 +1,169 @@
 "use client";
+// @ts-nocheck
 
 import React, { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 type Props = {
   url?: string;
   height?: number;
   background?: string;
   showEdges?: boolean;
-  showGrid?: boolean;
 };
 
-type DebugInfo = { triangles: number; bbox: { x: number; y: number; z: number } };
-
-export default function STLPreview({
-  url,
-  height = 520,
-  background = "#ffffff",
-  showEdges = true,
-  showGrid = false,
-}: Props) {
+export default function STLPreview({ url, height = 460, background = "#ffffff", showEdges = false }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
 
-  const sceneRef = useRef<any>(null);
-  const cameraRef = useRef<any>(null);
-  const rendererRef = useRef<any>(null);
-  const controlsRef = useRef<any>(null);
-  const meshRef = useRef<any>(null);
-  const edgesRef = useRef<any>(null);
-
-  const [status, setStatus] = useState<"idle" | "loading" | "ok" | "error">("idle");
-  const [msg, setMsg] = useState("");
-  const [debug, setDebug] = useState<DebugInfo | null>(null);
+  const [stats, setStats] = useState<{ tris: number; bbox: string } | null>(null);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const container = mountRef.current;
-    if (!container) return;
-
+    const mount = mountRef.current!;
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(background);
 
-    const width = container.clientWidth || 800;
-    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 10000);
-    camera.position.set(0, 0, 200);
+    const camera = new THREE.PerspectiveCamera(45, mount.clientWidth / height, 0.1, 10000);
+    camera.position.set(0, 0, 400);
 
-    const renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      alpha: false,
-      powerPreference: "high-performance",
-    });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setSize(width, height);
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    container.appendChild(renderer.domElement);
-
-    // Lights
-    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-    const k = 1.2;
-    const d1 = new THREE.DirectionalLight(0xffffff, 0.8);
-    const d2 = new THREE.DirectionalLight(0xffffff, 0.5);
-    const d3 = new THREE.DirectionalLight(0xffffff, 0.4);
-    d1.position.set(k, k, k);
-    d2.position.set(-k, k, k);
-    d3.position.set(k, -k, k);
-    scene.add(d1, d2, d3);
-
-    if (showGrid) {
-      scene.add(new THREE.GridHelper(400, 20, 0xdddddd, 0xeeeeee));
-    }
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    renderer.setSize(mount.clientWidth, height);
+    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    mount.appendChild(renderer.domElement);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
 
-    sceneRef.current = scene;
-    cameraRef.current = camera;
-    rendererRef.current = renderer;
-    controlsRef.current = controls;
+    // Luces
+    const key = new THREE.DirectionalLight(0xffffff, 1);
+    key.position.set(200, 300, 400);
+    const fill = new THREE.DirectionalLight(0xffffff, 0.5);
+    fill.position.set(-200, -100, -200);
+    const amb = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(key, fill, amb);
 
-    let raf = 0;
-    const tick = () => {
-      controls.update();
-      renderer.render(scene, camera);
-      raf = requestAnimationFrame(tick);
-    };
-    tick();
+    // Plano base
+    const grid = new THREE.GridHelper(800, 20, 0xdddddd, 0xeeeeee);
+    grid.visible = false; // desactivado para look limpio
+    scene.add(grid);
 
-    const onResize = () => {
-      const w2 = container.clientWidth || width;
-      renderer.setSize(w2, height);
-      camera.aspect = w2 / height;
-      camera.updateProjectionMatrix();
-    };
-    const ro = new ResizeObserver(onResize);
-    ro.observe(container);
+    let mesh: THREE.Mesh | null = null;
+    let edges: THREE.LineSegments | null = null;
 
-    return () => {
-      cancelAnimationFrame(raf);
-      ro.disconnect();
-      controls.dispose();
-      renderer.dispose();
-
-      scene.traverse((obj: any) => {
-        if (obj.isMesh) {
-          obj.geometry?.dispose?.();
-          const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-          mats.forEach((m: any) => m?.dispose?.());
-        }
-      });
-
-      try {
-        container.removeChild(renderer.domElement);
-      } catch {}
-    };
-  }, [height, background, showGrid]);
-
-  useEffect(() => {
-    const scene = sceneRef.current;
-    const camera = cameraRef.current;
-    const controls = controlsRef.current;
-    if (!scene || !camera || !controls || !url) return;
-
-    let disposed = false;
-    setStatus("loading");
-    setMsg("Cargando STL…");
-    setDebug(null);
-
-    const clearOld = () => {
-      if (edgesRef.current) {
-        scene.remove(edgesRef.current);
-        edgesRef.current.geometry?.dispose?.();
-        (edgesRef.current.material as any)?.dispose?.();
-        edgesRef.current = null;
-      }
-      if (meshRef.current) {
-        const old: any = meshRef.current;
-        scene.remove(old);
-        old.geometry?.dispose?.();
-        const mats = Array.isArray(old.material) ? old.material : [old.material];
-        mats.forEach((m: any) => m?.dispose?.());
-        meshRef.current = null;
-      }
-    };
-
-    const fitCamera = (geom: any) => {
+    const fitCamera = (geom: THREE.BufferGeometry) => {
       geom.computeBoundingBox();
       const bb = geom.boundingBox!;
       const size = new THREE.Vector3();
       bb.getSize(size);
-
-      // centra al origen
       const center = new THREE.Vector3();
       bb.getCenter(center);
+
+      // centra malla en el origen
       geom.translate(-center.x, -center.y, -center.z);
 
-      const maxDim = Math.max(size.x, size.y, size.z, 1);
-      const dist = maxDim / (2 * Math.tan((camera.fov * Math.PI) / 360));
-
-      camera.near = Math.max(maxDim / 1000, 0.01);
-      camera.far = Math.max(maxDim * 1000, 1000);
-      camera.position.set(dist * 1.35, dist * 1.1, dist * 1.6);
-      camera.lookAt(0, 0, 0);
+      // encuadre
+      const maxDim = Math.max(size.x, size.y, size.z || 1);
+      const dist = maxDim * 2.2; // factor distancia
+      camera.position.set(dist, dist, dist);
+      camera.near = 0.1;
+      camera.far = dist * 20;
       camera.updateProjectionMatrix();
-
       controls.target.set(0, 0, 0);
       controls.update();
-
-      const triCount = (geom.getAttribute("position")?.count ?? 0) / 3;
-      setDebug({
-        triangles: Math.round(triCount),
-        bbox: { x: +size.x.toFixed(2), y: +size.y.toFixed(2), z: +size.z.toFixed(2) },
-      });
     };
 
-    const material = new THREE.MeshStandardMaterial({
-      color: 0x30343a,
-      roughness: 0.6,
-      metalness: 0.2,
-      flatShading: true,
-      side: THREE.DoubleSide,
-    });
+    const loadSTL = async () => {
+      if (!url) return;
+      setLoading(true);
 
-    const onGeomReady = (geom: any) => {
-      if (disposed) return;
-      clearOld();
+      // CORS-friendly
+      const loader = new STLLoader();
+      loader.crossOrigin = "anonymous";
 
-      const mesh = new THREE.Mesh(geom, material);
-      // si tu STL sale con Z up, esta rotación lo pone “de pie”
-      mesh.rotation.x = -Math.PI / 2;
-      scene.add(mesh);
-      meshRef.current = mesh;
+      loader.load(
+        url,
+        (geometry) => {
+          // malla
+          const material = new THREE.MeshStandardMaterial({
+            color: 0x2b3037,
+            metalness: 0.15,
+            roughness: 0.9
+          });
+          mesh = new THREE.Mesh(geometry, material);
+          scene.add(mesh);
 
-      if (showEdges) {
-        const eg = new THREE.EdgesGeometry(geom, 15);
-        const em = new THREE.LineBasicMaterial({ color: 0x111111, transparent: true, opacity: 0.35 });
-        const edges = new THREE.LineSegments(eg, em);
-        edges.rotation.copy(mesh.rotation);
-        scene.add(edges);
-        edgesRef.current = edges;
-      }
+          if (showEdges) {
+            const edgesGeo = new THREE.EdgesGeometry(geometry, 1);
+            const lineMat = new THREE.LineBasicMaterial({ color: 0x999999 });
+            edges = new THREE.LineSegments(edgesGeo, lineMat);
+            scene.add(edges);
+          }
 
-      fitCamera(geom);
-      setStatus("ok");
-      setMsg("");
-    };
+          fitCamera(geometry);
 
-    (async () => {
-      try {
-        const res = await fetch(url, { mode: "cors", cache: "no-store" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const buf = await res.arrayBuffer();
-        const loader = new STLLoader();
-        const geom = loader.parse(buf);
-        onGeomReady(geom);
-      } catch (e: any) {
-        if (!disposed) {
-          setStatus("error");
-          setMsg(e?.message ?? "No se pudo cargar el STL");
+          // stats
+          const pos = geometry.getAttribute("position");
+          const tris = Math.floor(pos.count / 3);
+          geometry.computeBoundingBox();
+          const bb = geometry.boundingBox!;
+          const size = new THREE.Vector3();
+          bb.getSize(size);
+          setStats({
+            tris,
+            bbox: `${size.x.toFixed(0)} × ${size.y.toFixed(0)} × ${size.z.toFixed(0)}`
+          });
+
+          setLoading(false);
+        },
+        undefined,
+        (err) => {
+          console.error("STL load error:", err);
+          setLoading(false);
         }
-      }
-    })();
+      );
+    };
+
+    let raf = 0;
+    const onResize = () => {
+      if (!mount) return;
+      const w = mount.clientWidth;
+      renderer.setSize(w, height);
+      camera.aspect = w / height;
+      camera.updateProjectionMatrix();
+    };
+    const animate = () => {
+      raf = requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    };
+
+    window.addEventListener("resize", onResize);
+    onResize();
+    animate();
+    loadSTL();
 
     return () => {
-      disposed = true;
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", onResize);
+
+      if (mesh) {
+        if (Array.isArray(mesh.material)) mesh.material.forEach((m) => m?.dispose?.());
+        else mesh.material?.dispose?.();
+        mesh.geometry?.dispose?.();
+        scene.remove(mesh);
+      }
+      if (edges) {
+        edges.geometry?.dispose?.();
+        (edges.material as THREE.Material)?.dispose?.();
+        scene.remove(edges);
+      }
+
+      controls.dispose();
+      renderer.dispose();
+      mount.removeChild(renderer.domElement);
     };
-  }, [url, showEdges]);
+  }, [url, height, background, showEdges]);
 
   return (
     <div>
@@ -234,42 +172,29 @@ export default function STLPreview({
         style={{
           width: "100%",
           height,
-          minHeight: height,
-          borderRadius: 8,
           border: "1px solid #e5e7eb",
+          borderRadius: 12,
           overflow: "hidden",
-          position: "relative",
-          background,
+          position: "relative"
         }}
-      >
-        {debug && (
-          <div
+      />
+      <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 8 }}>
+        {loading ? <small className="muted">Cargando STL…</small> : <small className="muted">Arrastra para rotar · Rueda para zoom · Shift+arrastrar para pan</small>}
+        {stats && (
+          <span
             style={{
-              position: "absolute",
-              top: 8,
-              left: 8,
-              padding: "6px 8px",
-              background: "rgba(255,255,255,0.85)",
-              border: "1px solid #e5e7eb",
-              borderRadius: 6,
+              marginLeft: "auto",
               fontSize: 12,
-              color: "#111827",
+              color: "#374151",
+              background: "#f3f4f6",
+              border: "1px solid #e5e7eb",
+              borderRadius: 8,
+              padding: "4px 8px"
             }}
           >
-            <div>
-              <strong>triángulos:</strong> {debug.triangles}
-            </div>
-            <div>
-              <strong>bbox:</strong> {debug.bbox.x} × {debug.bbox.y} × {debug.bbox.z}
-            </div>
-          </div>
+            triángulos: {stats.tris} · bbox: {stats.bbox}
+          </span>
         )}
-      </div>
-
-      <div style={{ fontSize: 12, color: "#6b7280", marginTop: 8 }}>
-        {status === "loading" && (msg || "Cargando STL…")}
-        {status === "error" && `Error: ${msg}`}
-        {status === "ok" && "Arrastra para rotar · Rueda para zoom · Shift+arrastrar para pan"}
       </div>
     </div>
   );
