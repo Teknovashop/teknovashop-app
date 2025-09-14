@@ -1,4 +1,5 @@
-import GenerateForm from '@/components/GenerateForm';
+// app/page.tsx
+import GenerateForm from '../components/GenerateForm';
 
 export default function Page() {
   return (
