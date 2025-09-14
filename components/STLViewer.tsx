@@ -1,55 +1,70 @@
+// /components/STLViewer.tsx
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+// Dependencias en runtime (están en package.json): three
 import * as THREE from "three";
+// @ts-ignore - los tipos de los helpers JSM no vienen en three
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+// @ts-ignore
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 
 type Props = {
-  url?: string;
+  /** URL firmada al .stl */
+  url?: string | null; // <- acepta null para evitar error TS en Vercel
+  /** Alto del canvas en px */
   height?: number;
-  background?: string; // e.g. "#ffffff"
+  /** Color de fondo (hex o css) */
+  background?: string;
 };
 
-export default function STLViewer({ url, height = 480, background = "#ffffff" }: Props) {
+export default function STLViewer({ url, height = 480, background = "#fff" }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
-  const [debug, setDebug] = useState<{ tris: number; bbox: string } | null>(null);
+  const [info, setInfo] = useState<{ tris: number; bbox: string } | null>(null);
 
   useEffect(() => {
     const container = mountRef.current!;
-    // Renderer
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(background);
+
+    const camera = new THREE.PerspectiveCamera(
+      50,
+      container.clientWidth / height,
+      0.1,
+      4000
+    );
+
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio ?? 1, 2));
     renderer.setSize(container.clientWidth, height);
     container.appendChild(renderer.domElement);
 
-    // Escena (SOLO una)
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(background);
+    // Luz suave
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1.0);
+    hemi.position.set(0, 1, 0);
+    scene.add(hemi);
 
-    // Cámara
-    const camera = new THREE.PerspectiveCamera(
-      50,
-      container.clientWidth / height,
-      0.1,
-      2000
-    );
-    camera.position.set(0, 0, 300);
-    scene.add(camera);
-
-    // Luces
-    scene.add(new THREE.AmbientLight(0xffffff, 0.8));
-    const dir = new THREE.DirectionalLight(0xffffff, 0.6);
-    dir.position.set(0.5, 1, 1);
+    const dir = new THREE.DirectionalLight(0xffffff, 0.9);
+    dir.position.set(3, 5, 2);
     scene.add(dir);
 
     // Controles
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
 
-    // Grupo donde metemos el STL
-    const modelGroup = new THREE.Group();
-    scene.add(modelGroup);
+    // Grupo para el mesh
+    const root = new THREE.Group();
+    scene.add(root);
+
+    // Animación
+    let raf = 0;
+    const animate = () => {
+      controls.update();
+      renderer.render(scene, camera);
+      raf = requestAnimationFrame(animate);
+    };
+    animate();
 
     // Resize
     const onResize = () => {
@@ -60,28 +75,18 @@ export default function STLViewer({ url, height = 480, background = "#ffffff" }:
     };
     window.addEventListener("resize", onResize);
 
-    let animHandle: number;
-    const animate = () => {
-      animHandle = requestAnimationFrame(animate);
-      controls.update();
-      renderer.render(scene, camera);
-    };
-    animate();
-
     // Limpieza
     return () => {
-      cancelAnimationFrame(animHandle);
+      cancelAnimationFrame(raf);
       window.removeEventListener("resize", onResize);
-      scene.remove(modelGroup);
-      modelGroup.traverse((o) => {
-        const anyO: any = o;
-        if (anyO.isMesh) {
-          anyO.geometry?.dispose?.();
-          if (Array.isArray(anyO.material)) {
-            anyO.material.forEach((m: any) => m?.dispose?.());
-          } else {
-            anyO.material?.dispose?.();
-          }
+      controls.dispose();
+      // Liberar geometrías/materiales
+      root.traverse((obj: any) => {
+        if (obj.isMesh) {
+          obj.geometry?.dispose?.();
+          (Array.isArray(obj.material) ? obj.material : [obj.material]).forEach(
+            (m: any) => m?.dispose?.()
+          );
         }
       });
       renderer.dispose();
@@ -90,198 +95,294 @@ export default function STLViewer({ url, height = 480, background = "#ffffff" }:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [height, background]);
 
-  // Cargar STL cuando cambie la URL
+  // Carga del STL cuando cambia la URL
   useEffect(() => {
-    if (!url || !mountRef.current) return;
+    const container = mountRef.current!;
+    if (!container) return;
+    // @ts-ignore
+    const currentScene: THREE.Scene = (container as any).__sceneRef ?? null;
 
-    // Buscamos la escena y el group creados en el primer effect
-    // (están colgando del mismo contenedor)
-    const container = mountRef.current;
-    const renderer = (container.firstChild as HTMLCanvasElement)?._threeRenderer as THREE.WebGLRenderer | undefined;
+    // Buscar el grupo root en la escena actual
+    // (lo guardamos en el primer effect)
+    // Como no tenemos referencia directa, lo resolvemos por children[1] (root)
+    // que agregamos tras la luz. Más robusto: almacenar la ref en el div.
+    // Para evitar complicaciones, usamos un query simple:
+    const scene = (container as any).__three_scene as THREE.Scene;
+    const getScene = () => {
+      if (scene) return scene;
+      // buscamos recorriendo padres (dom no guarda referencia); así que
+      // como creamos todo en el primer effect, guardemos una ref ahora:
+      return null;
+    };
 
-    // Creamos un loader para el STL
-    const loader = new STLLoader();
-    // CORS safe; si no lo soporta, igualmente funciona porque Vercel permite fetch cross-origin de Supabase con la URL firmada
-    (loader as any).crossOrigin = "anonymous";
+    // Recuperar referencias que guardamos en el primer effect:
+    // Guardamos los objetos en propiedades del contenedor para poder reutilizarlos aquí.
+    // Si aún no existen (primer render), las creamos:
+    if (!(container as any).__bootstrapped) {
+      // Re-crear un pequeño registro desde el árbol actual:
+      // @ts-ignore
+      const rendererDom = container.querySelector("canvas");
+      // No necesitamos nada más aquí.
+      (container as any).__bootstrapped = true;
+    }
 
-    // Recuperar referencias a escena y objetos
-    // Truco: guardamos referencias en dataset del contenedor
-    // Para evitar eso, sencillamente vuelvo a crear el Scene/Group aquí y sustituyo el contenido anterior:
-    // → más robusto y simple.
-    // Nota: reutilizamos el canvas existente (renderer ya creado en el primer effect),
-    //       solo reemplazamos el contenido del modelo.
-    // Para lograrlo, busco el último Group añadido al scene en el primer effect usando una marca.
-    // Alternativa simple: disparamos un evento custom en mountRef (omitido por brevedad).
-    // Implementación práctica: mantenemos un “model-root” por id.
-    // Como no compartimos la instancia de scene aquí, rehacemos la carga en el primer effect:
-    // —> más simple: volvemos a pintar dentro de ese effect. Pero ya está inicializado arriba,
-    // así que hacemos un pequeño “bridge”:
+    // Limpiar meshes previos del root
+    const clearRoot = () => {
+      // @ts-ignore
+      const canvas = container.querySelector("canvas");
+      if (!canvas) return;
 
-    // Mini bridge: guardo el group en una variable global en el contenedor
-    const anyContainer = container as any;
-    if (!anyContainer._modelGroup) {
-      // Si por cualquier motivo no existe, no hacemos nada (el primer effect aún no montó)
+      // No hacemos nada aquí: el root lo limpiaremos cuando volvamos a montar.
+    };
+
+    clearRoot();
+
+    // Si no hay URL, sólo vaciamos la UI de info y salimos
+    if (!url) {
+      setInfo(null);
       return;
     }
 
+    // Para acceder a la escena/cámara/renderer que creamos antes, los guardamos
+    // en propiedades del contenedor en el primer effect.
+    // Para simplificar, volvemos a localizarlos recorriendo tres:
+    // (más fácil: volver a crear loader y añadir al scene que ya existe)
+    const loader = new STLLoader();
+    loader.crossOrigin = "anonymous";
+
+    // Encontrar referencias a scene, camera y root del primer effect
+    // Las guardamos cuando se ejecuta el primer effect:
+    // @ts-ignore
+    let sceneRef: THREE.Scene = (container as any).__sceneRef;
+    // @ts-ignore
+    let cameraRef: THREE.PerspectiveCamera = (container as any).__cameraRef;
+    // @ts-ignore
+    let rendererRef: THREE.WebGLRenderer = (container as any).__rendererRef;
+    // @ts-ignore
+    let rootRef: THREE.Group = (container as any).__rootRef;
+
+    // Si aún no están guardadas, buscamos en runtime y las guardamos:
+    if (!sceneRef || !cameraRef || !rendererRef || !rootRef) {
+      // reconstruimos referencias tomando las que se crearon:
+      // truco: las guardamos al vuelo al acceder al renderer/scene desde THREE
+      // Como no hay API directa, rehacemos un pequeño hack:
+      // Recreamos el grab de referencias del primer effect:
+      // Pero es más sencillo: en el primer effect, guardamos las refs en el contenedor:
+    }
+
+    // En caso de que no estén, obtenemos desde la instancia activa:
+    // Esto depende de que en el primer effect hayamos guardado esas refs:
+    // Vamos a guardarlas ahora mismo en el primer effect real de arriba:
+    // —> Ajuste: guardamos desde el primer effect.
+    // Para que este effect funcione, añadimos ese guardado:
+
+    return;
   }, [url]);
 
-  // *** Bridge sencillo ***
-  // Al montar, guardamos referencias globales (SEGURAS para este componente)
+  /** Guardar refs de escena/cámara/renderer/root al montarse */
   useEffect(() => {
     const container = mountRef.current!;
-    const canvas = container.querySelector("canvas");
-    // @ts-ignore – guardamos renderer y un group raíz para el modelo
-    if (canvas) {
-      // Next/Three no expone renderer en canvas, así que lo guardo manualmente la primera vez:
-      // En el effect de arriba fue donde lo creamos; aquí sólo nos aseguramos de tener un “modelGroup”
-    }
-  }, []);
+    // Si ya hay un canvas, recuperamos objetos del primer effect
+    // Para hacerlo correctamente, vamos a reconstruir esta lógica:
+    // Creamos aquí la escena/cámara/renderer y los guardamos para el siguiente effect de carga:
 
-  // Cargador de STL y centrado dentro del mismo effect inicial
-  useEffect(() => {
-    if (!url || !mountRef.current) return;
+    // Evitar duplicados: si ya existe, no volvemos a crear
+    if ((container as any).__sceneRef) return;
 
-    // Reobtengo todo del primer effect:
-    const container = mountRef.current!;
-    const rendererCanvas = container.querySelector("canvas");
-    if (!rendererCanvas) return;
+    const scene = new THREE.Scene();
+    (container as any).__sceneRef = scene;
 
-    // Recuperamos THREE desde el DOM no es trivial; rehacemos un pequeño “hook”:
-    // Mejor opción: encapsular toda la carga del STL en el primer effect. Hacemos eso:
-    let disposed = false;
+    const camera = new THREE.PerspectiveCamera(
+      50,
+      container.clientWidth / (container.clientHeight || 1),
+      0.1,
+      4000
+    );
+    (container as any).__cameraRef = camera;
 
-    const load = async () => {
-      const scene = new THREE.Scene();
-      scene.background = new THREE.Color(background);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio ?? 1, 2));
+    const h = container.clientHeight || 480;
+    renderer.setSize(container.clientWidth, h);
+    (container as any).__rendererRef = renderer;
+    container.appendChild(renderer.domElement);
 
-      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio ?? 1, 2));
-      renderer.setSize(container.clientWidth, height);
+    const controls = new OrbitControls(camera, renderer.domElement);
+    (container as any).__controlsRef = controls;
+    controls.enableDamping = true;
 
-      // Reemplazo el canvas anterior por el nuevo para simplificar
-      if (rendererCanvas.parentElement) {
-        rendererCanvas.parentElement.removeChild(rendererCanvas);
-      }
-      container.appendChild(renderer.domElement);
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1.0);
+    hemi.position.set(0, 1, 0);
+    const dir = new THREE.DirectionalLight(0xffffff, 0.9);
+    dir.position.set(3, 5, 2);
+    scene.add(hemi, dir);
 
-      const camera = new THREE.PerspectiveCamera(
-        50,
-        container.clientWidth / height,
-        0.1,
-        2000
-      );
-      camera.position.set(0, 0, 300);
-      scene.add(camera);
+    const root = new THREE.Group();
+    scene.add(root);
+    (container as any).__rootRef = root;
 
-      scene.add(new THREE.AmbientLight(0xffffff, 0.8));
-      const dir = new THREE.DirectionalLight(0xffffff, 0.6);
-      dir.position.set(0.5, 1, 1);
-      scene.add(dir);
-
-      const controls = new OrbitControls(camera, renderer.domElement);
-      controls.enableDamping = true;
-
-      const group = new THREE.Group();
-      scene.add(group);
-
-      const loader = new STLLoader();
-      (loader as any).crossOrigin = "anonymous";
-
-      loader.load(
-        url,
-        (geometry) => {
-          if (disposed) return;
-
-          const material = new THREE.MeshStandardMaterial({
-            color: 0x2f3337,
-            roughness: 0.7,
-            metalness: 0.1,
-          });
-          const mesh = new THREE.Mesh(geometry, material);
-          geometry.computeBoundingBox();
-
-          // Centrar y escalar a vista
-          const bb = geometry.boundingBox!;
-          const size = new THREE.Vector3();
-          bb.getSize(size);
-          const center = new THREE.Vector3();
-          bb.getCenter(center);
-          mesh.position.sub(center);
-          group.add(mesh);
-
-          // Ajuste de cámara
-          const maxDim = Math.max(size.x, size.y, size.z || 1);
-          const dist = maxDim * 1.8;
-          camera.position.set(dist, dist, dist);
-          camera.lookAt(0, 0, 0);
-          controls.update();
-
-          setDebug({
-            tris: geometry.index ? geometry.index.count / 3 : geometry.attributes.position.count / 3,
-            bbox: `${Math.round(size.x)} × ${Math.round(size.y)} × ${Math.round(size.z || 0)}`,
-          });
-
-          const render = () => {
-            if (disposed) return;
-            controls.update();
-            renderer.render(scene, camera);
-            requestAnimationFrame(render);
-          };
-          render();
-        },
-        undefined,
-        (err) => {
-          console.warn("Error cargando STL:", err);
-          setDebug(null);
-        }
-      );
+    let raf = 0;
+    const animate = () => {
+      controls.update();
+      renderer.render(scene, camera);
+      raf = requestAnimationFrame(animate);
     };
+    animate();
+    (container as any).__raf = raf;
 
-    load();
+    const onResize = () => {
+      const hh = container.clientHeight || 480;
+      camera.aspect = container.clientWidth / hh;
+      camera.updateProjectionMatrix();
+      renderer.setSize(container.clientWidth, hh);
+    };
+    window.addEventListener("resize", onResize);
+    (container as any).__onResize = onResize;
 
     return () => {
-      disposed = true;
+      cancelAnimationFrame((container as any).__raf || 0);
+      window.removeEventListener("resize", (container as any).__onResize);
+      controls.dispose();
+      root.traverse((obj: any) => {
+        if (obj.isMesh) {
+          obj.geometry?.dispose?.();
+          (Array.isArray(obj.material) ? obj.material : [obj.material]).forEach(
+            (m: any) => m?.dispose?.()
+          );
+        }
+      });
+      renderer.dispose();
+      try {
+        container.removeChild(renderer.domElement);
+      } catch {}
+      (container as any).__sceneRef = null;
+      (container as any).__cameraRef = null;
+      (container as any).__rendererRef = null;
+      (container as any).__controlsRef = null;
+      (container as any).__rootRef = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [url, height, background]);
+  }, []);
+
+  // **Carga real del STL y ajuste de cámara**
+  useEffect(() => {
+    const container = mountRef.current!;
+    // Refs del primer effect
+    // @ts-ignore
+    const scene: THREE.Scene = (container as any).__sceneRef;
+    // @ts-ignore
+    const camera: THREE.PerspectiveCamera = (container as any).__cameraRef;
+    // @ts-ignore
+    const renderer: THREE.WebGLRenderer = (container as any).__rendererRef;
+    // @ts-ignore
+    const root: THREE.Group = (container as any).__rootRef;
+
+    if (!scene || !camera || !renderer || !root) return;
+
+    // Limpiar anterior
+    while (root.children.length) {
+      const c = root.children.pop() as any;
+      if (c?.geometry?.dispose) c.geometry.dispose();
+      const mats = Array.isArray(c?.material) ? c.material : [c?.material];
+      mats.forEach((m: any) => m?.dispose?.());
+    }
+
+    if (!url) return;
+
+    const loader = new STLLoader();
+    loader.crossOrigin = "anonymous";
+
+    loader.load(
+      url,
+      (geom: any) => {
+        // Normalizar a BufferGeometry
+        const geometry =
+          geom && geom.isBufferGeometry
+            ? geom
+            : new THREE.BufferGeometry().fromGeometry(geom);
+
+        geometry.computeVertexNormals();
+
+        const material = new THREE.MeshStandardMaterial({
+          color: 0x2b2f36,
+          metalness: 0.05,
+          roughness: 0.9,
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.castShadow = false;
+        mesh.receiveShadow = false;
+        root.add(mesh);
+
+        // Fit cámara
+        geometry.computeBoundingBox();
+        const bb = geometry.boundingBox!;
+        const size = new THREE.Vector3();
+        bb.getSize(size);
+        const center = new THREE.Vector3();
+        bb.getCenter(center);
+
+        // Centrar en origen
+        mesh.position.sub(center);
+
+        // Distancia adecuada según tamaño
+        const maxDim = Math.max(size.x, size.y, size.z || 1);
+        const fov = (camera.fov * Math.PI) / 180;
+        const dist = maxDim / (2 * Math.tan(fov / 2)) + maxDim * 0.5;
+
+        camera.position.set(dist, dist, dist);
+        camera.near = dist / 100;
+        camera.far = dist * 100;
+        camera.lookAt(new THREE.Vector3(0, 0, 0));
+        camera.updateProjectionMatrix();
+
+        setInfo({
+          tris: (geometry.index?.count ?? geometry.attributes.position.count) / 3,
+          bbox: `${Math.round(size.x)} × ${Math.round(size.y)} × ${Math.round(
+            size.z || 0
+          )}`,
+        });
+      },
+      undefined,
+      () => {
+        setInfo(null);
+      }
+    );
+  }, [url]);
 
   return (
     <div>
-      {debug && (
+      {info && (
         <div
           style={{
             position: "absolute",
-            marginTop: 8,
-            marginLeft: 8,
-            padding: "6px 8px",
-            background: "#ffffff",
+            background: "rgba(255,255,255,0.85)",
             border: "1px solid #e5e7eb",
             borderRadius: 6,
+            padding: "4px 8px",
             fontSize: 12,
-            color: "#111827",
-            zIndex: 1,
+            marginTop: 8,
+            marginLeft: 8,
           }}
         >
-          <div><strong>triángulos:</strong> {debug.tris.toLocaleString("es-ES")}</div>
-          <div><strong>bbox:</strong> {debug.bbox}</div>
+          <div>triángulos: {info.tris}</div>
+          <div>bbox: {info.bbox}</div>
         </div>
       )}
+
       <div
         ref={mountRef}
         style={{
           width: "100%",
           height,
-          position: "relative",
-          border: "1px solid #e5e7eb",
+          background,
           borderRadius: 8,
           overflow: "hidden",
-          background, // evita checkerboard
         }}
       />
-      <div style={{ fontSize: 12, color: "#6b7280", marginTop: 8 }}>
-        Arrastra para rotar · Rueda para zoom · <kbd>Shift</kbd>+arrastrar para pan
-      </div>
+
+      <p style={{ fontSize: 12, color: "#6b7280", marginTop: 8 }}>
+        Arrastra para rotar · Rueda para zoom · Shift+arrastrar para pan
+      </p>
     </div>
   );
 }
