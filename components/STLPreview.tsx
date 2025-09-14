@@ -2,13 +2,10 @@
 
 import React, { useEffect, useRef, useState } from "react";
 
-// Import runtime de three y helpers
+// Runtime imports de three y helpers (sin tipos nombrados)
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
-
-// Import de TIPOS para TypeScript (clave para el error de Vercel)
-import type { Scene, PerspectiveCamera, WebGLRenderer, BufferGeometry } from "three";
 
 type Props = {
   url?: string;
@@ -24,12 +21,12 @@ type DebugInfo = {
 export default function STLPreview({ url, height = 520, background = "#ffffff" }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
 
-  // ✅ Usa tipos importados directamente, no THREE.Scene, etc.
-  const sceneRef = useRef<Scene | null>(null);
-  const cameraRef = useRef<PerspectiveCamera | null>(null);
-  const rendererRef = useRef<WebGLRenderer | null>(null);
-  const controlsRef = useRef<OrbitControls | null>(null);
-  const meshRef = useRef<THREE.Mesh | null>(null);
+  // 👇 Importante: usar `any` en los refs para evitar el fallo de tipos en Vercel
+  const sceneRef = useRef<any>(null);
+  const cameraRef = useRef<any>(null);
+  const rendererRef = useRef<any>(null);
+  const controlsRef = useRef<any>(null);
+  const meshRef = useRef<any>(null);
 
   const [status, setStatus] = useState<"idle" | "loading" | "ok" | "error">("idle");
   const [msg, setMsg] = useState("");
@@ -40,14 +37,14 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
     const container = mountRef.current;
     if (!container) return;
 
-    const scene: Scene = new THREE.Scene();
+    const scene = new THREE.Scene();
     scene.background = new THREE.Color(background);
 
     const width = container.clientWidth || 800;
-    const camera: PerspectiveCamera = new THREE.PerspectiveCamera(45, width / height, 0.1, 10000);
+    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 10000);
     camera.position.set(0, 0, 200);
 
-    const renderer: WebGLRenderer = new THREE.WebGLRenderer({
+    const renderer = new THREE.WebGLRenderer({
       antialias: true,
       alpha: false,
       powerPreference: "high-performance",
@@ -96,8 +93,8 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
       controls.dispose();
       renderer.dispose();
       // limpia recursos
-      scene.traverse((obj: THREE.Object3D) => {
-        const anyObj = obj as any;
+      scene.traverse((obj) => {
+        const anyObj: any = obj;
         if (anyObj.isMesh) {
           anyObj.geometry?.dispose?.();
           const mats = Array.isArray(anyObj.material) ? anyObj.material : [anyObj.material];
@@ -124,7 +121,7 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
 
     const clearOld = () => {
       if (meshRef.current) {
-        const old = meshRef.current as any;
+        const old: any = meshRef.current;
         scene.remove(old);
         old.geometry?.dispose?.();
         const mats = Array.isArray(old.material) ? old.material : [old.material];
@@ -133,7 +130,7 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
       }
     };
 
-    const fitCamera = (geom: BufferGeometry) => {
+    const fitCamera = (geom: THREE.BufferGeometry) => {
       geom.computeBoundingBox();
       const bb = geom.boundingBox!;
       const size = new THREE.Vector3();
@@ -163,7 +160,7 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
       metalness: 0.2,
     });
 
-    const onGeomReady = (geom: BufferGeometry) => {
+    const onGeomReady = (geom: THREE.BufferGeometry) => {
       if (disposed) return;
       clearOld();
 
