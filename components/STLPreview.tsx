@@ -51,7 +51,7 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     container.appendChild(renderer.domElement);
 
-    // Luces sencillas
+    // Luces
     const key = new THREE.DirectionalLight(0xffffff, 1);
     key.position.set(1, 1, 1);
     const fill = new THREE.DirectionalLight(0xffffff, 0.6);
@@ -99,7 +99,7 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
           obj.geometry?.dispose?.();
           if (obj.material) {
             const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-            mats.forEach((m) => m?.dispose?.());
+            mats.forEach((m: any) => m?.dispose?.());
           }
         }
       });
@@ -169,9 +169,8 @@ export default function STLPreview({ url, height = 520, background = "#ffffff" }
         scene.add(mesh);
         meshRef.current = mesh;
 
-        // Ajustar cámara al modelo (fit)
+        // Ajustar cámara (fit)
         const maxDim = Math.max(size.x, size.y, size.z);
-        // Si el STL está en micras o mm gigantes, evita cámara dentro:
         const safe = Math.max(maxDim, 1);
         const dist = safe / (2 * Math.tan((camera.fov * Math.PI) / 360));
         camera.near = safe / 1000;
