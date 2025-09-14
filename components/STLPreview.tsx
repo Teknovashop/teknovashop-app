@@ -1,8 +1,6 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-
-// Runtime imports (sin tipos estrictos para evitar incompatibilidades de three en Vercel)
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
@@ -15,10 +13,7 @@ type Props = {
   showGrid?: boolean;
 };
 
-type DebugInfo = {
-  triangles: number;
-  bbox: { x: number; y: number; z: number };
-};
+type DebugInfo = { triangles: number; bbox: { x: number; y: number; z: number } };
 
 export default function STLPreview({
   url,
@@ -40,7 +35,6 @@ export default function STLPreview({
   const [msg, setMsg] = useState("");
   const [debug, setDebug] = useState<DebugInfo | null>(null);
 
-  // Bootstrap three
   useEffect(() => {
     const container = mountRef.current;
     if (!container) return;
@@ -62,22 +56,19 @@ export default function STLPreview({
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     container.appendChild(renderer.domElement);
 
-    // Luces
+    // Lights
     scene.add(new THREE.AmbientLight(0xffffff, 0.6));
     const k = 1.2;
-    const lights = [
-      new THREE.DirectionalLight(0xffffff, 0.8),
-      new THREE.DirectionalLight(0xffffff, 0.5),
-      new THREE.DirectionalLight(0xffffff, 0.4),
-    ];
-    lights[0].position.set(k, k, k);
-    lights[1].position.set(-k, k, k);
-    lights[2].position.set(k, -k, k);
-    lights.forEach((l) => scene.add(l));
+    const d1 = new THREE.DirectionalLight(0xffffff, 0.8);
+    const d2 = new THREE.DirectionalLight(0xffffff, 0.5);
+    const d3 = new THREE.DirectionalLight(0xffffff, 0.4);
+    d1.position.set(k, k, k);
+    d2.position.set(-k, k, k);
+    d3.position.set(k, -k, k);
+    scene.add(d1, d2, d3);
 
     if (showGrid) {
-      const grid = new THREE.GridHelper(400, 20, 0xdddddd, 0xeeeeee);
-      scene.add(grid);
+      scene.add(new THREE.GridHelper(400, 20, 0xdddddd, 0xeeeeee));
     }
 
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -125,7 +116,6 @@ export default function STLPreview({
     };
   }, [height, background, showGrid]);
 
-  // Carga STL (fetch + parse)
   useEffect(() => {
     const scene = sceneRef.current;
     const camera = cameraRef.current;
@@ -160,7 +150,7 @@ export default function STLPreview({
       const size = new THREE.Vector3();
       bb.getSize(size);
 
-      // Centrar al origen:
+      // centra al origen
       const center = new THREE.Vector3();
       bb.getCenter(center);
       geom.translate(-center.x, -center.y, -center.z);
@@ -189,21 +179,21 @@ export default function STLPreview({
       roughness: 0.6,
       metalness: 0.2,
       flatShading: true,
-      side: THREE.DoubleSide, // <-- clave para láminas finas/caras invertidas
+      side: THREE.DoubleSide,
     });
 
     const onGeomReady = (geom: any) => {
       if (disposed) return;
       clearOld();
 
-      // Orientación habitual de STL (Z arriba)
       const mesh = new THREE.Mesh(geom, material);
+      // si tu STL sale con Z up, esta rotación lo pone “de pie”
       mesh.rotation.x = -Math.PI / 2;
       scene.add(mesh);
       meshRef.current = mesh;
 
       if (showEdges) {
-        const eg = new THREE.EdgesGeometry(geom, 15); // umbral de ángulo
+        const eg = new THREE.EdgesGeometry(geom, 15);
         const em = new THREE.LineBasicMaterial({ color: 0x111111, transparent: true, opacity: 0.35 });
         const edges = new THREE.LineSegments(eg, em);
         edges.rotation.copy(mesh.rotation);
