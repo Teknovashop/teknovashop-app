@@ -1,4 +1,3 @@
-// lib/api.ts
 export type CableTrayPayload = {
   model: "cable_tray";
   width_mm: number;
@@ -13,8 +12,8 @@ export type GenerateResponse =
   | { status: "error"; detail?: string; message?: string };
 
 const baseURL =
-  process.env.NEXT_PUBLIC_BACKEND_URL || // <- tu variable en Vercel
-  process.env.NEXT_PUBLIC_FORGE_API_URL || // por compatibilidad
+  process.env.NEXT_PUBLIC_BACKEND_URL ||
+  process.env.NEXT_PUBLIC_FORGE_API_URL ||
   "https://teknovashop-forge.onrender.com";
 
 export async function generateSTL(payload: CableTrayPayload): Promise<GenerateResponse> {
@@ -24,6 +23,7 @@ export async function generateSTL(payload: CableTrayPayload): Promise<GenerateRe
     body: JSON.stringify(payload),
     cache: "no-store",
   });
+
   if (!res.ok) {
     return { status: "error", detail: `HTTP ${res.status}` };
   }
