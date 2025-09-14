@@ -1,43 +1,51 @@
 "use client";
-import React from "react";
+
+import React, { useMemo } from "react";
 
 type Props = {
-  url?: string;   // URL firmada de Supabase
-  height?: number;
-  background?: string; // ej. "#ffffff"
+  url?: string;               // URL firmada de Supabase
+  height?: number;            // alto del visor (px)
+  background?: string;        // color de fondo
+  className?: string;
 };
 
-export default function STLPreview({ url, height = 420, background = "#ffffff" }: Props) {
-  if (!url) {
-    return (
-      <div
-        style={{
-          height,
-          border: "1px dashed #ddd",
-          borderRadius: 8,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "#666",
-          fontFamily: "system-ui, sans-serif",
-          fontSize: 14,
-        }}
-      >
-        Genera o selecciona un STL para previsualizarlo
-      </div>
-    );
-  }
-
-  // Pasamos la URL del STL por query param a la página estática del viewer
-  const src = `/stl-viewer.html?src=${encodeURIComponent(url)}&bg=${encodeURIComponent(background)}`;
+export default function STLPreview({
+  url,
+  height = 460,
+  background = "#ffffff",
+  className,
+}: Props) {
+  // Construimos src del iframe: /stl-viewer.html?src=<url>
+  const iframeSrc = useMemo(() => {
+    if (!url) return "/stl-viewer.html";
+    const u = new URL("/stl-viewer.html", location.origin);
+    u.searchParams.set("src", url);
+    // cache-bust por si la URL firmada se reutiliza
+    u.searchParams.set("_", Date.now().toString());
+    return u.toString();
+  }, [url]);
 
   return (
-    <iframe
-      src={src}
-      width="100%"
-      height={height}
-      style={{ border: "1px solid #e5e7eb", borderRadius: 8 }}
-      allow="fullscreen"
-    />
+    <div
+      className={className}
+      style={{
+        width: "100%",
+        height,
+        border: "1px solid #e5e7eb",
+        borderRadius: 8,
+        overflow: "hidden",
+        background,
+      }}
+    >
+      <iframe
+        key={iframeSrc}        // fuerza remonte al cambiar url
+        src={iframeSrc}
+        title="STL Viewer"
+        style={{ width: "100%", height: "100%", border: "0" }}
+        allow="accelerometer; gyroscope"
+        referrerPolicy="no-referrer"
+        loading="eager"
+      />
+    </div>
   );
 }
