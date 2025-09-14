@@ -1,30 +1,50 @@
-"use client";
+'use client';
 
-import dynamic from "next/dynamic";
-import { useMemo } from "react";
+import dynamic from 'next/dynamic';
 
-const ReactSTLViewer = dynamic(() => import("react-stl-viewer"), { ssr: false });
+type StlViewerProps = {
+  url: string;
+  width?: number;
+  height?: number;
+  backgroundColor?: string | number;
+  // puedes añadir más props de react-stl-viewer si las necesitas
+};
 
-type Props = { url?: string; height?: number };
+// Import dinámico: devolvemos directamente el componente StlViewer
+const ReactSTLViewer = dynamic<StlViewerProps>(
+  () =>
+    import('react-stl-viewer').then(
+      (mod) => mod.StlViewer as unknown as React.ComponentType<StlViewerProps>
+    ),
+  { ssr: false }
+);
 
-export default function STLViewer({ url, height = 420 }: Props) {
-  const style = useMemo<React.CSSProperties>(
-    () => ({ width: "100%", height, background: "transparent" }),
-    [height]
-  );
+type Props = {
+  url?: string;
+  height?: number;
+};
 
+export default function STLViewer({ url, height = 320 }: Props) {
   if (!url) {
     return (
-      <div className="w-full h-[420px] grid place-items-center rounded-2xl border border-gray-200">
-        <p className="text-sm text-gray-500">Genera un STL para previsualizarlo aquí</p>
+      <div
+        style={{
+          width: '100%',
+          height,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          border: '1px dashed #ccc',
+          borderRadius: 8,
+          color: '#666',
+          fontFamily: 'system-ui, sans-serif',
+          fontSize: 14,
+        }}
+      >
+        Genera o selecciona un STL para previsualizarlo
       </div>
     );
   }
 
-  // @ts-expect-error tipos del paquete
-  return (
-    <div className="rounded-2xl overflow-hidden border border-gray-200">
-      <ReactSTLViewer url={url} style={style} orbitControls shadows={false} ground />
-    </div>
-  );
+  return <ReactSTLViewer url={url} height={height} />;
 }
