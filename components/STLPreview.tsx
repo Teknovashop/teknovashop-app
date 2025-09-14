@@ -3,12 +3,9 @@
 import React, { useEffect, useRef, useState } from "react";
 
 type Props = {
-  /** URL firmada del STL (Supabase) */
-  url?: string;
-  /** Alto del canvas en px */
-  height?: number;
-  /** Color de fondo (hex o css) */
-  background?: string;
+  url?: string;        // URL firmada del STL (Supabase)
+  height?: number;     // Alto del canvas
+  background?: string; // Color de fondo
 };
 
 export default function STLPreview({
@@ -36,15 +33,19 @@ export default function STLPreview({
       setStatus("loading");
       setErrorMsg("");
 
-      // Carga dinámica desde CDN (sin npm i)
+      // IMPORTS DESDE CDN – IGNORADOS POR WEBPACK EN BUILD
+      // (se resuelven en el navegador en tiempo de ejecución)
       const THREE = await import(
-        "https://unpkg.com/three@0.157.0/build/three.module.js?module"
-      );
-      const { STLLoader } = await import(
-        "https://unpkg.com/three@0.157.0/examples/jsm/loaders/STLLoader.js?module"
+        /* webpackIgnore: true */
+        "https://unpkg.com/three@0.157.0/build/three.module.js"
       );
       const { OrbitControls } = await import(
-        "https://unpkg.com/three@0.157.0/examples/jsm/controls/OrbitControls.js?module"
+        /* webpackIgnore: true */
+        "https://unpkg.com/three@0.157.0/examples/jsm/controls/OrbitControls.js"
+      );
+      const { STLLoader } = await import(
+        /* webpackIgnore: true */
+        "https://unpkg.com/three@0.157.0/examples/jsm/loaders/STLLoader.js"
       );
 
       if (disposed) return;
@@ -84,9 +85,8 @@ export default function STLPreview({
         (geometry: any) => {
           if (disposed) return;
 
-          // Material
           const material = new THREE.MeshStandardMaterial({
-            color: 0x0f172a, // slate-900
+            color: 0x0f172a,
             metalness: 0.15,
             roughness: 0.6,
           });
@@ -95,7 +95,7 @@ export default function STLPreview({
           mesh.receiveShadow = true;
           scene.add(mesh);
 
-          // Ajuste de cámara al bounding box
+          // Ajuste de cámara al tamaño del modelo
           geometry.computeBoundingBox();
           geometry.computeBoundingSphere();
 
@@ -103,13 +103,13 @@ export default function STLPreview({
           const center = bbox.getCenter(new THREE.Vector3());
           const size = bbox.getSize(new THREE.Vector3());
 
-          // Re-centrar mesh
+          // Re-centrar en origen para que controles funcionen intuitivamente
           mesh.position.sub(center);
 
           const maxDim = Math.max(size.x, size.y, size.z);
           const fov = camera.fov * (Math.PI / 180);
           let cameraZ = Math.abs((maxDim / 2) / Math.tan(fov / 2));
-          cameraZ *= 1.8; // margen
+          cameraZ *= 1.8;
 
           camera.position.set(0, 0, cameraZ);
           camera.near = cameraZ / 100;
@@ -131,7 +131,6 @@ export default function STLPreview({
         }
       );
 
-      // Resize
       const onResize = () => {
         if (!renderer || !camera || !mountRef.current) return;
         const w = mountRef.current.clientWidth || 800;
@@ -168,7 +167,6 @@ export default function STLPreview({
 
     return () => {
       disposed = true;
-      // Espera a que el loader/animación creen recursos y luego limpia
       Promise.resolve(cleanupPromise).catch(() => {});
     };
   }, [url, height, background]);
