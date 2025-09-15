@@ -13,7 +13,12 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
+type ModelKind = "cable_tray" | "vesa_adapter" | "router_mount";
+
 export default function ForgePage() {
+  // Modelo seleccionado
+  const [model, setModel] = useState<ModelKind>("cable_tray");
+
   // Parámetros del modelo (unidades en mm)
   const [width, setWidth] = useState(60);
   const [height, setHeight] = useState(25);
@@ -32,29 +37,46 @@ export default function ForgePage() {
     return undefined;
   }, [result]);
 
-  // Presets rápidos
+  // Presets rápidos (por ahora solo Cable Tray)
   const applyPreset = (kind: "S" | "M" | "L") => {
-    if (kind === "S") {
-      setWidth(40);
-      setHeight(20);
-      setLength(120);
-      setThickness(2);
-    } else if (kind === "M") {
-      setWidth(60);
-      setHeight(25);
-      setLength(180);
-      setThickness(3);
+    if (model === "cable_tray") {
+      if (kind === "S") {
+        setWidth(40);
+        setHeight(20);
+        setLength(120);
+        setThickness(2);
+      } else if (kind === "M") {
+        setWidth(60);
+        setHeight(25);
+        setLength(180);
+        setThickness(3);
+      } else {
+        setWidth(80);
+        setHeight(35);
+        setLength(240);
+        setThickness(4);
+      }
     } else {
-      setWidth(80);
-      setHeight(35);
-      setLength(240);
-      setThickness(4);
+      // Cuando activemos VESA/Router definimos sus presets aquí
     }
   };
 
   const handleGenerate = async () => {
     setBusy(true);
     setResult(null);
+
+    // Si el modelo no está soportado aún, mostramos respuesta amigable
+    if (model !== "cable_tray") {
+      setResult({
+        status: "error",
+        // @ts-expect-error (permitimos un detail informativo para la UI)
+        detail:
+          "Este modelo aún no está disponible en el backend. Próximamente activaremos VESA y Router Mount.",
+      } as any);
+      setBusy(false);
+      setJsonOpen(true);
+      return;
+    }
 
     // Validaciones simples
     const w = clamp(width, 10, 500);
@@ -102,6 +124,35 @@ export default function ForgePage() {
         <section className="lg:col-span-4">
           <div className="rounded-2xl border border-gray-200 p-4 md:p-5 shadow-sm">
             <h2 className="font-medium text-gray-900">Parámetros</h2>
+
+            {/* Selector de modelo */}
+            <div className="mt-3">
+              <label className="block text-sm text-gray-600 mb-1">Modelo</label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setModel("cable_tray")}
+                  className={`px-3 py-1.5 rounded-lg border text-sm ${
+                    model === "cable_tray" ? "bg-gray-900 text-white" : "hover:bg-gray-50"
+                  }`}
+                >
+                  Cable Tray
+                </button>
+                <button
+                  disabled
+                  title="Próximamente"
+                  className="px-3 py-1.5 rounded-lg border text-sm opacity-50 cursor-not-allowed"
+                >
+                  VESA (pronto)
+                </button>
+                <button
+                  disabled
+                  title="Próximamente"
+                  className="px-3 py-1.5 rounded-lg border text-sm opacity-50 cursor-not-allowed"
+                >
+                  Router Mount (pronto)
+                </button>
+              </div>
+            </div>
 
             {/* Presets */}
             <div className="flex gap-2 mt-3">
