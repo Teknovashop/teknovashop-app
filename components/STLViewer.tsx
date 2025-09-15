@@ -1,7 +1,18 @@
 "use client";
 
 import React, { useEffect, useRef } from "react";
-import * as THREE from "three";
+import {
+  WebGLRenderer,
+  Scene,
+  PerspectiveCamera,
+  Mesh,
+  MeshStandardMaterial,
+  Color,
+  Vector3,
+  Matrix4,
+  HemisphereLight,
+  GridHelper,
+} from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
@@ -19,42 +30,47 @@ export default function STLViewer({
   modelColor = "#3f444c",
 }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
-  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-  const sceneRef = useRef<THREE.Scene | null>(null);
-  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-  const meshRef = useRef<THREE.Mesh | null>(null);
+  const rendererRef = useRef<WebGLRenderer | null>(null);
+  const sceneRef = useRef<Scene | null>(null);
+  const cameraRef = useRef<PerspectiveCamera | null>(null);
+  const meshRef = useRef<Mesh | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
 
+  // Init una sola vez
   useEffect(() => {
     const container = mountRef.current!;
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(background);
+    const scene = new Scene();
+    scene.background = new Color(background);
     sceneRef.current = scene;
 
-    const camera = new THREE.PerspectiveCamera(50, container.clientWidth / height, 0.1, 5000);
+    const camera = new PerspectiveCamera(50, container.clientWidth / height, 0.1, 5000);
     camera.position.set(350, 250, 350);
     cameraRef.current = camera;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio ?? 1, 2));
     renderer.setSize(container.clientWidth, height);
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    const light = new THREE.HemisphereLight(0xffffff, 0x777777, 1.0);
+    // Luces
+    const light = new HemisphereLight(0xffffff, 0x777777, 1.0);
     scene.add(light);
 
+    // Controles
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.06;
     controlsRef.current = controls;
 
-    const grid = new THREE.GridHelper(2000, 40, 0xdddddd, 0xeeeeee);
-    (grid.material as THREE.Material).transparent = true;
+    // Rejilla
+    const grid = new GridHelper(2000, 40, 0xdddddd, 0xeeeeee);
+    (grid.material as any).transparent = true;
     (grid.material as any).opacity = 0.6;
     grid.position.y = -0.0001;
     scene.add(grid);
 
+    // Resize
     const onResize = () => {
       if (!rendererRef.current || !cameraRef.current || !mountRef.current) return;
       const w = mountRef.current.clientWidth;
@@ -64,6 +80,7 @@ export default function STLViewer({
     };
     window.addEventListener("resize", onResize);
 
+    // Loop
     let raf = 0;
     const renderLoop = () => {
       raf = requestAnimationFrame(renderLoop);
@@ -78,8 +95,8 @@ export default function STLViewer({
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", onResize);
 
-      if (controlsRef.current) controlsRef.current.dispose();
-      if (rendererRef.current) rendererRef.current.dispose();
+      controlsRef.current?.dispose();
+      rendererRef.current?.dispose();
 
       scene.traverse((obj: any) => {
         if (obj.isMesh) {
@@ -103,12 +120,14 @@ export default function STLViewer({
     };
   }, [height, background]);
 
+  // Cargar STL al cambiar URL
   useEffect(() => {
     const scene = sceneRef.current;
     const renderer = rendererRef.current;
     const camera = cameraRef.current;
     if (!scene || !renderer || !camera) return;
 
+    // Limpia mesh anterior
     if (meshRef.current) {
       scene.remove(meshRef.current);
       meshRef.current.geometry.dispose();
@@ -122,32 +141,35 @@ export default function STLViewer({
     if (!url) return;
 
     const loader = new STLLoader();
+
     loader.load(
       url,
       (geom) => {
-        const mat = new THREE.MeshStandardMaterial({
-          color: new THREE.Color(modelColor),
+        const mat = new MeshStandardMaterial({
+          color: new Color(modelColor),
           roughness: 0.6,
           metalness: 0.0,
         });
-        const mesh = new THREE.Mesh(geom, mat);
+        const mesh = new Mesh(geom, mat);
         mesh.castShadow = false;
         mesh.receiveShadow = false;
 
         geom.computeBoundingBox();
         const bb = geom.boundingBox!;
-        const size = new THREE.Vector3();
+        const size = new Vector3();
         bb.getSize(size);
-        const center = new THREE.Vector3();
+        const center = new Vector3();
         bb.getCenter(center);
 
-        const m = new THREE.Matrix4().makeTranslation(-center.x, -center.y, -center.z);
+        // Centrar la pieza
+        const m = new Matrix4().makeTranslation(-center.x, -center.y, -center.z);
         geom.applyMatrix4(m);
         mesh.position.set(0, 0, 0);
 
         scene.add(mesh);
         meshRef.current = mesh;
 
+        // Ajustar cámara
         const maxDim = Math.max(size.x, size.y, size.z) || 1;
         const fitDist = maxDim * 2.0;
         camera.position.set(fitDist, fitDist * 0.7, fitDist);
@@ -155,7 +177,6 @@ export default function STLViewer({
         camera.far = fitDist * 10;
         camera.updateProjectionMatrix();
 
-        controlsRef.current?.update();
         renderer.render(scene, camera);
       },
       undefined,
