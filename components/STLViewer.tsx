@@ -5,9 +5,6 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 
-// Tipos para TS
-import type { WebGLRenderer, PerspectiveCamera, Scene, Mesh } from "three";
-
 type Props = {
   url?: string | null;
   height?: number;
@@ -24,22 +21,23 @@ export default function STLViewer({
 }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
 
-  const rendererRef = useRef<WebGLRenderer | null>(null);
-  const cameraRef = useRef<PerspectiveCamera | null>(null);
-  const sceneRef = useRef<Scene | null>(null);
-  const meshRef = useRef<Mesh | null>(null);
-  const controlsRef = useRef<OrbitControls | null>(null);
+  // Usamos `any` para evitar depender de tipos de `three` en el build
+  const rendererRef = useRef<any>(null);
+  const cameraRef = useRef<any>(null);
+  const sceneRef = useRef<any>(null);
+  const meshRef = useRef<any>(null);
+  const controlsRef = useRef<any>(null);
 
   const [loading, setLoading] = useState(false);
 
   // Init (una sola vez)
   useEffect(() => {
     const container = mountRef.current!;
-    const scene: Scene = new THREE.Scene();
+    const scene = new THREE.Scene();
     scene.background = new THREE.Color(background);
     sceneRef.current = scene;
 
-    const camera: PerspectiveCamera = new THREE.PerspectiveCamera(
+    const camera = new THREE.PerspectiveCamera(
       50,
       container.clientWidth / height,
       0.1,
@@ -48,10 +46,10 @@ export default function STLViewer({
     camera.position.set(0, 120, 260);
     cameraRef.current = camera;
 
-    const renderer: WebGLRenderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio ?? 1, 2));
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min((window as any).devicePixelRatio ?? 1, 2));
     renderer.setSize(container.clientWidth, height);
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    (renderer as any).outputColorSpace = (THREE as any).SRGBColorSpace ?? (THREE as any).sRGBEncoding;
     rendererRef.current = renderer;
     container.appendChild(renderer.domElement);
 
@@ -66,8 +64,11 @@ export default function STLViewer({
     scene.add(dir);
 
     const grid = new THREE.GridHelper(1200, 60, 0xcccccc, 0xeeeeee);
-    (grid.material as THREE.Material).transparent = true;
-    (grid.material as THREE.Material).opacity = 0.65;
+    const gridMat = (grid as any).material as any;
+    if (gridMat) {
+      gridMat.transparent = true;
+      gridMat.opacity = 0.65;
+    }
     scene.add(grid);
 
     const animate = () => {
@@ -76,7 +77,7 @@ export default function STLViewer({
       const cam = cameraRef.current;
       const ctr = controlsRef.current;
       if (!r || !sc || !cam) return;
-      ctr?.update();
+      ctr?.update?.();
       r.render(sc, cam);
       requestAnimationFrame(animate);
     };
@@ -88,28 +89,27 @@ export default function STLViewer({
       if (!r || !cam) return;
       const w = container.clientWidth;
       cam.aspect = w / height;
-      cam.updateProjectionMatrix();
+      cam.updateProjectionMatrix?.();
       r.setSize(w, height);
     };
     window.addEventListener("resize", onResize);
 
     return () => {
       window.removeEventListener("resize", onResize);
-      controlsRef.current?.dispose();
-      rendererRef.current?.dispose();
+      controlsRef.current?.dispose?.();
+      rendererRef.current?.dispose?.();
 
-      scene.traverse((obj) => {
-        const anyObj = obj as any;
-        if (anyObj.isMesh) {
-          anyObj.geometry?.dispose?.();
-          const mats = Array.isArray(anyObj.material)
-            ? anyObj.material
-            : [anyObj.material];
+      scene.traverse?.((obj: any) => {
+        if (obj?.isMesh) {
+          obj.geometry?.dispose?.();
+          const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
           mats.forEach((m: any) => m?.dispose?.());
         }
       });
 
-      container.removeChild(renderer.domElement);
+      try {
+        container.removeChild(renderer.domElement);
+      } catch {}
       controlsRef.current = null;
       meshRef.current = null;
       cameraRef.current = null;
@@ -119,11 +119,12 @@ export default function STLViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [height, background]);
 
-  // Carga/recarga del STL cuando cambia la URL
+  // Carga/recarga del STL cuando cambia la URL o el color
   useEffect(() => {
     const scene = sceneRef.current;
     if (!scene) return;
 
+    // Limpia mesh anterior si existe
     if (meshRef.current) {
       scene.remove(meshRef.current);
       meshRef.current.geometry?.dispose?.();
@@ -138,8 +139,10 @@ export default function STLViewer({
 
     setLoading(true);
     const loader = new STLLoader();
-    if ((loader as any).manager?.setCrossOrigin) {
-      (loader as any).manager.setCrossOrigin("anonymous");
+    // En algunas versiones no existe .manager; comprobamos defensivamente
+    const anyLoader = loader as any;
+    if (anyLoader.manager?.setCrossOrigin) {
+      anyLoader.manager.setCrossOrigin("anonymous");
     }
 
     loader.load(
@@ -152,21 +155,24 @@ export default function STLViewer({
         });
 
         const mesh = new THREE.Mesh(geometry, material);
-        geometry.computeVertexNormals();
-        geometry.computeBoundingBox();
+        geometry.computeVertexNormals?.();
+        geometry.computeBoundingBox?.();
 
-        // Centrado/escala
-        const bb = geometry.boundingBox!;
-        const size = new THREE.Vector3();
-        bb.getSize(size);
-        const center = new THREE.Vector3();
-        bb.getCenter(center);
-        mesh.position.sub(center);
+        // Centrar el modelo en origen
+        const bb = geometry.boundingBox;
+        if (bb) {
+          const size = new THREE.Vector3();
+          bb.getSize(size);
+          const center = new THREE.Vector3();
+          bb.getCenter(center);
+          mesh.position.sub(center);
 
-        const maxDim = Math.max(size.x, size.y, size.z);
-        if (maxDim > 600) {
-          const s = 600 / maxDim;
-          mesh.scale.setScalar(s);
+          // Escala si es demasiado grande
+          const maxDim = Math.max(size.x, size.y, size.z);
+          if (maxDim > 600) {
+            const s = 600 / maxDim;
+            mesh.scale.setScalar(s);
+          }
         }
 
         mesh.castShadow = true;
@@ -186,8 +192,10 @@ export default function STLViewer({
     );
 
     function fitCameraToObject() {
-      const cam = cameraRef.current!;
-      const obj = meshRef.current!;
+      const cam = cameraRef.current;
+      const obj = meshRef.current;
+      if (!cam || !obj) return;
+
       const box = new THREE.Box3().setFromObject(obj);
       const size = new THREE.Vector3();
       box.getSize(size);
@@ -195,16 +203,16 @@ export default function STLViewer({
       box.getCenter(center);
 
       const maxDim = Math.max(size.x, size.y, size.z);
-      const fov = (cam.fov * Math.PI) / 180;
+      const fov = ((cam.fov ?? 50) * Math.PI) / 180;
       let cameraZ = Math.abs((maxDim / 2) / Math.tan(fov / 2));
       cameraZ *= 1.6;
 
       cam.position.set(center.x + cameraZ, center.y + cameraZ * 0.35, center.z + cameraZ);
       cam.lookAt(center);
-      cam.updateProjectionMatrix();
+      cam.updateProjectionMatrix?.();
 
-      controlsRef.current?.target.copy(center);
-      controlsRef.current?.update();
+      controlsRef.current?.target?.copy?.(center);
+      controlsRef.current?.update?.();
     }
   }, [url, modelColor]);
 
