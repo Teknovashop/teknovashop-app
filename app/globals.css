@@ -1,58 +1,14 @@
-:root {
-  --bg: #ffffff;
-  --fg: #111827;
-  --muted: #6b7280;
-  --border: #e5e7eb;
-  --primary: #111827;
-}
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-* { box-sizing: border-box; }
-html, body { height: 100%; }
-body {
-  margin: 0;
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
-  background: var(--bg);
-  color: var(--fg);
+/* Slider base un poco más limpio */
+.range {
+  @apply h-2 w-full cursor-pointer appearance-none rounded bg-gray-200;
 }
-
-.container {
-  max-width: 1100px;
-  margin: 24px auto;
-  padding: 0 16px;
+.range::-webkit-slider-thumb {
+  @apply h-4 w-4 appearance-none rounded-full bg-gray-900;
 }
-
-.muted { color: var(--muted); }
-
-.card {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 16px;
-  background: #fff;
-}
-
-.row {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(160px, 1fr));
-  gap: 12px;
-}
-
-label { display: block; margin-bottom: 6px; font-weight: 600; }
-input[type="range"] { width: 100%; }
-button {
-  background: var(--primary);
-  color: #fff;
-  border: none;
-  border-radius: 10px;
-  padding: 10px 14px;
-  cursor: pointer;
-}
-button[disabled] { opacity: .6; cursor: default; }
-a { color: #0f60ff; text-decoration: none; }
-a:hover { text-decoration: underline; }
-pre {
-  background: #f8fafc;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 12px;
-  font-size: 12px;
+.range::-moz-range-thumb {
+  @apply h-4 w-4 rounded-full border-0 bg-gray-900;
 }
