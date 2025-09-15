@@ -1,182 +1,224 @@
 // components/ForgeForm.tsx
 "use client";
 
-import React, { useMemo, useState } from "react";
-import STLViewer from "@/components/STLViewer";
+import { useState } from "react";
 import { generateSTL, type GenerateResponse } from "@/lib/api";
+import STLViewer from "@/components/STLViewer";
+
+type ModelKind = "cable_tray"; // dejamos el resto para el siguiente paso
 
 export default function ForgeForm() {
-  // Parámetros (cable tray)
+  // Estado de parámetros
+  const [model] = useState<ModelKind>("cable_tray");
+
   const [width, setWidth] = useState(60);
   const [height, setHeight] = useState(25);
   const [length, setLength] = useState(180);
   const [thickness, setThickness] = useState(3);
   const [ventilated, setVentilated] = useState(true);
 
-  const [stlUrl, setStlUrl] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [jsonOpen, setJsonOpen] = useState(true);
+  const [resp, setResp] = useState<GenerateResponse | null>(null);
+  const stlUrl = resp && resp.status === "ok" ? resp.stl_url : undefined;
 
-  const prettyJSON = useMemo(() => {
-    const obj = stlUrl
-      ? { status: "ok", stl_url: stlUrl }
-      : error
-      ? { status: "error", detail: error }
-      : { status: "idle" };
-    return JSON.stringify(obj, null, 2);
-  }, [stlUrl, error]);
+  const [loading, setLoading] = useState(false);
 
   async function onGenerate() {
-    setBusy(true);
-    setError(null);
-    setStlUrl(null);
-
-    const payload = {
-      model: "cable_tray" as const,
-      width_mm: width,
-      height_mm: height,
-      length_mm: length,
-      thickness_mm: thickness,
-      ventilated,
-    };
-
-    const res: GenerateResponse = await generateSTL(payload);
-    if (res.status === "ok") {
-      setStlUrl(res.stl_url);
-    } else {
-      setError(res.detail || res.message || "Failed to generate STL");
+    try {
+      setLoading(true);
+      setResp(null);
+      const payload = {
+        model: "cable_tray" as const,
+        width_mm: width,
+        height_mm: height,
+        length_mm: length,
+        thickness_mm: thickness,
+        ventilated,
+      };
+      const r = await generateSTL(payload);
+      setResp(r);
+    } catch (err) {
+      setResp({ status: "error", detail: "Failed to fetch" });
+    } finally {
+      setLoading(false);
     }
-    setBusy(false);
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
-          Teknovashop Forge
-        </h1>
-        <p className="mt-1 text-sm text-gray-600">
-          Generador paramétrico (v1). Cable Tray listo; VESA y Router Mount llegan en el siguiente paso.
-        </p>
-      </header>
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Panel de control */}
-        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-          <h2 className="mb-4 text-sm font-medium text-gray-700">Parámetros</h2>
-
-          <div className="space-y-5">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600">
-                Ancho (mm): {width}
-              </label>
-              <input
-                type="range"
-                min={40}
-                max={120}
-                value={width}
-                onChange={(e) => setWidth(parseInt(e.target.value))}
-                className="range w-full"
-              />
-            </div>
-
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600">
-                Alto (mm): {height}
-              </label>
-              <input
-                type="range"
-                min={15}
-                max={60}
-                value={height}
-                onChange={(e) => setHeight(parseInt(e.target.value))}
-                className="range w-full"
-              />
-            </div>
-
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600">
-                Longitud (mm): {length}
-              </label>
-              <input
-                type="range"
-                min={100}
-                max={400}
-                value={length}
-                onChange={(e) => setLength(parseInt(e.target.value))}
-                className="range w-full"
-              />
-            </div>
-
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600">
-                Espesor (mm): {thickness}
-              </label>
-              <input
-                type="range"
-                min={1}
-                max={8}
-                value={thickness}
-                onChange={(e) => setThickness(parseInt(e.target.value))}
-                className="range w-full"
-              />
-            </div>
-
-            <label className="flex items-center gap-2 text-sm text-gray-700">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-500"
-                checked={ventilated}
-                onChange={(e) => setVentilated(e.target.checked)}
-              />
-              Con ranuras de ventilación
-            </label>
-
-            <div className="flex items-center gap-3 pt-2">
-              <button
-                onClick={onGenerate}
-                disabled={busy}
-                className="inline-flex items-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {busy && (
-                  <span className="mr-2 inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/60 border-t-transparent" />
-                )}
-                Generar STL
-              </button>
-
-              {stlUrl && (
-                <a
-                  href={stlUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-sm font-medium text-blue-600 hover:underline"
-                >
-                  Descargar STL (en Supabase)
-                </a>
-              )}
-            </div>
-
-            <details className="rounded-md border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700">
-              <summary className="cursor-pointer select-none text-gray-800">
-                Ver respuesta JSON
-              </summary>
-              <pre className="mt-2 max-h-60 overflow-auto whitespace-pre-wrap break-all rounded bg-white p-2">
-                {prettyJSON}
-              </pre>
-            </details>
-          </div>
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "360px 1fr",
+        gap: 18,
+        alignItems: "start",
+      }}
+    >
+      {/* Panel Izquierdo: Controles */}
+      <div
+        style={{
+          border: "1px solid #e5e7eb",
+          borderRadius: 12,
+          padding: 16,
+          background: "#fff",
+          position: "sticky",
+          top: 84,
+        }}
+      >
+        <div style={{ marginBottom: 12, color: "#111827", fontWeight: 600 }}>
+          Parámetros
         </div>
 
-        {/* Visor */}
-        <div>
+        {/* Sliders */}
+        <Field label="Ancho (mm)" value={width} onChange={setWidth} min={40} max={120} />
+        <Field label="Alto (mm)" value={height} onChange={setHeight} min={15} max={60} />
+        <Field label="Longitud (mm)" value={length} onChange={setLength} min={120} max={360} />
+        <Field label="Espesor (mm)" value={thickness} onChange={setThickness} min={2} max={8} />
+
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            marginTop: 8,
+            color: "#111827",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={ventilated}
+            onChange={(e) => setVentilated(e.target.checked)}
+          />
+          Con ranuras de ventilación
+        </label>
+
+        <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+          <button
+            onClick={onGenerate}
+            disabled={loading}
+            style={{
+              background: "#111827",
+              color: "#fff",
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid #111827",
+              cursor: "pointer",
+              opacity: loading ? 0.7 : 1,
+            }}
+          >
+            {loading ? "Generando…" : "Generar STL"}
+          </button>
+
+          <a
+            href={
+              stlUrl ??
+              "https://ewglrecvdhnsniqauqjh.supabase.co" // placeholder desactivado
+            }
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              color: stlUrl ? "#111827" : "#9ca3af",
+              textDecoration: "none",
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid #d1d5db",
+              pointerEvents: stlUrl ? "auto" : "none",
+              background: "#fff",
+            }}
+          >
+            Descargar STL (en Supabase)
+          </a>
+        </div>
+
+        {/* JSON */}
+        <details
+          open={jsonOpen}
+          onToggle={(e) => setJsonOpen((e.target as HTMLDetailsElement).open)}
+          style={{ marginTop: 16 }}
+        >
+          <summary
+            style={{ color: "#111827", cursor: "pointer", marginBottom: 8 }}
+          >
+            Ver respuesta JSON
+          </summary>
+          <pre
+            style={{
+              border: "1px solid #e5e7eb",
+              borderRadius: 8,
+              padding: 12,
+              background: "#f9fafb",
+              color: "#111827",
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+              maxHeight: 220,
+              overflow: "auto",
+            }}
+          >
+{JSON.stringify(resp ?? { status: "…" }, null, 2)}
+          </pre>
+        </details>
+      </div>
+
+      {/* Panel Derecho: Visor */}
+      <div
+        style={{
+          border: "1px solid #e5e7eb",
+          borderRadius: 12,
+          background: "#fff",
+          overflow: "hidden",
+        }}
+      >
+        <div style={{ padding: 12, color: "#6b7280" }}>
+          {stlUrl ? "Listo" : "Genera o selecciona un STL para previsualizarlo"}
+        </div>
+
+        <div style={{ borderTop: "1px solid #e5e7eb" }}>
           <STLViewer
-            url={stlUrl || undefined}   // importante: pasar undefined si no hay
+            url={stlUrl}
             height={520}
             background="#ffffff"
-            modelColor="#3f444c"
+            // el color del modelo ahora va dentro del STLViewer (si lo implementas)
           />
         </div>
       </div>
+    </div>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+  min,
+  max,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  min: number;
+  max: number;
+}) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          justifyContent: "space-between",
+          marginBottom: 6,
+        }}
+      >
+        <label style={{ color: "#111827" }}>{label}</label>
+        <span style={{ color: "#6b7280" }}>{value}</span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        value={value}
+        onChange={(e) => onChange(parseInt(e.target.value, 10))}
+        style={{ width: "100%" }}
+      />
     </div>
   );
 }
