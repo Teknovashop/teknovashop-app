@@ -13,34 +13,26 @@ export type CableTrayPayload = {
   ventilated: boolean;
 };
 
-/** -------- VESA Adapter (placeholder para UI; backend próximamente) --------
- * Dejamos un shape razonable para compilar y poder previsualizar en la UI.
- * Cuando el backend esté listo, ajustamos nombres/tipos a lo que exponga.
- */
+/** -------- VESA Adapter (placeholder) -------- */
 export type VesaAdapterPayload = {
   model: "vesa_adapter";
-  /** Distancia entre centros de taladros VESA (p. ej., 75, 100, 200) */
-  vesa_mm: number;
-  /** Espesor de la placa adaptadora */
-  plate_thickness_mm: number;
-  /** Diámetro de los agujeros */
-  hole_diameter_mm: number;
-  /** Ancho/alto de la placa (opcional por ahora) */
-  plate_width_mm?: number;
-  plate_height_mm?: number;
+  width_mm: number;
+  height_mm: number;
+  thickness_mm: number;
+  pattern: "75x75" | "100x100" | "100x200" | "200x200";
 };
 
-/** -------- Router Mount (placeholder para UI; backend próximamente) -------- */
+/** -------- Router Mount (placeholder) -------- */
 export type RouterMountPayload = {
   model: "router_mount";
-  width_mm: number;   // ancho del router
+  width_mm: number;   // ancho/hueco útil
   height_mm: number;  // alto/hueco útil
   depth_mm: number;   // fondo del soporte
   thickness_mm: number;
   vent_slots?: boolean;
 };
 
-/** Payload unificado que acepta el API /generate */
+/** Payload unificado para /generate */
 export type ForgePayload =
   | CableTrayPayload
   | VesaAdapterPayload
