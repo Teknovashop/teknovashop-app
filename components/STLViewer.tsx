@@ -2,201 +2,188 @@
 
 import React, { useEffect, useRef } from "react";
 import * as THREE from "three";
+import type { WebGLRenderer, PerspectiveCamera, Scene, Mesh } from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
 
 type Props = {
-  url?: string;            // URL firmada del STL
-  height: number;          // alto del canvas
-  background?: string;     // color fondo
-  modelColor?: string;     // color del mesh
+  url?: string;
+  height?: number;
+  background?: string;
+  modelColor?: string;
 };
 
 export default function STLViewer({
   url,
-  height,
+  height = 520,
   background = "#ffffff",
   modelColor = "#3f444c",
 }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
-  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-  const sceneRef = useRef<THREE.Scene | null>(null);
-  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-  const meshRef = useRef<THREE.Mesh | null>(null);
-  const controlsRef = useRef<OrbitControls | null>(null);
 
-  // Init 1 sola vez
+  // Refs de three con TIPOS nombrados (no Three.*)
+  const rendererRef = useRef<WebGLRenderer | null>(null);
+  const sceneRef = useRef<Scene | null>(null);
+  const cameraRef = useRef<PerspectiveCamera | null>(null);
+  const meshRef = useRef<Mesh | null>(null);
+
+  // Init
   useEffect(() => {
     const container = mountRef.current!;
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    rendererRef.current = renderer;
+
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(background);
     sceneRef.current = scene;
+    scene.background = new THREE.Color(background);
 
     const camera = new THREE.PerspectiveCamera(
       50,
       container.clientWidth / height,
       0.1,
-      5000
+      2000
     );
-    camera.position.set(350, 250, 350);
     cameraRef.current = camera;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio ?? 1, 2));
     renderer.setSize(container.clientWidth, height);
     container.appendChild(renderer.domElement);
-    rendererRef.current = renderer;
 
     // Luces
-    const light = new THREE.HemisphereLight(0xffffff, 0x777777, 1.0);
-    scene.add(light);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+    const dir = new THREE.DirectionalLight(0xffffff, 0.6);
+    dir.position.set(1, 1, 2);
+    scene.add(dir);
 
     // Controles
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
-    controls.dampingFactor = 0.06;
-    controlsRef.current = controls;
 
-    // Rejilla chula
-    const grid = new THREE.GridHelper(2000, 40, 0xdddddd, 0xeeeeee);
-    (grid.material as THREE.Material).opacity = 0.6;
-    (grid.material as THREE.Material).transparent = true;
-    grid.position.y = -0.0001; // para evitar z-fighting
-    scene.add(grid);
-
-    // Render loop
-    let raf = 0;
-    const tick = () => {
+    let rafId = 0;
+    const animate = () => {
       controls.update();
       renderer.render(scene, camera);
-      raf = requestAnimationFrame(tick);
+      rafId = requestAnimationFrame(animate);
     };
-    tick();
+    animate();
 
     const onResize = () => {
-      if (!container || !rendererRef.current || !cameraRef.current) return;
-      const w = container.clientWidth;
-      rendererRef.current.setSize(w, height);
-      cameraRef.current.aspect = w / height;
+      if (!cameraRef.current || !rendererRef.current) return;
+      cameraRef.current.aspect = container.clientWidth / height;
       cameraRef.current.updateProjectionMatrix();
+      rendererRef.current.setSize(container.clientWidth, height);
     };
-    const obs = new ResizeObserver(onResize);
-    obs.observe(container);
+    window.addEventListener("resize", onResize);
 
     return () => {
-      cancelAnimationFrame(raf);
-      obs.disconnect();
-
-      // Limpieza completa
+      cancelAnimationFrame(rafId);
+      window.removeEventListener("resize", onResize);
       controls.dispose();
-      renderer.dispose();
 
-      scene.traverse((obj: any) => {
-        if (obj.isMesh) {
-          obj.geometry?.dispose?.();
-          const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-          mats.forEach((m: any) => m?.dispose?.());
-        }
-      });
-
-      // DOM
+      // Limpieza de recursos
       try {
-        container.removeChild(renderer.domElement);
+        renderer.dispose();
+        renderer.forceContextLoss?.();
+        (renderer.domElement.parentNode as HTMLElement | null)?.removeChild(
+          renderer.domElement
+        );
       } catch {}
 
-      // Nulos
-      controlsRef.current = null;
-      meshRef.current = null;
+      try {
+        scene.traverse((obj: any) => {
+          if (obj.isMesh) {
+            obj.geometry?.dispose?.();
+            const mats = Array.isArray(obj.material)
+              ? obj.material
+              : [obj.material];
+            mats.forEach((m: any) => m?.dispose?.());
+          }
+        });
+      } catch {}
+
+      scene.clear();
+
       rendererRef.current = null;
-      cameraRef.current = null;
       sceneRef.current = null;
+      cameraRef.current = null;
+      meshRef.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [height, background]);
 
-  // Carga STL cada vez que cambia la URL
+  // Carga STL
   useEffect(() => {
-    const scene = sceneRef.current;
-    const renderer = rendererRef.current;
-    const camera = cameraRef.current;
-    if (!scene || !renderer || !camera) return;
+    if (!url || !sceneRef.current || !cameraRef.current || !rendererRef.current)
+      return;
 
-    // quita mesh anterior
+    const scene = sceneRef.current;
+    const cam = cameraRef.current;
+    const renderer = rendererRef.current;
+
+    // Borra modelo previo si existe
     if (meshRef.current) {
       scene.remove(meshRef.current);
       meshRef.current.geometry?.dispose?.();
-      const mats = Array.isArray(meshRef.current.material)
-        ? meshRef.current.material
-        : [meshRef.current.material];
+      const mats = Array.isArray((meshRef.current as any).material)
+        ? (meshRef.current as any).material
+        : [(meshRef.current as any).material];
       mats.forEach((m: any) => m?.dispose?.());
       meshRef.current = null;
     }
 
-    if (!url) {
-      renderer.render(scene, camera);
-      return;
-    }
-
-    // 🔥 Cache-buster para forzar descarga nueva
-    const effectiveUrl = (() => {
-      const hasQuery = url.includes("?");
-      const sep = hasQuery ? "&" : "?";
-      return `${url}${sep}cb=${Date.now()}`;
-    })();
-
     const loader = new STLLoader();
     loader.load(
-      effectiveUrl,
-      (geom) => {
-        // Material
-        const mat = new THREE.MeshStandardMaterial({
-          color: new THREE.Color(modelColor),
-          roughness: 0.6,
-          metalness: 0.0,
-        });
-        const mesh = new THREE.Mesh(geom, mat);
-        mesh.castShadow = false;
-        mesh.receiveShadow = false;
-
-        // Centro & escala: ajustamos cámara al tamaño
-        geom.computeBoundingBox();
-        const bb = geom.boundingBox!;
+      url,
+      (geometry) => {
+        // Centrar y escalar de forma amable
+        geometry.computeBoundingBox();
+        const bb = geometry.boundingBox!;
         const size = new THREE.Vector3();
         bb.getSize(size);
+
+        // Material
+        const material = new THREE.MeshStandardMaterial({
+          color: new THREE.Color(modelColor),
+          metalness: 0.05,
+          roughness: 0.85,
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+
+        // Centrar en origen
         const center = new THREE.Vector3();
         bb.getCenter(center);
-
-        // Centrar la pieza en origen
-        const m = new THREE.Matrix4().makeTranslation(
-          -center.x,
-          -center.y,
-          -center.z
-        );
-        geom.applyMatrix4(m);
-        mesh.position.set(0, 0, 0);
+        geometry.translate(-center.x, -center.y, -center.z);
 
         scene.add(mesh);
         meshRef.current = mesh;
 
-        // Fit camera
-        const maxDim = Math.max(size.x, size.y, size.z);
-        const dist = maxDim * 1.8;
-        camera.position.set(dist, dist * 0.7, dist);
-        camera.lookAt(0, 0, 0);
-        camera.updateProjectionMatrix();
+        // Colocar cámara basada en la diagonal del bounding box
+        const diagonal = size.length(); // mm
+        const dist = diagonal * 1.4 + 50; // pequeño margen
+        cam.position.set(dist, dist, dist);
+        cam.near = Math.max(0.1, diagonal * 0.002);
+        cam.far = Math.max(2000, diagonal * 8);
+        cam.lookAt(0, 0, 0);
+        cam.updateProjectionMatrix();
 
-        if (controlsRef.current) {
-          controlsRef.current.target.set(0, 0, 0);
-          controlsRef.current.update();
-        }
-
-        renderer.render(scene, camera);
+        renderer.render(scene, cam);
       },
       undefined,
       (err) => {
-        console.error("STL load error", err);
+        // Opcional: podrías mostrar un toast fuera
+        // console.error("Error cargando STL:", err);
       }
     );
   }, [url, modelColor]);
 
-  return <div ref={mountRef} style={{ height }} className="w-full" />;
+  return (
+    <div
+      ref={mountRef}
+      className="w-full rounded-xl border border-gray-200 overflow-hidden"
+      style={{ height }}
+    />
+  );
 }
