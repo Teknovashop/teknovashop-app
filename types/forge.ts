@@ -25,9 +25,9 @@ export type VesaAdapterPayload = {
 /** -------- Router Mount (placeholder) -------- */
 export type RouterMountPayload = {
   model: "router_mount";
-  width_mm: number;   // ancho/hueco útil
-  height_mm: number;  // alto/hueco útil
-  depth_mm: number;   // fondo del soporte
+  width_mm: number;
+  height_mm: number;
+  depth_mm: number;
   thickness_mm: number;
   vent_slots?: boolean;
 };
