@@ -1,11 +1,12 @@
 // teknovashop-app/lib/api.ts
-import type { GeneratePayload, GenerateResponse } from "@/types/forge";
+import type { ForgePayload, GenerateResponse } from "@/types/forge";
 
 const baseURL =
   process.env.NEXT_PUBLIC_FORGE_API_URL ||
   "https://TU-SERVICE.onrender.com";
 
-export async function generateSTL(payload: GeneratePayload): Promise<GenerateResponse> {
+/** Cliente único para /generate que soporta todos los modelos (union) */
+export async function generateSTL(payload: ForgePayload): Promise<GenerateResponse> {
   const res = await fetch(`${baseURL}/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
