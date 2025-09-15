@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import STLViewer from "@/components/STLViewer";
 
-// Tipos desde "@/types/forge"; la API sólo exporta la función
+// La API exporta la función; los tipos vienen de "@/types/forge"
 import { generateSTL } from "@/lib/api";
 import type { GenerateResponse, ModelKind } from "@/types/forge";
 
@@ -42,9 +42,12 @@ function useURLState(model: ModelKind, state: CableTrayState) {
   }, [model, state, router, pathname]);
 }
 
-// ⬇️ Acepta ReadonlyURLSearchParams (de Next) o URLSearchParams
+/**
+ * Acepta tanto URLSearchParams como ReadonlyURLSearchParams de Next.js,
+ * sin depender del tipo concreto. Sólo necesitamos `get()`.
+ */
 function readFromQuery(
-  sp: URLSearchParams | ReadonlyURLSearchParams
+  sp: { get(name: string): string | null }
 ): {
   model: ModelKind;
   state: CableTrayState;
@@ -53,7 +56,7 @@ function readFromQuery(
   const num = (k: string, d: number) => {
     const v = Number(sp.get(k));
     return Number.isFinite(v) && v > 0 ? v : d;
-    };
+  };
   const bool = (k: string, d: boolean) => {
     const v = sp.get(k);
     if (v === "1" || v === "true") return true;
