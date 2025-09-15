@@ -1,51 +1,32 @@
 // teknovashop-app/lib/api.ts
 import type { ForgePayload, GenerateResponse } from "@/types/forge";
 
-const BASE =
-  process.env.NEXT_PUBLIC_FORGE_API_URL?.replace(/\/+$/, "") ||
-  "https://TU-SERVICIO.onrender.com"; // <--- cambia si quieres un fallback
+// Llama SIEMPRE al proxy interno de Next (mismo dominio) → adiós CORS
+export async function generateSTL(payload: ForgePayload): Promise<GenerateResponse> {
+  // Precalentamos el backend a través del proxy (no bloquea)
+  fetch("/api/forge/health").catch(() => {});
 
-async function fetchJSON(url: string, opts: RequestInit, ms = 60000) {
   const ctrl = new AbortController();
-  const to = setTimeout(() => ctrl.abort(), ms);
+  const t = setTimeout(() => ctrl.abort(), 90000); // 90s
   try {
-    const res = await fetch(url, {
-      ...opts,
+    const res = await fetch("/api/forge/generate", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "content-type": "application/json" },
       signal: ctrl.signal,
-      headers: {
-        "content-type": "application/json",
-        ...(opts.headers || {})
-      },
-      mode: "cors",
-      credentials: "omit"
+      cache: "no-store",
     });
-    const isJSON = res.headers.get("content-type")?.includes("application/json");
-    const data = isJSON ? await res.json() : null;
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      return {
-        status: "error",
-        message: data?.detail || data?.message || `HTTP ${res.status}`
-      } as GenerateResponse;
+      return { status: "error", message: data?.detail || data?.message || `HTTP ${res.status}` };
     }
     return data as GenerateResponse;
   } catch (e: any) {
     return {
       status: "error",
-      message:
-        e?.name === "AbortError"
-          ? "Timeout esperando al backend"
-          : e?.message || "Fallo de red / CORS"
-    } as GenerateResponse;
+      message: e?.name === "AbortError" ? "Timeout esperando al backend" : (e?.message || "Fallo de red"),
+    };
   } finally {
-    clearTimeout(to);
+    clearTimeout(t);
   }
-}
-
-export async function generateSTL(payload: ForgePayload): Promise<GenerateResponse> {
-  // Precalentamos instancia free (no bloqueante)
-  try { fetch(`${BASE}/health`, { method: "GET", mode: "cors" }).catch(() => {}); } catch {}
-  return fetchJSON(`${BASE}/generate`, {
-    method: "POST",
-    body: JSON.stringify(payload)
-  });
 }
