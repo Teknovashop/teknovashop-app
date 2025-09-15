@@ -50,12 +50,11 @@ export default function ForgePage() {
   /** ----------------- Estado de la llamada ----------------- */
   const [busy, setBusy] = useState(false);
   const [jsonOpen, setJsonOpen] = useState(false);
-  const [result, setResult] = useState<GenerateResponse>({ status: "_" });
+  const [result, setResult] = useState<GenerateResponse | null>(null);
 
   // Enlace STL si OK
   const stlUrl = useMemo(() => {
-    if (result && result.status === "ok") return result.stl_url;
-    return undefined;
+    return result && result.status === "ok" ? result.stl_url : undefined;
   }, [result]);
 
   /** ----------------- Presets rápidos (solo cable_tray) ----------------- */
@@ -81,12 +80,11 @@ export default function ForgePage() {
   /** ----------------- Construcción del payload y llamada ----------------- */
   const handleGenerate = async () => {
     setBusy(true);
-    setResult({ status: "_" });
+    setResult(null);
 
     let payload: ForgePayload;
 
     if (model === "cable_tray") {
-      // Validaciones simples
       const w = clamp(width, 10, 500);
       const h = clamp(height, 5, 300);
       const l = clamp(length, 30, 2000);
@@ -217,207 +215,3 @@ export default function ForgePage() {
                     <Label>
                       Ancho <span className="text-gray-400">(mm)</span>
                     </Label>
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="range"
-                        min={10}
-                        max={500}
-                        value={width}
-                        onChange={(e) => setWidth(parseInt(e.target.value, 10))}
-                        className="range"
-                      />
-                      <span className="w-12 text-right tabular-nums">{width}</span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <Label>
-                      Alto <span className="text-gray-400">(mm)</span>
-                    </Label>
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="range"
-                        min={5}
-                        max={300}
-                        value={height}
-                        onChange={(e) => setHeight(parseInt(e.target.value, 10))}
-                        className="range"
-                      />
-                      <span className="w-12 text-right tabular-nums">{height}</span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <Label>
-                      Longitud <span className="text-gray-400">(mm)</span>
-                    </Label>
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="range"
-                        min={30}
-                        max={2000}
-                        value={length}
-                        onChange={(e) => setLength(parseInt(e.target.value, 10))}
-                        className="range"
-                      />
-                      <span className="w-12 text-right tabular-nums">{length}</span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <Label>
-                      Espesor <span className="text-gray-400">(mm)</span>
-                    </Label>
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="range"
-                        min={1}
-                        max={20}
-                        value={thickness}
-                        onChange={(e) => setThickness(parseInt(e.target.value, 10))}
-                        className="range"
-                      />
-                      <span className="w-12 text-right tabular-nums">{thickness}</span>
-                    </div>
-                  </div>
-
-                  <label className="inline-flex items-center gap-2 text-sm select-none">
-                    <input
-                      type="checkbox"
-                      checked={ventilated}
-                      onChange={(e) => setVentilated(e.target.checked)}
-                    />
-                    Con ranuras de ventilación
-                  </label>
-                </div>
-              </>
-            )}
-
-            {/* ---- VESA adapter ---- */}
-            {model === "vesa_adapter" && (
-              <div className="space-y-4 mt-5">
-                <div className="flex items-center justify-between">
-                  <Label>Tamaño VESA (mm)</Label>
-                  <Number value={vesa} onChange={setVesa} min={50} max={400} step={25} />
-                </div>
-                <div className="flex items-center justify-between">
-                  <Label>Espesor (mm)</Label>
-                  <Number value={vesaThk} onChange={setVesaThk} min={2} max={10} />
-                </div>
-                <div className="flex items-center justify-between">
-                  <Label>Diámetro de agujero (mm)</Label>
-                  <Number value={vesaHole} onChange={setVesaHole} min={3} max={10} step={0.5} />
-                </div>
-                <div className="flex items-center justify-between">
-                  <Label>Holgura adicional (mm)</Label>
-                  <Number value={vesaClear} onChange={setVesaClear} min={0} max={5} step={0.5} />
-                </div>
-                <p className="text-xs text-gray-500">
-                  Nota: si el backend aún no soporta VESA, verás una respuesta de error en el JSON.
-                </p>
-              </div>
-            )}
-
-            {/* ---- Router mount ---- */}
-            {model === "router_mount" && (
-              <div className="space-y-4 mt-5">
-                <div className="flex items-center justify-between">
-                  <Label>Ancho router (mm)</Label>
-                  <Number value={rWidth} onChange={setRWidth} min={50} max={400} />
-                </div>
-                <div className="flex items-center justify-between">
-                  <Label>Fondo router (mm)</Label>
-                  <Number value={rDepth} onChange={setRDepth} min={30} max={300} />
-                </div>
-                <div className="flex items-center justify-between">
-                  <Label>Espesor (mm)</Label>
-                  <Number value={rThk} onChange={setRThk} min={2} max={10} />
-                </div>
-                <div className="flex items-center justify-between">
-                  <Label>Ø agujero anclaje (mm)</Label>
-                  <Number value={rHole} onChange={setRHole} min={3} max={8} step={0.5} />
-                </div>
-                <label className="inline-flex items-center gap-2 text-sm select-none">
-                  <input
-                    type="checkbox"
-                    checked={rSlots}
-                    onChange={(e) => setRSlots(e.target.checked)}
-                  />
-                  Ranuras para bridas/velcro
-                </label>
-                <p className="text-xs text-gray-500">
-                  Nota: si el backend aún no soporta Router Mount, verás una respuesta de
-                  error en el JSON.
-                </p>
-              </div>
-            )}
-
-            {/* Acciones */}
-            <div className="flex flex-col gap-3 pt-5">
-              <button
-                onClick={handleGenerate}
-                disabled={busy}
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-gray-900 text-white px-4 py-2 hover:bg-black disabled:opacity-60"
-              >
-                {busy ? "Generando…" : "Generar STL"}
-              </button>
-
-              <div className="grid grid-cols-2 gap-2">
-                <a
-                  href={stlUrl}
-                  target="_blank"
-                  className={`rounded-lg border px-3 py-2 text-center text-sm ${
-                    stlUrl ? "hover:bg-gray-50" : "pointer-events-none opacity-50"
-                  }`}
-                  rel="noreferrer"
-                >
-                  Descargar STL
-                </a>
-                <button
-                  onClick={copyLink}
-                  disabled={!stlUrl}
-                  className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
-                >
-                  Copiar enlace
-                </button>
-              </div>
-
-              {/* JSON */}
-              <details
-                open={jsonOpen}
-                onToggle={(e) => setJsonOpen((e.target as HTMLDetailsElement).open)}
-                className="mt-2"
-              >
-                <summary className="cursor-pointer text-sm text-gray-700">
-                  Ver respuesta JSON
-                </summary>
-                <textarea
-                  readOnly
-                  value={JSON.stringify(result ?? {}, null, 2)}
-                  className="mt-2 w-full h-40 rounded-lg border p-2 font-mono text-xs"
-                />
-              </details>
-            </div>
-          </div>
-        </section>
-
-        {/* Visor */}
-        <section className="lg:col-span-8">
-          <div className="rounded-2xl border border-gray-200 p-2 md:p-3 shadow-sm">
-            <div className="h-[520px]">
-              <STLViewer
-                url={stlUrl}
-                height={520}
-                background="#ffffff"
-                modelColor="#3f444c"
-              />
-            </div>
-            <p className="text-xs text-gray-500 px-2 py-2">
-              Arrastra para rotar · Rueda para zoom · <kbd>Shift</kbd>+arrastrar para pan
-            </p>
-          </div>
-        </section>
-      </div>
-    </div>
-  );
-}
