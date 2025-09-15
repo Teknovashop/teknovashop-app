@@ -2,6 +2,33 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ===== Ajustes globales ===== */
+html,
+body {
+  background: #fafafa; /* gris claro industrial */
+  color: #111827;      /* gris oscuro para contraste */
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter,
+    "Helvetica Neue", "Noto Sans", "Liberation Sans", Arial,
+    "Apple Color Emoji", "Segoe UI Emoji";
+  @apply antialiased;
+}
+
+/* Mejor scroll (más fino y elegante) */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #f3f4f6; /* gris tailwind */
+}
+::-webkit-scrollbar-thumb {
+  background: #9ca3af; /* gris medio */
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #6b7280; /* gris más oscuro */
+}
+
 /* Slider base un poco más limpio */
 .range {
   @apply h-2 w-full cursor-pointer appearance-none rounded bg-gray-200;
