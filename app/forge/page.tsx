@@ -24,20 +24,17 @@ export default function ForgePage() {
   const [model, setModel] = useState<ModelKind>("cable_tray");
 
   // ------------ parámetros ------------
-  // Cable tray
   const [width, setWidth] = useState(60);
   const [height, setHeight] = useState(25);
   const [length, setLength] = useState(180);
   const [thickness, setThickness] = useState(3);
   const [ventilated, setVentilated] = useState(true);
 
-  // VESA
   const [vesa, setVesa] = useState(100);
   const [vesaThk, setVesaThk] = useState(4);
   const [vesaClear, setVesaClear] = useState(1);
   const [vesaHole, setVesaHole] = useState(5);
 
-  // Router mount
   const [rWidth, setRWidth] = useState(120);
   const [rDepth, setRDepth] = useState(80);
   const [rThk, setRThk] = useState(4);
@@ -49,50 +46,36 @@ export default function ForgePage() {
   const [jsonOpen, setJsonOpen] = useState(false);
   const [result, setResult] = useState<GenerateResponse | null>(null);
 
-  // ------------ URL STL y preview ------------
+  // Modo del visor: por defecto PREVIEW (para no “volver al triángulo”)
+  const [viewMode, setViewMode] = useState<"preview" | "stl">("preview");
+
   const stlUrl = useMemo(() => (result?.status === "ok" ? (result as any).stl_url : undefined), [result]);
 
   const preview = useMemo(() => {
     if (model === "cable_tray") {
       return {
         kind: "cable_tray",
-        params: {
-          width_mm: width,
-          height_mm: height,
-          length_mm: length,
-          thickness_mm: thickness,
-          ventilated,
-        },
+        params: { width_mm: width, height_mm: height, length_mm: length, thickness_mm: thickness, ventilated },
       } as const;
     }
     if (model === "vesa_adapter") {
       return {
         kind: "vesa_adapter",
-        params: {
-          vesa_mm: vesa,
-          thickness_mm: vesaThk,
-          clearance_mm: vesaClear,
-        },
+        params: { vesa_mm: vesa, thickness_mm: vesaThk, clearance_mm: vesaClear },
       } as const;
     }
     return {
       kind: "router_mount",
-      params: {
-        router_width_mm: rWidth,
-        router_depth_mm: rDepth,
-        thickness_mm: rThk,
-      },
+      params: { router_width_mm: rWidth, router_depth_mm: rDepth, thickness_mm: rThk },
     } as const;
   }, [model, width, height, length, thickness, ventilated, vesa, vesaThk, vesaClear, rWidth, rDepth, rThk]);
 
-  // ------------ presets cable tray ------------
   const applyPreset = (k: "S" | "M" | "L") => {
     if (k === "S") { setWidth(40); setHeight(20); setLength(120); setThickness(2); }
     else if (k === "M") { setWidth(60); setHeight(25); setLength(180); setThickness(3); }
     else { setWidth(80); setHeight(35); setLength(240); setThickness(4); }
   };
 
-  // ------------ generar ------------
   const handleGenerate = async () => {
     setBusy(true);
     setResult(null);
@@ -129,7 +112,7 @@ export default function ForgePage() {
       const res = await generateSTL(payload);
       setResult(res);
       setJsonOpen(true);
-      if (res.status !== "ok") alert(`Backend: ${res.detail || (res as any).message || "error"}`);
+      // mantenemos PREVIEW por defecto; el usuario elige ver el STL si quiere
     } catch (e: any) {
       alert(`Error inesperado: ${e?.message || e}`);
     } finally {
@@ -143,7 +126,6 @@ export default function ForgePage() {
     catch { alert("No se pudo copiar el enlace"); }
   };
 
-  // ------------ UI helpers ------------
   const Label = (p: { children: React.ReactNode }) => <label className="block text-sm text-gray-700">{p.children}</label>;
   const Number = (p: { value: number; onChange: (n: number) => void; min?: number; max?: number; step?: number }) => (
     <input
@@ -179,7 +161,7 @@ export default function ForgePage() {
 
       <main className="mx-auto max-w-7xl px-4 py-8">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[420px,1fr]">
-          {/* Lado izquierdo: configurador */}
+          {/* Panel de configuración */}
           <section className="h-fit rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             {/* tabs */}
             <div className="mb-4 flex gap-2">
@@ -200,21 +182,16 @@ export default function ForgePage() {
               ))}
             </div>
 
-            {/* parámetros por modelo */}
+            {/* parámetros */}
             {model === "cable_tray" && (
               <>
                 <div className="flex gap-2">
                   {["S", "M", "L"].map((k) => (
-                    <button
-                      key={k}
-                      onClick={() => applyPreset(k as any)}
-                      className="rounded-lg border px-3 py-1.5 text-sm hover:bg-gray-50"
-                    >
+                    <button key={k} onClick={() => applyPreset(k as any)} className="rounded-lg border px-3 py-1.5 text-sm hover:bg-gray-50">
                       {k}
                     </button>
                   ))}
                 </div>
-
                 <div className="mt-4 space-y-4">
                   <div>
                     <Label>Ancho (mm)</Label>
@@ -270,7 +247,7 @@ export default function ForgePage() {
                   <Label>Ø agujero (mm)</Label>
                   <Number value={vesaHole} onChange={setVesaHole} min={3} max={10} step={0.5} />
                 </div>
-                <p className="pt-1 text-xs text-gray-500">El preview muestra la placa y la posición de los agujeros.</p>
+                <p className="pt-1 text-xs text-gray-500">Preview: placa con agujeros en patrón VESA.</p>
               </div>
             )}
 
@@ -296,7 +273,7 @@ export default function ForgePage() {
                   <input type="checkbox" checked={rSlots} onChange={(e) => setRSlots(e.target.checked)} />
                   Ranuras para bridas/velcro
                 </label>
-                <p className="pt-1 text-xs text-gray-500">El preview muestra una escuadra en L básica.</p>
+                <p className="pt-1 text-xs text-gray-500">Preview: escuadra en L básica.</p>
               </div>
             )}
 
@@ -320,20 +297,13 @@ export default function ForgePage() {
                 >
                   Descargar STL
                 </a>
-                <button
-                  onClick={copyLink}
-                  disabled={!stlUrl}
-                  className="rounded-xl border px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
-                >
+                <button onClick={async () => { await navigator.clipboard.writeText(stlUrl || ""); }} disabled={!stlUrl}
+                  className="rounded-xl border px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50">
                   Copiar enlace
                 </button>
               </div>
 
-              <details
-                open={jsonOpen}
-                onToggle={(e) => setJsonOpen((e.target as HTMLDetailsElement).open)}
-                className="mt-2"
-              >
+              <details open={jsonOpen} onToggle={(e) => setJsonOpen((e.target as HTMLDetailsElement).open)} className="mt-2">
                 <summary className="cursor-pointer text-sm text-gray-700">Ver respuesta JSON</summary>
                 <textarea
                   readOnly
@@ -344,10 +314,33 @@ export default function ForgePage() {
             </div>
           </section>
 
-          {/* Lado derecho: visor */}
+          {/* Visor + conmutador de vista */}
           <section className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm lg:sticky lg:top-20">
+            <div className="mb-3 flex gap-2">
+              <button
+                onClick={() => setViewMode("preview")}
+                className={`rounded-lg px-3 py-1.5 text-sm ${viewMode === "preview" ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}
+              >
+                Vista: Preview
+              </button>
+              <button
+                onClick={() => setViewMode("stl")}
+                className={`rounded-lg px-3 py-1.5 text-sm ${viewMode === "stl" ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}
+                disabled={!stlUrl}
+              >
+                Vista: STL generado
+              </button>
+            </div>
+
             <div className="rounded-xl border border-gray-200">
-              <STLViewer url={stlUrl} preview={preview as any} height={560} background="#ffffff" modelColor="#3f444c" />
+              <STLViewer
+                url={stlUrl}
+                preview={preview as any}
+                mode={viewMode}   // <- por defecto se queda en PREVIEW
+                height={560}
+                background="#ffffff"
+                modelColor="#3f444c"
+              />
             </div>
             <p className="px-2 py-2 text-xs text-gray-500">
               Arrastra para rotar · Rueda para zoom · <kbd>Shift</kbd>+arrastrar para pan
