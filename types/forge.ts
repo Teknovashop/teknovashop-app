@@ -13,23 +13,23 @@ export type CableTrayPayload = {
   ventilated: boolean;
 };
 
-/** -------- VESA Adapter (placeholder) -------- */
+/** -------- VESA Adapter -------- */
 export type VesaAdapterPayload = {
   model: "vesa_adapter";
-  width_mm: number;
-  height_mm: number;
+  vesa_mm: number;            // 75 / 100 / 200, etc.
   thickness_mm: number;
-  pattern: "75x75" | "100x100" | "100x200" | "200x200";
+  hole_diameter_mm: number;
+  clearance_mm: number;
 };
 
-/** -------- Router Mount (placeholder) -------- */
+/** -------- Router Mount -------- */
 export type RouterMountPayload = {
   model: "router_mount";
-  width_mm: number;
-  height_mm: number;
-  depth_mm: number;
+  router_width_mm: number;
+  router_depth_mm: number;
   thickness_mm: number;
-  vent_slots?: boolean;
+  strap_slots: boolean;
+  hole_diameter_mm: number;
 };
 
 /** Payload unificado para /generate */
