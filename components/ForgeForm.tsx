@@ -3,7 +3,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import STLViewer from "@/components/STLViewer";
-import { generateSTL, type GenerateResponse, type ModelKind } from "@/lib/api";
+
+// ⬇️ Tipos ahora vienen de "@/types/forge"; la API sólo exporta la función
+import { generateSTL } from "@/lib/api";
+import type { GenerateResponse, ModelKind } from "@/types/forge";
+
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 type CableTrayState = {
@@ -106,8 +110,6 @@ export default function ForgeForm() {
     setTimeout(() => setToast(null), 1800);
   }, [cfg]);
 
-  const disabledSoon = model !== "cable_tray";
-
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[380px,1fr] gap-6">
       {/* Panel izquierdo */}
@@ -130,7 +132,7 @@ export default function ForgeForm() {
           ))}
         </div>
 
-        {/* Formulario segun modelo */}
+        {/* Formulario según modelo */}
         {model === "cable_tray" ? (
           <div className="bg-white/70 backdrop-blur border border-gray-200 rounded-xl p-4 space-y-4">
             {[
