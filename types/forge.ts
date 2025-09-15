@@ -1,51 +1,22 @@
-// /types/forge.ts
+// teknovashop-app/types/forge.ts
 
-/** Modelos soportados por la UI (el backend puede ir activándolos) */
+// Modelos soportados (UI ya contempla los futuros)
 export type ModelKind = "cable_tray" | "vesa_adapter" | "router_mount";
 
-/** Respuesta del backend al generar el STL */
-export type GenerateStatus = "ok" | "error" | "_";
-
-export type GenerateResponse = {
-  status: GenerateStatus;
-  stl_url?: string;
-  message?: string;
-};
-
-/** ---- Payloads por modelo (discriminated unions) ---- */
-
-/** Bandeja de cables */
+// Payload Cable Tray
 export type CableTrayPayload = {
   model: "cable_tray";
-  width_mm: number;      // 10..500
-  height_mm: number;     // 5..300
-  length_mm: number;     // 30..2000
-  thickness_mm: number;  // 1..20
+  width_mm: number;
+  height_mm: number;
+  length_mm: number;
+  thickness_mm: number;
   ventilated: boolean;
 };
 
-/** Adaptador VESA (UI lista; backend puede activarse luego) */
-export type VesaAdapterPayload = {
-  model: "vesa_adapter";
-  /** Tamaño VESA en mm (p.ej. 75, 100, 200). Se usa patrón cuadrado. */
-  vesa_mm: number;          // 50..400 típico
-  thickness_mm: number;     // 2..10
-  hole_diameter_mm: number; // 4..8
-  /** Separación extra para tornillería, si se requiere */
-  clearance_mm: number;     // 0..5
-};
+// Si luego añadimos VESA o Router, unimos sus payloads aquí
+export type GeneratePayload = CableTrayPayload;
 
-/** Soporte para router (UI lista; backend puede activarse luego) */
-export type RouterMountPayload = {
-  model: "router_mount";
-  router_width_mm: number;    // 50..400
-  router_depth_mm: number;    // 30..300
-  thickness_mm: number;       // 2..10
-  strap_slots: boolean;       // ranuras para bridas/velcro
-  hole_diameter_mm: number;   // 3..8 (anclaje)
-};
-
-export type ForgePayload =
-  | CableTrayPayload
-  | VesaAdapterPayload
-  | RouterMountPayload;
+// Respuesta estrictamente tipada
+export type GenerateOk = { status: "ok"; stl_url: string };
+export type GenerateError = { status: "error"; detail?: string; message?: string };
+export type GenerateResponse = GenerateOk | GenerateError;
