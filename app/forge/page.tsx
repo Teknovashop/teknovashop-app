@@ -225,4 +225,136 @@ export default function ForgePage() {
                   </div>
                   <div>
                     <Label>Alto (mm)</Label>
-                    <div classNa
+                    <div className="flex items-center gap-3">
+                      <input type="range" min={5} max={300} value={height} onChange={(e) => setHeight(+e.target.value)} className="w-full" />
+                      <span className="w-12 text-right tabular-nums">{height}</span>
+                    </div>
+                  </div>
+                  <div>
+                    <Label>Longitud (mm)</Label>
+                    <div className="flex items-center gap-3">
+                      <input type="range" min={30} max={2000} value={length} onChange={(e) => setLength(+e.target.value)} className="w-full" />
+                      <span className="w-12 text-right tabular-nums">{length}</span>
+                    </div>
+                  </div>
+                  <div>
+                    <Label>Espesor (mm)</Label>
+                    <div className="flex items-center gap-3">
+                      <input type="range" min={1} max={20} value={thickness} onChange={(e) => setThickness(+e.target.value)} className="w-full" />
+                      <span className="w-12 text-right tabular-nums">{thickness}</span>
+                    </div>
+                  </div>
+                  <label className="inline-flex select-none items-center gap-2 text-sm">
+                    <input type="checkbox" checked={ventilated} onChange={(e) => setVentilated(e.target.checked)} />
+                    Con ranuras de ventilación
+                  </label>
+                </div>
+              </>
+            )}
+
+            {model === "vesa_adapter" && (
+              <div className="mt-2 space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label>Tamaño VESA (mm)</Label>
+                  <Number value={vesa} onChange={setVesa} min={50} max={400} step={25} />
+                </div>
+                <div className="flex items-center justify-between">
+                  <Label>Espesor (mm)</Label>
+                  <Number value={vesaThk} onChange={setVesaThk} min={2} max={10} />
+                </div>
+                <div className="flex items-center justify-between">
+                  <Label>Holgura adicional (mm)</Label>
+                  <Number value={vesaClear} onChange={setVesaClear} min={0} max={5} step={0.5} />
+                </div>
+                <div className="flex items-center justify-between">
+                  <Label>Ø agujero (mm)</Label>
+                  <Number value={vesaHole} onChange={setVesaHole} min={3} max={10} step={0.5} />
+                </div>
+                <p className="pt-1 text-xs text-gray-500">El preview muestra la placa y la posición de los agujeros.</p>
+              </div>
+            )}
+
+            {model === "router_mount" && (
+              <div className="mt-2 space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label>Ancho router (mm)</Label>
+                  <Number value={rWidth} onChange={setRWidth} min={50} max={400} />
+                </div>
+                <div className="flex items-center justify-between">
+                  <Label>Fondo router (mm)</Label>
+                  <Number value={rDepth} onChange={setRDepth} min={30} max={300} />
+                </div>
+                <div className="flex items-center justify-between">
+                  <Label>Espesor (mm)</Label>
+                  <Number value={rThk} onChange={setRThk} min={2} max={10} />
+                </div>
+                <div className="flex items-center justify-between">
+                  <Label>Ø agujero anclaje (mm)</Label>
+                  <Number value={rHole} onChange={setRHole} min={3} max={8} step={0.5} />
+                </div>
+                <label className="inline-flex select-none items-center gap-2 text-sm">
+                  <input type="checkbox" checked={rSlots} onChange={(e) => setRSlots(e.target.checked)} />
+                  Ranuras para bridas/velcro
+                </label>
+                <p className="pt-1 text-xs text-gray-500">El preview muestra una escuadra en L básica.</p>
+              </div>
+            )}
+
+            {/* acciones */}
+            <div className="mt-5 flex flex-col gap-3">
+              <button
+                onClick={handleGenerate}
+                disabled={busy}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-4 py-2 text-white hover:bg-black disabled:opacity-60"
+              >
+                {busy ? "Generando…" : "Generar STL"}
+              </button>
+              <div className="grid grid-cols-2 gap-2">
+                <a
+                  href={stlUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={`rounded-xl border px-3 py-2 text-center text-sm ${
+                    stlUrl ? "hover:bg-gray-50" : "pointer-events-none opacity-50"
+                  }`}
+                >
+                  Descargar STL
+                </a>
+                <button
+                  onClick={copyLink}
+                  disabled={!stlUrl}
+                  className="rounded-xl border px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Copiar enlace
+                </button>
+              </div>
+
+              <details
+                open={jsonOpen}
+                onToggle={(e) => setJsonOpen((e.target as HTMLDetailsElement).open)}
+                className="mt-2"
+              >
+                <summary className="cursor-pointer text-sm text-gray-700">Ver respuesta JSON</summary>
+                <textarea
+                  readOnly
+                  value={JSON.stringify(result ?? {}, null, 2)}
+                  className="mt-2 h-40 w-full rounded-xl border p-2 font-mono text-xs"
+                />
+              </details>
+            </div>
+          </section>
+
+          {/* Lado derecho: visor */}
+          <section className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm lg:sticky lg:top-20">
+            <div className="rounded-xl border border-gray-200">
+              <STLViewer url={stlUrl} preview={preview as any} height={560} background="#ffffff" modelColor="#3f444c" />
+            </div>
+            <p className="px-2 py-2 text-xs text-gray-500">
+              Arrastra para rotar · Rueda para zoom · <kbd>Shift</kbd>+arrastrar para pan
+            </p>
+          </section>
+        </div>
+      </main>
+    </div>
+  );
+}
