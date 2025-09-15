@@ -1,4 +1,6 @@
-// lib/api.ts
+// /lib/api.ts
+export type ModelKind = "cable_tray" | "vesa_adapter" | "router_mount";
+
 export type CableTrayPayload = {
   model: "cable_tray";
   width_mm: number;
@@ -13,25 +15,22 @@ export type GenerateResponse =
   | { status: "error"; detail?: string; message?: string };
 
 const baseURL =
-  process.env.NEXT_PUBLIC_BACKEND_URL ||
+  process.env.NEXT_PUBLIC_BACKEND_URL || // en Vercel ya lo tienes definido
+  process.env.NEXT_PUBLIC_FORGE_API_URL || // compat
   "https://teknovashop-forge.onrender.com";
 
 export async function generateSTL(
   payload: CableTrayPayload
 ): Promise<GenerateResponse> {
-  try {
-    const res = await fetch(`${baseURL}/generate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      cache: "no-store",
-    });
+  const res = await fetch(`${baseURL}/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store",
+  });
 
-    if (!res.ok) {
-      return { status: "error", detail: `HTTP ${res.status}` };
-    }
-    return (await res.json()) as GenerateResponse;
-  } catch (e) {
-    return { status: "error", detail: "Failed to fetch" };
+  if (!res.ok) {
+    return { status: "error", detail: `HTTP ${res.status}` };
   }
+  return (await res.json()) as GenerateResponse;
 }
