@@ -14,21 +14,24 @@ export type GenerateResponse =
 
 const baseURL =
   process.env.NEXT_PUBLIC_BACKEND_URL ||
-  process.env.NEXT_PUBLIC_FORGE_API_URL || // por compatibilidad con tu var antigua
   "https://teknovashop-forge.onrender.com";
 
 export async function generateSTL(
   payload: CableTrayPayload
 ): Promise<GenerateResponse> {
-  const res = await fetch(`${baseURL}/generate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-    cache: "no-store",
-  });
+  try {
+    const res = await fetch(`${baseURL}/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      cache: "no-store",
+    });
 
-  if (!res.ok) {
-    return { status: "error", detail: `HTTP ${res.status}` };
+    if (!res.ok) {
+      return { status: "error", detail: `HTTP ${res.status}` };
+    }
+    return (await res.json()) as GenerateResponse;
+  } catch (e) {
+    return { status: "error", detail: "Failed to fetch" };
   }
-  return (await res.json()) as GenerateResponse;
 }
