@@ -1,18 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef } from "react";
-import {
-  WebGLRenderer,
-  Scene,
-  PerspectiveCamera,
-  Mesh,
-  MeshStandardMaterial,
-  Color,
-  Vector3,
-  Matrix4,
-  HemisphereLight,
-  GridHelper,
-} from "three";
+import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
@@ -30,31 +19,33 @@ export default function STLViewer({
   modelColor = "#3f444c",
 }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
-  const rendererRef = useRef<WebGLRenderer | null>(null);
-  const sceneRef = useRef<Scene | null>(null);
-  const cameraRef = useRef<PerspectiveCamera | null>(null);
-  const meshRef = useRef<Mesh | null>(null);
-  const controlsRef = useRef<OrbitControls | null>(null);
+
+  // Tipados como "any" para salvar incompatibilidades de tipos en Vercel
+  const rendererRef = useRef<any>(null);
+  const sceneRef = useRef<any>(null);
+  const cameraRef = useRef<any>(null);
+  const meshRef = useRef<any>(null);
+  const controlsRef = useRef<any>(null);
 
   // Init una sola vez
   useEffect(() => {
     const container = mountRef.current!;
-    const scene = new Scene();
-    scene.background = new Color(background);
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(background);
     sceneRef.current = scene;
 
-    const camera = new PerspectiveCamera(50, container.clientWidth / height, 0.1, 5000);
+    const camera = new THREE.PerspectiveCamera(50, container.clientWidth / height, 0.1, 5000);
     camera.position.set(350, 250, 350);
     cameraRef.current = camera;
 
-    const renderer = new WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio ?? 1, 2));
     renderer.setSize(container.clientWidth, height);
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
     // Luces
-    const light = new HemisphereLight(0xffffff, 0x777777, 1.0);
+    const light = new THREE.HemisphereLight(0xffffff, 0x777777, 1.0);
     scene.add(light);
 
     // Controles
@@ -64,7 +55,7 @@ export default function STLViewer({
     controlsRef.current = controls;
 
     // Rejilla
-    const grid = new GridHelper(2000, 40, 0xdddddd, 0xeeeeee);
+    const grid = new THREE.GridHelper(2000, 40, 0xdddddd, 0xeeeeee);
     (grid.material as any).transparent = true;
     (grid.material as any).opacity = 0.6;
     grid.position.y = -0.0001;
@@ -84,7 +75,7 @@ export default function STLViewer({
     let raf = 0;
     const renderLoop = () => {
       raf = requestAnimationFrame(renderLoop);
-      controlsRef.current?.update();
+      controlsRef.current?.update?.();
       if (rendererRef.current && cameraRef.current && sceneRef.current) {
         rendererRef.current.render(sceneRef.current, cameraRef.current);
       }
@@ -95,8 +86,8 @@ export default function STLViewer({
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", onResize);
 
-      controlsRef.current?.dispose();
-      rendererRef.current?.dispose();
+      controlsRef.current?.dispose?.();
+      rendererRef.current?.dispose?.();
 
       scene.traverse((obj: any) => {
         if (obj.isMesh) {
@@ -130,7 +121,7 @@ export default function STLViewer({
     // Limpia mesh anterior
     if (meshRef.current) {
       scene.remove(meshRef.current);
-      meshRef.current.geometry.dispose();
+      meshRef.current.geometry?.dispose?.();
       const mats = Array.isArray(meshRef.current.material)
         ? meshRef.current.material
         : [meshRef.current.material];
@@ -145,24 +136,24 @@ export default function STLViewer({
     loader.load(
       url,
       (geom) => {
-        const mat = new MeshStandardMaterial({
-          color: new Color(modelColor),
+        const mat = new THREE.MeshStandardMaterial({
+          color: new THREE.Color(modelColor),
           roughness: 0.6,
           metalness: 0.0,
         });
-        const mesh = new Mesh(geom, mat);
+        const mesh = new THREE.Mesh(geom, mat);
         mesh.castShadow = false;
         mesh.receiveShadow = false;
 
         geom.computeBoundingBox();
         const bb = geom.boundingBox!;
-        const size = new Vector3();
+        const size = new THREE.Vector3();
         bb.getSize(size);
-        const center = new Vector3();
+        const center = new THREE.Vector3();
         bb.getCenter(center);
 
         // Centrar la pieza
-        const m = new Matrix4().makeTranslation(-center.x, -center.y, -center.z);
+        const m = new THREE.Matrix4().makeTranslation(-center.x, -center.y, -center.z);
         geom.applyMatrix4(m);
         mesh.position.set(0, 0, 0);
 
