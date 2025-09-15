@@ -1,5 +1,5 @@
-// /lib/api.ts
-export type CableTrayPayload = {
+// teknovashop-app/lib/api.ts
+export type CableTrayParams = {
   model: "cable_tray";
   width_mm: number;
   height_mm: number;
@@ -8,20 +8,47 @@ export type CableTrayPayload = {
   ventilated: boolean;
 };
 
-export type GenerateResponse =
-  | { status: "ok"; stl_url: string }
-  | { status: "error"; detail?: string; message?: string };
+export type VesaAdapterParams = {
+  model: "vesa_adapter";
+  vesa_size_mm: 75 | 100 | 200;
+  hole_d_mm: number;
+  plate_thickness_mm: number;
+  tv_screw_d_mm: number;
+  offset_mm: number;
+};
 
-// Usa la var que tienes en Vercel. Fallback a Render por si acaso.
-const baseURL =
-  process.env.NEXT_PUBLIC_BACKEND_URL ||
+export type RouterMountParams = {
+  model: "router_mount";
+  router_w_mm: number;
+  router_d_mm: number;
+  router_h_mm: number;
+  strap_w_mm: number;
+  wall_hole_d_mm: number;
+  fillet_r_mm: number;
+  thickness_mm: number;
+};
+
+export type ForgePayload =
+  | CableTrayParams
+  | VesaAdapterParams
+  | RouterMountParams;
+
+export type GenerateOk = { status: "ok"; stl_url: string };
+export type GenerateError = { status: "error"; detail?: string };
+export type GenerateResponse = GenerateOk | GenerateError;
+
+const API_BASE =
+  process.env.NEXT_PUBLIC_BACKEND_URL ??
   "https://teknovashop-forge.onrender.com";
 
+/**
+ * POST /generate
+ */
 export async function generateSTL(
-  payload: CableTrayPayload
+  payload: ForgePayload
 ): Promise<GenerateResponse> {
   try {
-    const res = await fetch(`${baseURL}/generate`, {
+    const res = await fetch(`${API_BASE}/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -29,10 +56,12 @@ export async function generateSTL(
     });
 
     if (!res.ok) {
-      return { status: "error", detail: `HTTP ${res.status}` };
+      const txt = await res.text().catch(() => "");
+      return { status: "error", detail: `HTTP ${res.status}: ${txt}` };
     }
-    return (await res.json()) as GenerateResponse;
-  } catch (err: any) {
-    return { status: "error", detail: err?.message ?? "network error" };
+    const json = (await res.json()) as GenerateResponse;
+    return json;
+  } catch (e: any) {
+    return { status: "error", detail: e?.message ?? "Network error" };
   }
 }
