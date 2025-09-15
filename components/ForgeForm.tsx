@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import STLViewer from "@/components/STLViewer";
 
-// ⬇️ Tipos ahora vienen de "@/types/forge"; la API sólo exporta la función
+// Tipos desde "@/types/forge"; la API sólo exporta la función
 import { generateSTL } from "@/lib/api";
 import type { GenerateResponse, ModelKind } from "@/types/forge";
 
@@ -42,7 +42,10 @@ function useURLState(model: ModelKind, state: CableTrayState) {
   }, [model, state, router, pathname]);
 }
 
-function readFromQuery(sp: URLSearchParams): {
+// ⬇️ Acepta ReadonlyURLSearchParams (de Next) o URLSearchParams
+function readFromQuery(
+  sp: URLSearchParams | ReadonlyURLSearchParams
+): {
   model: ModelKind;
   state: CableTrayState;
 } {
@@ -50,7 +53,7 @@ function readFromQuery(sp: URLSearchParams): {
   const num = (k: string, d: number) => {
     const v = Number(sp.get(k));
     return Number.isFinite(v) && v > 0 ? v : d;
-  };
+    };
   const bool = (k: string, d: boolean) => {
     const v = sp.get(k);
     if (v === "1" || v === "true") return true;
@@ -254,7 +257,6 @@ export default function ForgeForm() {
 
       {/* Panel derecho (visor) */}
       <div className="bg-white/60 backdrop-blur border border-gray-200 rounded-xl p-3">
-        {/* Skeleton simple mientras no hay URL */}
         {!stlUrl ? (
           <div
             className="rounded-xl border border-gray-200 animate-pulse"
