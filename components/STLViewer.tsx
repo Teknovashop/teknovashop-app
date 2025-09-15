@@ -1,3 +1,4 @@
+// teknovashop-app/components/STLViewer.tsx
 "use client";
 
 import React, { useEffect, useRef } from "react";
@@ -6,10 +7,10 @@ import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 type Props = {
-  url?: string;        // URL firmada del STL
-  height: number;      // alto del canvas
-  background?: string; // color fondo
-  modelColor?: string; // color del mesh
+  url?: string;
+  height: number;
+  background?: string;
+  modelColor?: string;
 };
 
 export default function STLViewer({
@@ -19,15 +20,12 @@ export default function STLViewer({
   modelColor = "#3f444c",
 }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
-
-  // Tipados como "any" para salvar incompatibilidades de tipos en Vercel
   const rendererRef = useRef<any>(null);
   const sceneRef = useRef<any>(null);
   const cameraRef = useRef<any>(null);
   const meshRef = useRef<any>(null);
   const controlsRef = useRef<any>(null);
 
-  // Init una sola vez
   useEffect(() => {
     const container = mountRef.current!;
     const scene = new THREE.Scene();
@@ -44,24 +42,20 @@ export default function STLViewer({
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // Luces
     const light = new THREE.HemisphereLight(0xffffff, 0x777777, 1.0);
     scene.add(light);
 
-    // Controles
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.06;
     controlsRef.current = controls;
 
-    // Rejilla
     const grid = new THREE.GridHelper(2000, 40, 0xdddddd, 0xeeeeee);
     (grid.material as any).transparent = true;
     (grid.material as any).opacity = 0.6;
     grid.position.y = -0.0001;
     scene.add(grid);
 
-    // Resize
     const onResize = () => {
       if (!rendererRef.current || !cameraRef.current || !mountRef.current) return;
       const w = mountRef.current.clientWidth;
@@ -71,7 +65,6 @@ export default function STLViewer({
     };
     window.addEventListener("resize", onResize);
 
-    // Loop
     let raf = 0;
     const renderLoop = () => {
       raf = requestAnimationFrame(renderLoop);
@@ -111,14 +104,12 @@ export default function STLViewer({
     };
   }, [height, background]);
 
-  // Cargar STL al cambiar URL
   useEffect(() => {
     const scene = sceneRef.current;
     const renderer = rendererRef.current;
     const camera = cameraRef.current;
     if (!scene || !renderer || !camera) return;
 
-    // Limpia mesh anterior
     if (meshRef.current) {
       scene.remove(meshRef.current);
       meshRef.current.geometry?.dispose?.();
@@ -152,7 +143,6 @@ export default function STLViewer({
         const center = new THREE.Vector3();
         bb.getCenter(center);
 
-        // Centrar la pieza
         const m = new THREE.Matrix4().makeTranslation(-center.x, -center.y, -center.z);
         geom.applyMatrix4(m);
         mesh.position.set(0, 0, 0);
@@ -160,7 +150,6 @@ export default function STLViewer({
         scene.add(mesh);
         meshRef.current = mesh;
 
-        // Ajustar cámara
         const maxDim = Math.max(size.x, size.y, size.z) || 1;
         const fitDist = maxDim * 2.0;
         camera.position.set(fitDist, fitDist * 0.7, fitDist);
