@@ -2,34 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ===== Ajustes globales ===== */
-html,
-body {
-  background: #fafafa; /* gris claro industrial */
-  color: #111827;      /* gris oscuro para contraste */
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter,
-    "Helvetica Neue", "Noto Sans", "Liberation Sans", Arial,
-    "Apple Color Emoji", "Segoe UI Emoji";
-  @apply antialiased;
-}
-
-/* Mejor scroll (más fino y elegante) */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-::-webkit-scrollbar-track {
-  background: #f3f4f6; /* gris tailwind */
-}
-::-webkit-scrollbar-thumb {
-  background: #9ca3af; /* gris medio */
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #6b7280; /* gris más oscuro */
-}
-
-/* Slider base un poco más limpio */
+/* Slider base limpio */
 .range {
   @apply h-2 w-full cursor-pointer appearance-none rounded bg-gray-200;
 }
@@ -38,4 +11,19 @@ body {
 }
 .range::-moz-range-thumb {
   @apply h-4 w-4 rounded-full border-0 bg-gray-900;
+}
+
+/* Tipografía y tono general */
+html, body {
+  @apply bg-[#f7f9fc] text-gray-900;
+}
+
+/* Cards suaves por defecto */
+.card {
+  @apply bg-white/70 backdrop-blur border border-gray-200 rounded-xl;
+}
+
+/* Botón fantasma */
+.btn-ghost {
+  @apply border border-gray-300 hover:bg-gray-50 rounded-lg px-3 py-2 text-sm;
 }
