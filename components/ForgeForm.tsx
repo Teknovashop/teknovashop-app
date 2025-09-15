@@ -1,13 +1,10 @@
-// /components/ForgeForm.tsx
+// teknovashop-app/components/ForgeForm.tsx
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import STLViewer from "@/components/STLViewer";
-
-// La API exporta la función; los tipos vienen de "@/types/forge"
 import { generateSTL } from "@/lib/api";
 import type { GenerateResponse, ModelKind } from "@/types/forge";
-
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 type CableTrayState = {
@@ -43,8 +40,8 @@ function useURLState(model: ModelKind, state: CableTrayState) {
 }
 
 /**
- * Acepta tanto URLSearchParams como ReadonlyURLSearchParams de Next.js,
- * sin depender del tipo concreto. Sólo necesitamos `get()`.
+ * Acepta tanto URLSearchParams como ReadonlyURLSearchParams (Next.js),
+ * sin depender del tipo concreto. Solo usamos `get()`.
  */
 function readFromQuery(
   sp: { get(name: string): string | null }
@@ -107,7 +104,8 @@ export default function ForgeForm() {
     });
     setResp(res);
     if (res.status === "ok") {
-      setStlUrl(res.stl_url);
+      // Fallback defensivo para contentar al checker de tipos de Vercel
+      setStlUrl(res.stl_url ?? null);
       setToast("STL listo ✅");
     } else {
       setToast(res.detail || res.message || "Error generando STL");
@@ -216,7 +214,7 @@ export default function ForgeForm() {
                 {busy ? "Generando…" : "Generar STL"}
               </button>
 
-              <a
+            <a
                 href={stlUrl ?? "#"}
                 target="_blank"
                 className={`px-3 py-2 rounded-lg border text-sm ${
@@ -243,8 +241,8 @@ export default function ForgeForm() {
         ) : (
           <div className="bg-white/70 backdrop-blur border border-gray-200 rounded-xl p-4">
             <p className="text-sm text-gray-700">
-              Este modelo estará disponible muy pronto. Déjame el formulario
-              cable tray listo y, en cuanto el backend esté, activamos el botón.
+              Este modelo estará disponible muy pronto. Deja listo el de cable tray y,
+              en cuanto el backend esté, activamos el botón.
             </p>
             <div className="mt-3">
               <button
