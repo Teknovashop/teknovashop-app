@@ -1,4 +1,3 @@
-// components/STLViewer.tsx
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
@@ -6,28 +5,25 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 
-// 👉 Importamos TIPOS por nombre (sin usar THREE. en los genéricos)
-import type {
-  WebGLRenderer,
-  PerspectiveCamera,
-  Scene,
-  Mesh,
-} from "three";
+// Tipos para TS
+import type { WebGLRenderer, PerspectiveCamera, Scene, Mesh } from "three";
 
 type Props = {
   url?: string | null;
   height?: number;
   background?: string;
+  /** Color del modelo (hex o css). Si no viene, por defecto #44484c */
+  modelColor?: string;
 };
 
 export default function STLViewer({
   url,
   height = 520,
   background = "#ffffff",
+  modelColor = "#44484c",
 }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
 
-  // refs tipadas SIN THREE.
   const rendererRef = useRef<WebGLRenderer | null>(null);
   const cameraRef = useRef<PerspectiveCamera | null>(null);
   const sceneRef = useRef<Scene | null>(null);
@@ -63,13 +59,12 @@ export default function STLViewer({
     controls.enableDamping = true;
     controlsRef.current = controls;
 
-    // Luces suaves
+    // Luces y grid
     scene.add(new THREE.AmbientLight(0xffffff, 0.7));
     const dir = new THREE.DirectionalLight(0xffffff, 0.75);
     dir.position.set(60, 120, 80);
     scene.add(dir);
 
-    // Grid y eje sutil
     const grid = new THREE.GridHelper(1200, 60, 0xcccccc, 0xeeeeee);
     (grid.material as THREE.Material).transparent = true;
     (grid.material as THREE.Material).opacity = 0.65;
@@ -103,7 +98,6 @@ export default function STLViewer({
       controlsRef.current?.dispose();
       rendererRef.current?.dispose();
 
-      // limpia geometrías/materiales para evitar memory leaks
       scene.traverse((obj) => {
         const anyObj = obj as any;
         if (anyObj.isMesh) {
@@ -125,12 +119,11 @@ export default function STLViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [height, background]);
 
-  // Carga del STL
+  // Carga/recarga del STL cuando cambia la URL
   useEffect(() => {
     const scene = sceneRef.current;
     if (!scene) return;
 
-    // quita malla previa
     if (meshRef.current) {
       scene.remove(meshRef.current);
       meshRef.current.geometry?.dispose?.();
@@ -145,8 +138,6 @@ export default function STLViewer({
 
     setLoading(true);
     const loader = new STLLoader();
-
-    // Forzar CORS anónimo (el token firmado de Supabase lo permite)
     if ((loader as any).manager?.setCrossOrigin) {
       (loader as any).manager.setCrossOrigin("anonymous");
     }
@@ -155,7 +146,7 @@ export default function STLViewer({
       url,
       (geometry) => {
         const material = new THREE.MeshStandardMaterial({
-          color: 0x44484c,
+          color: new THREE.Color(modelColor),
           roughness: 0.45,
           metalness: 0.05,
         });
@@ -164,7 +155,7 @@ export default function STLViewer({
         geometry.computeVertexNormals();
         geometry.computeBoundingBox();
 
-        // Centrado y auto-escalado suave
+        // Centrado/escala
         const bb = geometry.boundingBox!;
         const size = new THREE.Vector3();
         bb.getSize(size);
@@ -172,7 +163,6 @@ export default function STLViewer({
         bb.getCenter(center);
         mesh.position.sub(center);
 
-        // Ajusta escala si es muy grande
         const maxDim = Math.max(size.x, size.y, size.z);
         if (maxDim > 600) {
           const s = 600 / maxDim;
@@ -185,7 +175,6 @@ export default function STLViewer({
         scene.add(mesh);
         meshRef.current = mesh;
 
-        // Reencuadre de cámara
         fitCameraToObject();
         setLoading(false);
       },
@@ -208,7 +197,7 @@ export default function STLViewer({
       const maxDim = Math.max(size.x, size.y, size.z);
       const fov = (cam.fov * Math.PI) / 180;
       let cameraZ = Math.abs((maxDim / 2) / Math.tan(fov / 2));
-      cameraZ *= 1.6; // margen
+      cameraZ *= 1.6;
 
       cam.position.set(center.x + cameraZ, center.y + cameraZ * 0.35, center.z + cameraZ);
       cam.lookAt(center);
@@ -217,7 +206,7 @@ export default function STLViewer({
       controlsRef.current?.target.copy(center);
       controlsRef.current?.update();
     }
-  }, [url]);
+  }, [url, modelColor]);
 
   return (
     <div>
