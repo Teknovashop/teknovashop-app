@@ -1,36 +1,64 @@
-// app/api/checkout/create-session/route.ts
-import { NextResponse } from "next/server";
+// teknovashop-app/app/api/checkout/create-session/route.ts
 import Stripe from "stripe";
+import { NextResponse } from "next/server";
 
-export const runtime = "nodejs";
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2023-10-16" });
+export const runtime = "nodejs";          // ⚠️ importante: Node runtime
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: "2024-06-20",
+});
+
+type Body = {
+  email: string;
+  price: "oneoff" | "maker" | "commercial";
+  model_kind?: string;
+  params?: unknown;
+  object_key?: string | null;
+};
 
 export async function POST(req: Request) {
-  const { email, model_kind, params, price = "oneoff", object_key } = await req.json();
+  try {
+    const { email, price, model_kind, params, object_key }: Body = await req.json();
 
-  const priceMap: Record<string, string> = {
-    oneoff: process.env.STRIPE_PRICE_ONEOFF!,
-    maker: process.env.STRIPE_PRICE_MAKER!,
-    commercial: process.env.STRIPE_PRICE_COMMERCIAL!,
-  };
-  const priceId = priceMap[price];
-  if (!priceId) return NextResponse.json({ error: "Precio no configurado" }, { status: 400 });
+    if (!email) {
+      return NextResponse.json({ error: "EMAIL_REQUIRED" }, { status: 400 });
+    }
 
-  const success = new URL("/forge/success", req.url);
-  const cancel  = new URL("/forge", req.url);
+    const priceId =
+      price === "oneoff"
+        ? process.env.STRIPE_PRICE_ONEOFF
+        : price === "maker"
+        ? process.env.STRIPE_PRICE_MAKER
+        : process.env.STRIPE_PRICE_COMMERCIAL;
 
-  const session = await stripe.checkout.sessions.create({
-    mode: price === "oneoff" ? "payment" : "subscription",
-    customer_email: email,
-    line_items: [{ price: priceId, quantity: 1 }],
-    automatic_tax: { enabled: true },
-    allow_promotion_codes: true,
-    success_url: success.toString() + "?session_id={CHECKOUT_SESSION_ID}",
-    cancel_url: cancel.toString(),
-    metadata: {
-      model_kind, object_key: object_key || "", params: JSON.stringify(params || {}),
-    },
-  });
+    if (!priceId) {
+      return NextResponse.json({ error: "PRICE_NOT_CONFIGURED" }, { status: 400 });
+    }
 
-  return NextResponse.json({ id: session.id, url: session.url });
+    const site = process.env.NEXT_PUBLIC_SITE_URL || "https://teknovashop-app.vercel.app";
+
+    const session = await stripe.checkout.sessions.create({
+      mode: price === "oneoff" ? "payment" : "subscription",
+      payment_method_types: ["card"],
+      customer_email: email,
+      line_items: [{ price: priceId, quantity: 1 }],
+      automatic_tax: { enabled: true },
+      allow_promotion_codes: true,
+      success_url: `${site}/forge?status=success`,
+      cancel_url: `${site}/forge?status=cancel`,
+      metadata: {
+        model_kind: String(model_kind ?? ""),
+        params: JSON.stringify(params ?? {}),
+        object_key: object_key ?? "",
+      },
+    });
+
+    return NextResponse.json({ url: session.url }, { status: 200 });
+  } catch (err: any) {
+    console.error("checkout:create-session error", err);
+    return NextResponse.json(
+      { error: err?.message ?? "INTERNAL_ERROR" },
+      { status: 500 }
+    );
+  }
 }
