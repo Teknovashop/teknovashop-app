@@ -1,13 +1,13 @@
 // teknovashop-app/components/STLViewer.tsx
 "use client";
 
-import React, { useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
-/** Qué quiere renderizar el visor */
 type Mode = "auto" | "preview" | "stl";
+type Quality = "high" | "low";
 
 type Preview =
   | {
@@ -25,20 +25,23 @@ type Preview =
       params: { vesa_mm: number; thickness_mm: number; clearance_mm: number };
     }
   | {
-    kind: "router_mount";
-    params: { router_width_mm: number; router_depth_mm: number; thickness_mm: number };
-  };
+      kind: "router_mount";
+      params: {
+        router_width_mm: number;
+        router_depth_mm: number;
+        thickness_mm: number;
+      };
+    };
 
 type Props = {
-  /** URL firmada del STL (si mode === 'stl' o 'auto' y hay URL, se usa) */
   url?: string;
-  /** Preview paramétrico para distinguir los modelos cuando no hay STL o si forzamos 'preview' */
   preview?: Preview;
-  /** Modo de visualización: 'auto' (STL si hay, si no preview), 'preview' (ignora STL), 'stl' (fuerza STL) */
   mode?: Mode;
   height: number;
   background?: string;
   modelColor?: string;
+  quality?: Quality;
+  watermark?: string;
 };
 
 export default function STLViewer({
@@ -48,40 +51,165 @@ export default function STLViewer({
   height,
   background = "#ffffff",
   modelColor = "#3f444c",
+  quality = "high",
+  watermark,
 }: Props) {
+  const wrapRef = useRef<HTMLDivElement | null>(null);
   const mountRef = useRef<HTMLDivElement | null>(null);
-  const rendererRef = useRef<any>(null);
-  const sceneRef = useRef<any>(null);
-  const cameraRef = useRef<any>(null);
-  const objectRef = useRef<any>(null); // mesh o grupo actual
-  const controlsRef = useRef<any>(null);
+
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const controlsRef = useRef<OrbitControls | null>(null);
+
+  const objectRef = useRef<THREE.Object3D | null>(null);
+  const gridRef = useRef<THREE.GridHelper | null>(null);
+  const groundRef = useRef<THREE.Mesh | null>(null);
+  const axesRef = useRef<THREE.AxesHelper | null>(null);
+
+  const [wireframe, setWireframe] = useState(false);
+  const [gridVisible, setGridVisible] = useState(true);
+  const [theme, setTheme] = useState<"light" | "dark">(
+    background === "#111827" ? "dark" : "light"
+  );
+
+  // ---------- helpers ----------
+  const traverseMaterials = (obj: THREE.Object3D, fn: (m: THREE.Material) => void) => {
+    obj.traverse((o: any) => {
+      if (o.isMesh) {
+        const arr = Array.isArray(o.material) ? o.material : [o.material];
+        arr.forEach((m) => m && fn(m));
+      }
+    });
+  };
+
+  const fitCamera = useCallback((obj: THREE.Object3D) => {
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls || !obj) return;
+
+    const box = new THREE.Box3().setFromObject(obj);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+
+    // centra el objeto en el origen
+    obj.position.sub(center);
+
+    const maxDim = Math.max(size.x, size.y, size.z) || 1;
+    const dist = maxDim * 2.2;
+
+    camera.position.set(dist, dist * 0.7, dist);
+    camera.near = 0.1;
+    camera.far = dist * 10;
+    camera.lookAt(0, 0, 0);
+    camera.updateProjectionMatrix();
+
+    controls.target.set(0, 0, 0);
+    controls.update();
+
+    // ajusta el tamaño del plano de sombra bajo el modelo
+    const ground = groundRef.current;
+    if (ground) {
+      ground.scale.setScalar(Math.max(1200, maxDim * 4));
+    }
+  }, []);
+
+  const addObject = useCallback((obj: THREE.Object3D) => {
+    const scene = sceneRef.current!;
+    if (objectRef.current) {
+      scene.remove(objectRef.current);
+      // limpia materiales/geo previos
+      objectRef.current.traverse((o: any) => {
+        if (o.isMesh) {
+          o.geometry?.dispose?.();
+          const mats = Array.isArray(o.material) ? o.material : [o.material];
+          mats.forEach((m: any) => m?.dispose?.());
+        }
+      });
+    }
+    // sombras
+    obj.traverse((o: any) => {
+      if (o.isMesh) {
+        o.castShadow = true;
+        o.receiveShadow = true;
+      }
+    });
+
+    scene.add(obj);
+    objectRef.current = obj;
+    fitCamera(obj);
+  }, [fitCamera]);
+
+  const setWire = useCallback((on: boolean) => {
+    setWireframe(on);
+    if (!objectRef.current) return;
+    traverseMaterials(objectRef.current, (m) => {
+      (m as any).wireframe = on;
+      m.needsUpdate = true;
+    });
+  }, []);
+
+  const presetView = useCallback((kind: "iso" | "top" | "front" | "right") => {
+    const camera = cameraRef.current!;
+    const controls = controlsRef.current!;
+    const obj = objectRef.current;
+    const size = obj
+      ? new THREE.Box3().setFromObject(obj).getSize(new THREE.Vector3())
+      : new THREE.Vector3(200, 200, 200);
+    const maxDim = Math.max(size.x, size.y, size.z) || 200;
+    const d = maxDim * 2.0;
+
+    if (kind === "iso") camera.position.set(d, d * 0.7, d);
+    if (kind === "top") camera.position.set(0, d, 0);
+    if (kind === "front") camera.position.set(0, d * 0.3, d);
+    if (kind === "right") camera.position.set(d, d * 0.3, 0);
+
+    camera.lookAt(0, 0, 0);
+    controls.target.set(0, 0, 0);
+    controls.update();
+  }, []);
+
+  const resetView = useCallback(() => {
+    controlsRef.current?.reset();
+    presetView("iso");
+  }, [presetView]);
 
   // ---------- init ----------
   useEffect(() => {
     const container = mountRef.current!;
+    const wrap = wrapRef.current!;
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(background);
+    scene.background = new THREE.Color(theme === "dark" ? "#111827" : background);
+    scene.fog = new THREE.Fog(scene.background.getHex(), 1200, 4000);
     sceneRef.current = scene;
 
-    const camera = new THREE.PerspectiveCamera(
-      45,
-      container.clientWidth / height,
-      0.1,
-      10000
-    );
+    const aspect = container.clientWidth / height;
+    const camera = new THREE.PerspectiveCamera(45, aspect, 0.1, 10000);
     camera.position.set(420, 320, 420);
     cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio ?? 1, 2));
+    renderer.shadowMap.enabled = quality === "high";
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.setPixelRatio(
+      quality === "high" ? Math.min(window.devicePixelRatio ?? 1, 2) : 1
+    );
     renderer.setSize(container.clientWidth, height);
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
     // Luces
-    const hemi = new THREE.HemisphereLight(0xffffff, 0x9aa3af, 1.0);
-    const dir = new THREE.DirectionalLight(0xffffff, 0.7);
-    dir.position.set(300, 500, 400);
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x9aa3af, 0.8);
+    const dir = new THREE.DirectionalLight(0xffffff, quality === "high" ? 0.9 : 0.6);
+    dir.position.set(600, 900, 600);
+    dir.castShadow = quality === "high";
+    dir.shadow.mapSize.set(2048, 2048);
+    dir.shadow.camera.near = 1;
+    dir.shadow.camera.far = 5000;
+    dir.shadow.camera.left = -1500;
+    dir.shadow.camera.right = 1500;
+    dir.shadow.camera.top = 1500;
+    dir.shadow.camera.bottom = -1500;
     scene.add(hemi, dir);
 
     // Controles
@@ -90,13 +218,32 @@ export default function STLViewer({
     controls.dampingFactor = 0.06;
     controlsRef.current = controls;
 
-    // Grid suave
+    // Grid
     const grid = new THREE.GridHelper(3000, 60, 0xe5e7eb, 0xeff2f6);
     (grid.material as any).transparent = true;
-    (grid.material as any).opacity = 0.9;
+    (grid.material as any).opacity = theme === "dark" ? 0.3 : 0.9;
     grid.position.y = -0.01;
+    grid.visible = gridVisible;
     scene.add(grid);
+    gridRef.current = grid;
 
+    // Plano receptor de sombra
+    const shadowMat = new THREE.ShadowMaterial();
+    shadowMat.opacity = theme === "dark" ? 0.25 : 0.35;
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), shadowMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -0.02;
+    ground.receiveShadow = quality === "high";
+    scene.add(ground);
+    groundRef.current = ground;
+
+    // Ejes
+    const axes = new THREE.AxesHelper(120);
+    axes.position.set(-450, 0, -450);
+    axesRef.current = axes;
+    scene.add(axes);
+
+    // Resize
     const onResize = () => {
       if (!rendererRef.current || !cameraRef.current || !mountRef.current) return;
       const w = mountRef.current.clientWidth;
@@ -109,18 +256,19 @@ export default function STLViewer({
     let raf = 0;
     const loop = () => {
       raf = requestAnimationFrame(loop);
-      controlsRef.current?.update?.();
-      if (rendererRef.current && cameraRef.current && sceneRef.current) {
-        rendererRef.current.render(sceneRef.current, cameraRef.current);
-      }
+      controlsRef.current?.update();
+      rendererRef.current?.render(sceneRef.current!, cameraRef.current!);
     };
     loop();
+
+    // Primera vista agradable
+    presetView("iso");
 
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", onResize);
-      controlsRef.current?.dispose?.();
-      rendererRef.current?.dispose?.();
+      controlsRef.current?.dispose();
+      rendererRef.current?.dispose();
       scene.traverse((o: any) => {
         if (o.isMesh) {
           o.geometry?.dispose?.();
@@ -128,71 +276,33 @@ export default function STLViewer({
           mats.forEach((m: any) => m?.dispose?.());
         }
       });
-      try {
-        if (renderer.domElement.parentNode)
-          renderer.domElement.parentNode.removeChild(renderer.domElement);
-      } catch {}
+      const el = renderer.domElement;
+      el?.parentNode?.removeChild(el);
+
       controlsRef.current = null;
       objectRef.current = null;
       rendererRef.current = null;
       cameraRef.current = null;
       sceneRef.current = null;
     };
-  }, [height, background]);
+  }, [height, background, theme, quality, gridVisible, presetView]);
 
-  // ---------- helpers ----------
-  function addObject(obj: any) {
-    const scene = sceneRef.current;
-    if (!scene) return;
-    if (objectRef.current) {
-      scene.remove(objectRef.current);
-      objectRef.current.traverse?.((o: any) => {
-        if (o.isMesh) {
-          o.geometry?.dispose?.();
-          const mats = Array.isArray(o.material) ? o.material : [o.material];
-          mats.forEach((m: any) => m?.dispose?.());
-        }
-      });
-      objectRef.current = null;
-    }
-    scene.add(obj);
-    objectRef.current = obj;
-    fitCamera(obj);
-  }
-
-  function fitCamera(obj: any) {
-    const camera = cameraRef.current;
-    if (!camera || !obj) return;
-    const box = new THREE.Box3().setFromObject(obj);
-    const size = box.getSize(new THREE.Vector3());
-    const center = box.getCenter(new THREE.Vector3());
-    obj.position.sub(center); // céntralo
-
-    const maxDim = Math.max(size.x, size.y, size.z) || 1;
-    const dist = maxDim * 2.2;
-    camera.position.set(dist, dist * 0.7, dist);
-    camera.near = 0.1;
-    camera.far = dist * 10;
-    camera.lookAt(0, 0, 0);
-    camera.updateProjectionMatrix();
-  }
-
-  // ---------- PREVIEW paramétrico ----------
+  // ---------- PREVIEW ----------
   useEffect(() => {
-    const shouldShowPreview = mode === "preview" || (mode === "auto" && !url);
-    if (!shouldShowPreview || !preview) return;
+    const showPreview = mode === "preview" || (mode === "auto" && !url);
+    if (!showPreview || !preview || !sceneRef.current) return;
 
     const col = new THREE.Color(modelColor);
     const group = new THREE.Group();
+    const mat = new THREE.MeshStandardMaterial({
+      color: col,
+      metalness: 0.05,
+      roughness: 0.6,
+    });
 
     if (preview.kind === "cable_tray") {
       const { width_mm: W, height_mm: H, length_mm: L, thickness_mm: T, ventilated } =
         preview.params;
-      const mat = new THREE.MeshStandardMaterial({
-        color: col,
-        metalness: 0,
-        roughness: 0.6,
-      });
 
       const base = new THREE.Mesh(new THREE.BoxGeometry(L, T, W), mat);
       base.position.set(0, -H / 2 + T / 2, 0);
@@ -206,7 +316,6 @@ export default function STLViewer({
       group.add(base, side1, side2);
 
       if (ventilated) {
-        // listones decorativos (sin booleanos) coherentes con backend
         const n = Math.max(3, Math.floor(L / 40));
         const gap = L / (n + 1);
         const ribW = Math.max(2, Math.min(6, W * 0.08));
@@ -224,11 +333,6 @@ export default function STLViewer({
     if (preview.kind === "vesa_adapter") {
       const { vesa_mm: V, thickness_mm: T, clearance_mm: C } = preview.params;
       const size = V + 2 * C + 20;
-      const mat = new THREE.MeshStandardMaterial({
-        color: col,
-        metalness: 0,
-        roughness: 0.6,
-      });
       const plate = new THREE.Mesh(new THREE.BoxGeometry(size, T, size), mat);
       group.add(plate);
 
@@ -256,11 +360,6 @@ export default function STLViewer({
     if (preview.kind === "router_mount") {
       const { router_width_mm: W, router_depth_mm: D, thickness_mm: T } =
         preview.params;
-      const mat = new THREE.MeshStandardMaterial({
-        color: col,
-        metalness: 0,
-        roughness: 0.6,
-      });
 
       const base = new THREE.Mesh(new THREE.BoxGeometry(W, T, D), mat);
       base.position.set(0, -D * 0.3, 0);
@@ -272,42 +371,149 @@ export default function STLViewer({
     }
 
     addObject(group);
-  }, [preview, mode, url, modelColor]);
+    setWire(wireframe);
+  }, [preview, mode, url, modelColor, addObject, setWire, wireframe]);
 
   // ---------- STL ----------
   useEffect(() => {
-    const shouldShowStl = mode === "stl" || (mode === "auto" && !!url);
-    if (!shouldShowStl || !url) return;
+    const showStl = mode === "stl" || (mode === "auto" && !!url);
+    if (!showStl || !url) return;
 
     const loader = new STLLoader();
     const col = new THREE.Color(modelColor);
     loader.load(
       url,
       (geom) => {
+        // corrige normales si viniesen mal
+        geom.computeVertexNormals();
         const mat = new THREE.MeshStandardMaterial({
           color: col,
-          metalness: 0,
+          metalness: 0.05,
           roughness: 0.6,
         });
         const mesh = new THREE.Mesh(geom, mat);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+
+        // centra
         geom.computeBoundingBox();
         const bb = geom.boundingBox!;
         const center = bb.getCenter(new THREE.Vector3());
         geom.applyMatrix4(
           new THREE.Matrix4().makeTranslation(-center.x, -center.y, -center.z)
         );
+
         addObject(mesh);
+        setWire(wireframe);
       },
       undefined,
       (err) => console.error("STL load error", err)
     );
-  }, [url, mode, modelColor]);
+  }, [url, mode, modelColor, addObject, setWire, wireframe]);
+
+  // ---------- toolbar actions ----------
+  const toggleTheme = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    if (sceneRef.current) {
+      const col = next === "dark" ? "#111827" : background;
+      sceneRef.current.background = new THREE.Color(col);
+      sceneRef.current.fog = new THREE.Fog(new THREE.Color(col), 1200, 4000);
+    }
+    if (gridRef.current) {
+      (gridRef.current.material as any).opacity = next === "dark" ? 0.3 : 0.9;
+    }
+    if (groundRef.current) {
+      (groundRef.current.material as THREE.ShadowMaterial).opacity =
+        next === "dark" ? 0.25 : 0.35;
+    }
+  };
 
   return (
-    <div
-      ref={mountRef}
-      style={{ height }}
-      className="w-full overflow-hidden rounded-xl"
-    />
+    <div ref={wrapRef} className="relative w-full overflow-hidden rounded-xl" style={{ height }}>
+      <div ref={mountRef} className="h-full w-full" />
+
+      {/* Toolbar */}
+      <div className="pointer-events-auto absolute left-2 top-2 flex gap-1">
+        <button
+          onClick={() => presetView("iso")}
+          className="rounded-md border bg-white/80 px-2 py-1 text-xs shadow hover:bg-white"
+          title="Vista isométrica"
+        >
+          Iso
+        </button>
+        <button
+          onClick={() => presetView("top")}
+          className="rounded-md border bg-white/80 px-2 py-1 text-xs shadow hover:bg-white"
+          title="Vista superior"
+        >
+          Top
+        </button>
+        <button
+          onClick={() => presetView("front")}
+          className="rounded-md border bg-white/80 px-2 py-1 text-xs shadow hover:bg-white"
+          title="Vista frontal"
+        >
+          Front
+        </button>
+        <button
+          onClick={() => presetView("right")}
+          className="rounded-md border bg-white/80 px-2 py-1 text-xs shadow hover:bg-white"
+          title="Vista derecha"
+        >
+          Right
+        </button>
+        <button
+          onClick={resetView}
+          className="rounded-md border bg-white/80 px-2 py-1 text-xs shadow hover:bg-white"
+          title="Reset"
+        >
+          Reset
+        </button>
+      </div>
+
+      <div className="pointer-events-auto absolute right-2 top-2 flex gap-1">
+        <button
+          onClick={() => setWire(!wireframe)}
+          className="rounded-md border bg-white/80 px-2 py-1 text-xs shadow hover:bg-white"
+          title="Wireframe"
+        >
+          {wireframe ? "Wire: ON" : "Wire: OFF"}
+        </button>
+        <button
+          onClick={() => {
+            setGridVisible((v) => {
+              if (gridRef.current) gridRef.current.visible = !v;
+              return !v;
+            });
+          }}
+          className="rounded-md border bg-white/80 px-2 py-1 text-xs shadow hover:bg-white"
+          title="Mostrar/Ocultar rejilla"
+        >
+          Grid
+        </button>
+        <button
+          onClick={toggleTheme}
+          className="rounded-md border bg-white/80 px-2 py-1 text-xs shadow hover:bg-white"
+          title="Tema claro/oscuro"
+        >
+          {theme === "dark" ? "Dark" : "Light"}
+        </button>
+        <button
+          onClick={() => objectRef.current && fitCamera(objectRef.current)}
+          className="rounded-md border bg-white/80 px-2 py-1 text-xs shadow hover:bg-white"
+          title="Ajustar a pantalla"
+        >
+          Fit
+        </button>
+      </div>
+
+      {/* Watermark */}
+      {watermark && (
+        <div className="pointer-events-none absolute bottom-2 right-2 select-none rounded bg-white/70 px-2 py-0.5 text-[11px] text-gray-700 shadow">
+          {watermark}
+        </div>
+      )}
+    </div>
   );
 }
