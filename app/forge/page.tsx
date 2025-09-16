@@ -48,8 +48,10 @@ export default function ForgePage() {
   const [jsonOpen, setJsonOpen] = useState(false);
   const [result, setResult] = useState<GenerateResponse | null>(null);
 
-  // Modo del visor: por defecto PREVIEW (para no “volver al triángulo”)
+  // Visor
   const [viewMode, setViewMode] = useState<"preview" | "stl">("preview");
+  const [modelColor, setModelColor] = useState<string>("#3f444c");
+  const [quality, setQuality] = useState<"high" | "low">("high");
 
   // Compra
   const [email, setEmail] = useState<string>("");
@@ -161,7 +163,6 @@ export default function ForgePage() {
       const res = await generateSTL(payload);
       setResult(res);
       setJsonOpen(true);
-      // mantenemos PREVIEW por defecto; el usuario elige ver el STL si quiere
     } catch (e: any) {
       alert(`Error inesperado: ${e?.message || e}`);
     } finally {
@@ -464,16 +465,44 @@ export default function ForgePage() {
                   </select>
                 </div>
               </div>
-              <button
-                onClick={handleCheckout}
-                className="w-full rounded-xl border px-4 py-2 text-sm hover:bg-gray-50"
-              >
-                Comprar con Stripe
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleCheckout}
+                  className="flex-1 rounded-xl border px-4 py-2 text-sm hover:bg-gray-50"
+                >
+                  Comprar con Stripe
+                </button>
+                <div className="hidden text-xs text-gray-500 sm:block">
+                  IVA automático con Stripe Tax
+                </div>
+              </div>
             </div>
 
             {/* acciones */}
             <div className="mt-5 flex flex-col gap-3">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="flex items-center gap-2 rounded-xl border p-2">
+                  <Label>Color</Label>
+                  <input
+                    type="color"
+                    value={modelColor}
+                    onChange={(e) => setModelColor(e.target.value)}
+                    className="h-7 w-10 cursor-pointer rounded border"
+                  />
+                </div>
+                <div className="flex items-center justify-between rounded-xl border p-2">
+                  <Label>Calidad</Label>
+                  <select
+                    value={quality}
+                    onChange={(e) => setQuality(e.target.value as "high" | "low")}
+                    className="rounded-lg border px-2 py-1 text-sm"
+                  >
+                    <option value="high">Alta (sombras)</option>
+                    <option value="low">Rápida</option>
+                  </select>
+                </div>
+              </div>
+
               <button
                 onClick={handleGenerate}
                 disabled={busy}
@@ -520,7 +549,7 @@ export default function ForgePage() {
             </div>
           </section>
 
-          {/* Visor + conmutador de vista */}
+          {/* Visor */}
           <section className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm lg:sticky lg:top-20">
             <div className="mb-3 flex gap-2">
               <button
@@ -550,10 +579,12 @@ export default function ForgePage() {
               <STLViewer
                 url={stlUrl}
                 preview={preview as any}
-                mode={viewMode} // <- por defecto se queda en PREVIEW
+                mode={viewMode}
                 height={560}
                 background="#ffffff"
-                modelColor="#3f444c"
+                modelColor={modelColor}
+                quality={quality}
+                watermark="Teknovashop FORGE · ©"
               />
             </div>
             <p className="px-2 py-2 text-xs text-gray-500">
