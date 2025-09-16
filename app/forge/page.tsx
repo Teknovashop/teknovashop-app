@@ -19,6 +19,8 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
+type Plan = "oneoff" | "maker" | "commercial";
+
 export default function ForgePage() {
   // ------------ modelo activo ------------
   const [model, setModel] = useState<ModelKind>("cable_tray");
@@ -49,31 +51,78 @@ export default function ForgePage() {
   // Modo del visor: por defecto PREVIEW (para no “volver al triángulo”)
   const [viewMode, setViewMode] = useState<"preview" | "stl">("preview");
 
-  const stlUrl = useMemo(() => (result?.status === "ok" ? (result as any).stl_url : undefined), [result]);
+  // Compra
+  const [email, setEmail] = useState<string>("");
+  const [plan, setPlan] = useState<Plan>("oneoff");
+
+  const stlUrl = useMemo(
+    () => (result?.status === "ok" ? (result as any).stl_url : undefined),
+    [result]
+  );
 
   const preview = useMemo(() => {
     if (model === "cable_tray") {
       return {
         kind: "cable_tray",
-        params: { width_mm: width, height_mm: height, length_mm: length, thickness_mm: thickness, ventilated },
+        params: {
+          width_mm: width,
+          height_mm: height,
+          length_mm: length,
+          thickness_mm: thickness,
+          ventilated,
+        },
       } as const;
     }
     if (model === "vesa_adapter") {
       return {
         kind: "vesa_adapter",
-        params: { vesa_mm: vesa, thickness_mm: vesaThk, clearance_mm: vesaClear },
+        params: {
+          vesa_mm: vesa,
+          thickness_mm: vesaThk,
+          clearance_mm: vesaClear,
+        },
       } as const;
     }
     return {
       kind: "router_mount",
-      params: { router_width_mm: rWidth, router_depth_mm: rDepth, thickness_mm: rThk },
+      params: {
+        router_width_mm: rWidth,
+        router_depth_mm: rDepth,
+        thickness_mm: rThk,
+      },
     } as const;
-  }, [model, width, height, length, thickness, ventilated, vesa, vesaThk, vesaClear, rWidth, rDepth, rThk]);
+  }, [
+    model,
+    width,
+    height,
+    length,
+    thickness,
+    ventilated,
+    vesa,
+    vesaThk,
+    vesaClear,
+    rWidth,
+    rDepth,
+    rThk,
+  ]);
 
   const applyPreset = (k: "S" | "M" | "L") => {
-    if (k === "S") { setWidth(40); setHeight(20); setLength(120); setThickness(2); }
-    else if (k === "M") { setWidth(60); setHeight(25); setLength(180); setThickness(3); }
-    else { setWidth(80); setHeight(35); setLength(240); setThickness(4); }
+    if (k === "S") {
+      setWidth(40);
+      setHeight(20);
+      setLength(120);
+      setThickness(2);
+    } else if (k === "M") {
+      setWidth(60);
+      setHeight(25);
+      setLength(180);
+      setThickness(3);
+    } else {
+      setWidth(80);
+      setHeight(35);
+      setLength(240);
+      setThickness(4);
+    }
   };
 
   const handleGenerate = async () => {
@@ -120,14 +169,50 @@ export default function ForgePage() {
     }
   };
 
+  async function handleCheckout() {
+    if (!email || !/\S+@\S+\.\S+/.test(email)) {
+      alert("Introduce un email válido para la licencia/recibo.");
+      return;
+    }
+    try {
+      const res = await fetch("/api/checkout/create-session", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email,
+          price: plan, // "oneoff" | "maker" | "commercial"
+          model_kind: model,
+          params: preview?.params || {},
+          object_key: null,
+        }),
+      }).then((r) => r.json());
+      if (res?.url) window.location.href = res.url;
+      else alert(res?.error || "No se pudo crear la sesión de pago");
+    } catch (e: any) {
+      alert(e?.message || "Error creando la sesión de pago");
+    }
+  }
+
   const copyLink = async () => {
     if (!stlUrl) return;
-    try { await navigator.clipboard.writeText(stlUrl); alert("Enlace copiado ✅"); }
-    catch { alert("No se pudo copiar el enlace"); }
+    try {
+      await navigator.clipboard.writeText(stlUrl);
+      alert("Enlace copiado ✅");
+    } catch {
+      alert("No se pudo copiar el enlace");
+    }
   };
 
-  const Label = (p: { children: React.ReactNode }) => <label className="block text-sm text-gray-700">{p.children}</label>;
-  const Number = (p: { value: number; onChange: (n: number) => void; min?: number; max?: number; step?: number }) => (
+  const Label = (p: { children: React.ReactNode }) => (
+    <label className="block text-sm text-gray-700">{p.children}</label>
+  );
+  const Number = (p: {
+    value: number;
+    onChange: (n: number) => void;
+    min?: number;
+    max?: number;
+    step?: number;
+  }) => (
     <input
       type="number"
       value={p.value}
@@ -144,9 +229,13 @@ export default function ForgePage() {
       {/* header */}
       <header className="sticky top-0 z-10 border-b border-gray-200 bg-white/80 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
-          <div className="text-lg font-semibold tracking-tight">Teknovashop Forge</div>
+          <div className="text-lg font-semibold tracking-tight">
+            Teknovashop Forge
+          </div>
           <nav className="flex items-center gap-3">
-            <a href="/" className="text-sm text-gray-600 hover:text-gray-900">Inicio</a>
+            <a href="/" className="text-sm text-gray-600 hover:text-gray-900">
+              Inicio
+            </a>
             <a
               href="https://github.com/Teknovashop/teknovashop-app"
               target="_blank"
@@ -174,7 +263,9 @@ export default function ForgePage() {
                   key={t.id}
                   onClick={() => setModel(t.id as ModelKind)}
                   className={`rounded-xl px-3 py-1.5 text-sm font-medium transition ${
-                    model === t.id ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    model === t.id
+                      ? "bg-gray-900 text-white"
+                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                   }`}
                 >
                   {t.label}
@@ -187,7 +278,11 @@ export default function ForgePage() {
               <>
                 <div className="flex gap-2">
                   {["S", "M", "L"].map((k) => (
-                    <button key={k} onClick={() => applyPreset(k as any)} className="rounded-lg border px-3 py-1.5 text-sm hover:bg-gray-50">
+                    <button
+                      key={k}
+                      onClick={() => applyPreset(k as any)}
+                      className="rounded-lg border px-3 py-1.5 text-sm hover:bg-gray-50"
+                    >
                       {k}
                     </button>
                   ))}
@@ -196,33 +291,73 @@ export default function ForgePage() {
                   <div>
                     <Label>Ancho (mm)</Label>
                     <div className="flex items-center gap-3">
-                      <input type="range" min={10} max={500} value={width} onChange={(e) => setWidth(+e.target.value)} className="w-full" />
-                      <span className="w-12 text-right tabular-nums">{width}</span>
+                      <input
+                        type="range"
+                        min={10}
+                        max={500}
+                        value={width}
+                        onChange={(e) => setWidth(+e.target.value)}
+                        className="w-full"
+                      />
+                      <span className="w-12 text-right tabular-nums">
+                        {width}
+                      </span>
                     </div>
                   </div>
                   <div>
                     <Label>Alto (mm)</Label>
                     <div className="flex items-center gap-3">
-                      <input type="range" min={5} max={300} value={height} onChange={(e) => setHeight(+e.target.value)} className="w-full" />
-                      <span className="w-12 text-right tabular-nums">{height}</span>
+                      <input
+                        type="range"
+                        min={5}
+                        max={300}
+                        value={height}
+                        onChange={(e) => setHeight(+e.target.value)}
+                        className="w-full"
+                      />
+                      <span className="w-12 text-right tabular-nums">
+                        {height}
+                      </span>
                     </div>
                   </div>
                   <div>
                     <Label>Longitud (mm)</Label>
                     <div className="flex items-center gap-3">
-                      <input type="range" min={30} max={2000} value={length} onChange={(e) => setLength(+e.target.value)} className="w-full" />
-                      <span className="w-12 text-right tabular-nums">{length}</span>
+                      <input
+                        type="range"
+                        min={30}
+                        max={2000}
+                        value={length}
+                        onChange={(e) => setLength(+e.target.value)}
+                        className="w-full"
+                      />
+                      <span className="w-12 text-right tabular-nums">
+                        {length}
+                      </span>
                     </div>
                   </div>
                   <div>
                     <Label>Espesor (mm)</Label>
                     <div className="flex items-center gap-3">
-                      <input type="range" min={1} max={20} value={thickness} onChange={(e) => setThickness(+e.target.value)} className="w-full" />
-                      <span className="w-12 text-right tabular-nums">{thickness}</span>
+                      <input
+                        type="range"
+                        min={1}
+                        max={20}
+                        value={thickness}
+                        onChange={(e) => setThickness(+e.target.value)}
+                        className="w-full"
+                      />
+                      <span className="w-12 text-right tabular-nums">
+                        {thickness}
+                      </span>
                     </div>
                   </div>
                   <label className="inline-flex select-none items-center gap-2 text-sm">
-                    <input type="checkbox" checked={ventilated} onChange={(e) => setVentilated(e.target.checked)} />
+                    <input
+                      type="checkbox"
+                      checked={ventilated}
+                      onChange={(e) => setVentilated(e.target.checked)}
+                    />
                     Con ranuras de ventilación
                   </label>
                 </div>
@@ -233,7 +368,13 @@ export default function ForgePage() {
               <div className="mt-2 space-y-4">
                 <div className="flex items-center justify-between">
                   <Label>Tamaño VESA (mm)</Label>
-                  <Number value={vesa} onChange={setVesa} min={50} max={400} step={25} />
+                  <Number
+                    value={vesa}
+                    onChange={setVesa}
+                    min={50}
+                    max={400}
+                    step={25}
+                  />
                 </div>
                 <div className="flex items-center justify-between">
                   <Label>Espesor (mm)</Label>
@@ -241,13 +382,27 @@ export default function ForgePage() {
                 </div>
                 <div className="flex items-center justify-between">
                   <Label>Holgura adicional (mm)</Label>
-                  <Number value={vesaClear} onChange={setVesaClear} min={0} max={5} step={0.5} />
+                  <Number
+                    value={vesaClear}
+                    onChange={setVesaClear}
+                    min={0}
+                    max={5}
+                    step={0.5}
+                  />
                 </div>
                 <div className="flex items-center justify-between">
                   <Label>Ø agujero (mm)</Label>
-                  <Number value={vesaHole} onChange={setVesaHole} min={3} max={10} step={0.5} />
+                  <Number
+                    value={vesaHole}
+                    onChange={setVesaHole}
+                    min={3}
+                    max={10}
+                    step={0.5}
+                  />
                 </div>
-                <p className="pt-1 text-xs text-gray-500">Preview: placa con agujeros en patrón VESA.</p>
+                <p className="pt-1 text-xs text-gray-500">
+                  Preview: placa con agujeros en patrón VESA.
+                </p>
               </div>
             )}
 
@@ -270,12 +425,52 @@ export default function ForgePage() {
                   <Number value={rHole} onChange={setRHole} min={3} max={8} step={0.5} />
                 </div>
                 <label className="inline-flex select-none items-center gap-2 text-sm">
-                  <input type="checkbox" checked={rSlots} onChange={(e) => setRSlots(e.target.checked)} />
+                  <input
+                    type="checkbox"
+                    checked={rSlots}
+                    onChange={(e) => setRSlots(e.target.checked)}
+                  />
                   Ranuras para bridas/velcro
                 </label>
-                <p className="pt-1 text-xs text-gray-500">Preview: escuadra en L básica.</p>
+                <p className="pt-1 text-xs text-gray-500">
+                  Preview: escuadra en L básica.
+                </p>
               </div>
             )}
+
+            {/* Compra */}
+            <div className="mt-6 space-y-3 rounded-xl border border-gray-200 p-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <Label>Email (licencia / recibo)</Label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="tu@email.com"
+                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <Label>Plan</Label>
+                  <select
+                    value={plan}
+                    onChange={(e) => setPlan(e.target.value as Plan)}
+                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+                  >
+                    <option value="oneoff">STL individual</option>
+                    <option value="maker">Suscripción Maker (mensual)</option>
+                    <option value="commercial">Licencia Comercial (mensual)</option>
+                  </select>
+                </div>
+              </div>
+              <button
+                onClick={handleCheckout}
+                className="w-full rounded-xl border px-4 py-2 text-sm hover:bg-gray-50"
+              >
+                Comprar con Stripe
+              </button>
+            </div>
 
             {/* acciones */}
             <div className="mt-5 flex flex-col gap-3">
@@ -297,14 +492,25 @@ export default function ForgePage() {
                 >
                   Descargar STL
                 </a>
-                <button onClick={async () => { await navigator.clipboard.writeText(stlUrl || ""); }} disabled={!stlUrl}
-                  className="rounded-xl border px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50">
+                <button
+                  onClick={copyLink}
+                  disabled={!stlUrl}
+                  className="rounded-xl border px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+                >
                   Copiar enlace
                 </button>
               </div>
 
-              <details open={jsonOpen} onToggle={(e) => setJsonOpen((e.target as HTMLDetailsElement).open)} className="mt-2">
-                <summary className="cursor-pointer text-sm text-gray-700">Ver respuesta JSON</summary>
+              <details
+                open={jsonOpen}
+                onToggle={(e) =>
+                  setJsonOpen((e.target as HTMLDetailsElement).open)
+                }
+                className="mt-2"
+              >
+                <summary className="cursor-pointer text-sm text-gray-700">
+                  Ver respuesta JSON
+                </summary>
                 <textarea
                   readOnly
                   value={JSON.stringify(result ?? {}, null, 2)}
@@ -319,13 +525,21 @@ export default function ForgePage() {
             <div className="mb-3 flex gap-2">
               <button
                 onClick={() => setViewMode("preview")}
-                className={`rounded-lg px-3 py-1.5 text-sm ${viewMode === "preview" ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}
+                className={`rounded-lg px-3 py-1.5 text-sm ${
+                  viewMode === "preview"
+                    ? "bg-gray-900 text-white"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                }`}
               >
                 Vista: Preview
               </button>
               <button
                 onClick={() => setViewMode("stl")}
-                className={`rounded-lg px-3 py-1.5 text-sm ${viewMode === "stl" ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}
+                className={`rounded-lg px-3 py-1.5 text-sm ${
+                  viewMode === "stl"
+                    ? "bg-gray-900 text-white"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                }`}
                 disabled={!stlUrl}
               >
                 Vista: STL generado
@@ -336,14 +550,15 @@ export default function ForgePage() {
               <STLViewer
                 url={stlUrl}
                 preview={preview as any}
-                mode={viewMode}   // <- por defecto se queda en PREVIEW
+                mode={viewMode} // <- por defecto se queda en PREVIEW
                 height={560}
                 background="#ffffff"
                 modelColor="#3f444c"
               />
             </div>
             <p className="px-2 py-2 text-xs text-gray-500">
-              Arrastra para rotar · Rueda para zoom · <kbd>Shift</kbd>+arrastrar para pan
+              Arrastra para rotar · Rueda para zoom · <kbd>Shift</kbd>+arrastrar
+              para pan
             </p>
           </section>
         </div>
