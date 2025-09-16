@@ -1,60 +1,68 @@
-// app/api/checkout/webhook/route.ts
-import { NextResponse } from "next/server";
+// teknovashop-app/app/api/checkout/webhook/route.ts
 import Stripe from "stripe";
+import { NextResponse } from "next/server";
 
-export const runtime = "nodejs";
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2023-10-16" });
-const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET!;
-const supabaseUrl = process.env.SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+export const runtime = "nodejs";          // ⚠️ importante: Node runtime
+export const dynamic = "force-dynamic";   // no cache
 
-async function sbInsert(table: string, values: any) {
-  const r = await fetch(`${supabaseUrl}/rest/v1/${table}`, {
-    method: "POST",
-    headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}`, "Content-Type":"application/json", Prefer:"return=minimal" },
-    body: JSON.stringify(values),
-    cache: "no-store",
-  });
-  if (!r.ok) console.error("Supabase insert error", table, await r.text());
-}
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: "2024-06-20",
+});
 
 export async function POST(req: Request) {
-  const raw = await req.arrayBuffer();
-  const sig = req.headers.get("stripe-signature") || "";
+  const sig = req.headers.get("stripe-signature");
+  const secret = process.env.STRIPE_WEBHOOK_SECRET;
+
+  if (!sig || !secret) {
+    return new NextResponse("Missing signature or secret", { status: 400 });
+  }
+
+  const raw = await req.text();
+
   let event: Stripe.Event;
-
   try {
-    event = stripe.webhooks.constructEvent(Buffer.from(raw), sig, endpointSecret);
+    event = stripe.webhooks.constructEvent(raw, sig, secret);
   } catch (err: any) {
-    return NextResponse.json({ error: `Webhook signature verification failed: ${err.message}` }, { status: 400 });
+    console.error("Webhook signature failed:", err?.message);
+    return new NextResponse("Bad signature", { status: 400 });
   }
 
   try {
-    if (event.type === "checkout.session.completed") {
-      const s = event.data.object as Stripe.Checkout.Session;
-      const email = s.customer_details?.email || s.customer_email || "";
-      const isSub = s.mode === "subscription";
-      const priceId = (s.line_items?.data?.[0]?.price?.id) || "";
-      const md = s.metadata || {};
-      await sbInsert("orders", {
-        session_id: s.id,
-        email, model_kind: md.model_kind, params: md.params, object_key: md.object_key || null,
-        price_cents: s.amount_total || null, status: "paid",
-      });
+    switch (event.type) {
+      case "checkout.session.completed": {
+        const session = event.data.object as Stripe.Checkout.Session;
 
-      const kind =
-        isSub && priceId === process.env.STRIPE_PRICE_COMMERCIAL ? "commercial" :
-        isSub ? "maker_sub" : "personal";
+        // Aquí registrarías la licencia/pedido en tu sistema (Supabase o backend en Render).
+        // Si prefieres centralizar en tu backend, descomenta este fetch:
+        /*
+        await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/webhook/stripe`, {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-internal-token": process.env.INTERNAL_WEBHOOK_TOKEN || "" },
+          body: JSON.stringify(session),
+        });
+        */
 
-      await sbInsert("licenses", { email, kind, session_id: s.id, object_key: md.object_key || null });
+        console.log("✔ checkout.session.completed", {
+          id: session.id,
+          email: session.customer_details?.email || session.customer_email,
+          mode: session.mode,
+          metadata: session.metadata,
+        });
+        break;
+      }
+      default:
+        // otros eventos que no manejamos de momento
+        break;
     }
-
-    if (event.type === "customer.subscription.deleted") {
-      // opcional: marcar licencia maker_sub como expirada
-    }
-  } catch(e:any) {
-    console.error("Webhook handler error", e);
+  } catch (err) {
+    console.error("Webhook handler error:", err);
+    return NextResponse.json({ received: true }, { status: 500 });
   }
 
-  return NextResponse.json({ received: true });
+  return NextResponse.json({ received: true }, { status: 200 });
+}
+
+// Opcional: healthcheck
+export async function GET() {
+  return NextResponse.json({ ok: true });
 }
