@@ -25,13 +25,9 @@ type Preview =
       params: { vesa_mm: number; thickness_mm: number; clearance_mm: number };
     }
   | {
-      kind: "router_mount";
-      params: {
-        router_width_mm: number;
-        router_depth_mm: number;
-        thickness_mm: number;
-      };
-    };
+    kind: "router_mount";
+    params: { router_width_mm: number; router_depth_mm: number; thickness_mm: number };
+  };
 
 type Props = {
   url?: string;
@@ -57,15 +53,16 @@ export default function STLViewer({
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const mountRef = useRef<HTMLDivElement | null>(null);
 
-  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-  const sceneRef = useRef<THREE.Scene | null>(null);
-  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-  const controlsRef = useRef<OrbitControls | null>(null);
+  // IMPORTANT: usamos `any` para evitar fricciones de tipos en el build de Vercel
+  const rendererRef = useRef<any>(null);
+  const sceneRef = useRef<any>(null);
+  const cameraRef = useRef<any>(null);
+  const controlsRef = useRef<any>(null);
 
-  const objectRef = useRef<THREE.Object3D | null>(null);
-  const gridRef = useRef<THREE.GridHelper | null>(null);
-  const groundRef = useRef<THREE.Mesh | null>(null);
-  const axesRef = useRef<THREE.AxesHelper | null>(null);
+  const objectRef = useRef<any>(null);
+  const gridRef = useRef<any>(null);
+  const groundRef = useRef<any>(null);
+  const axesRef = useRef<any>(null);
 
   const [wireframe, setWireframe] = useState(false);
   const [gridVisible, setGridVisible] = useState(true);
@@ -73,8 +70,8 @@ export default function STLViewer({
     background === "#111827" ? "dark" : "light"
   );
 
-  // ---------- helpers ----------
-  const traverseMaterials = (obj: THREE.Object3D, fn: (m: THREE.Material) => void) => {
+  // ------- helpers (sin tipos Three para compilar limpio) -------
+  const traverseMaterials = (obj: any, fn: (m: any) => void) => {
     obj.traverse((o: any) => {
       if (o.isMesh) {
         const arr = Array.isArray(o.material) ? o.material : [o.material];
@@ -83,7 +80,7 @@ export default function STLViewer({
     });
   };
 
-  const fitCamera = useCallback((obj: THREE.Object3D) => {
+  const fitCamera = useCallback((obj: any) => {
     const camera = cameraRef.current;
     const controls = controlsRef.current;
     if (!camera || !controls || !obj) return;
@@ -92,7 +89,6 @@ export default function STLViewer({
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
 
-    // centra el objeto en el origen
     obj.position.sub(center);
 
     const maxDim = Math.max(size.x, size.y, size.z) || 1;
@@ -107,18 +103,14 @@ export default function STLViewer({
     controls.target.set(0, 0, 0);
     controls.update();
 
-    // ajusta el tamaño del plano de sombra bajo el modelo
     const ground = groundRef.current;
-    if (ground) {
-      ground.scale.setScalar(Math.max(1200, maxDim * 4));
-    }
+    if (ground) ground.scale.setScalar(Math.max(1200, maxDim * 4));
   }, []);
 
-  const addObject = useCallback((obj: THREE.Object3D) => {
+  const addObject = useCallback((obj: any) => {
     const scene = sceneRef.current!;
     if (objectRef.current) {
       scene.remove(objectRef.current);
-      // limpia materiales/geo previos
       objectRef.current.traverse((o: any) => {
         if (o.isMesh) {
           o.geometry?.dispose?.();
@@ -127,7 +119,6 @@ export default function STLViewer({
         }
       });
     }
-    // sombras
     obj.traverse((o: any) => {
       if (o.isMesh) {
         o.castShadow = true;
@@ -174,7 +165,7 @@ export default function STLViewer({
     presetView("iso");
   }, [presetView]);
 
-  // ---------- init ----------
+  // ------- init -------
   useEffect(() => {
     const container = mountRef.current!;
     const wrap = wrapRef.current!;
@@ -191,14 +182,11 @@ export default function STLViewer({
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.shadowMap.enabled = quality === "high";
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.setPixelRatio(
-      quality === "high" ? Math.min(window.devicePixelRatio ?? 1, 2) : 1
-    );
+    renderer.setPixelRatio(quality === "high" ? Math.min(window.devicePixelRatio ?? 1, 2) : 1);
     renderer.setSize(container.clientWidth, height);
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // Luces
     const hemi = new THREE.HemisphereLight(0xffffff, 0x9aa3af, 0.8);
     const dir = new THREE.DirectionalLight(0xffffff, quality === "high" ? 0.9 : 0.6);
     dir.position.set(600, 900, 600);
@@ -212,13 +200,11 @@ export default function STLViewer({
     dir.shadow.camera.bottom = -1500;
     scene.add(hemi, dir);
 
-    // Controles
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.06;
     controlsRef.current = controls;
 
-    // Grid
     const grid = new THREE.GridHelper(3000, 60, 0xe5e7eb, 0xeff2f6);
     (grid.material as any).transparent = true;
     (grid.material as any).opacity = theme === "dark" ? 0.3 : 0.9;
@@ -227,7 +213,6 @@ export default function STLViewer({
     scene.add(grid);
     gridRef.current = grid;
 
-    // Plano receptor de sombra
     const shadowMat = new THREE.ShadowMaterial();
     shadowMat.opacity = theme === "dark" ? 0.25 : 0.35;
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), shadowMat);
@@ -237,13 +222,11 @@ export default function STLViewer({
     scene.add(ground);
     groundRef.current = ground;
 
-    // Ejes
     const axes = new THREE.AxesHelper(120);
     axes.position.set(-450, 0, -450);
     axesRef.current = axes;
     scene.add(axes);
 
-    // Resize
     const onResize = () => {
       if (!rendererRef.current || !cameraRef.current || !mountRef.current) return;
       const w = mountRef.current.clientWidth;
@@ -261,7 +244,6 @@ export default function STLViewer({
     };
     loop();
 
-    // Primera vista agradable
     presetView("iso");
 
     return () => {
@@ -287,22 +269,17 @@ export default function STLViewer({
     };
   }, [height, background, theme, quality, gridVisible, presetView]);
 
-  // ---------- PREVIEW ----------
+  // ------- PREVIEW -------
   useEffect(() => {
     const showPreview = mode === "preview" || (mode === "auto" && !url);
     if (!showPreview || !preview || !sceneRef.current) return;
 
     const col = new THREE.Color(modelColor);
     const group = new THREE.Group();
-    const mat = new THREE.MeshStandardMaterial({
-      color: col,
-      metalness: 0.05,
-      roughness: 0.6,
-    });
+    const mat = new THREE.MeshStandardMaterial({ color: col, metalness: 0.05, roughness: 0.6 });
 
     if (preview.kind === "cable_tray") {
-      const { width_mm: W, height_mm: H, length_mm: L, thickness_mm: T, ventilated } =
-        preview.params;
+      const { width_mm: W, height_mm: H, length_mm: L, thickness_mm: T, ventilated } = preview.params;
 
       const base = new THREE.Mesh(new THREE.BoxGeometry(L, T, W), mat);
       base.position.set(0, -H / 2 + T / 2, 0);
@@ -320,10 +297,7 @@ export default function STLViewer({
         const gap = L / (n + 1);
         const ribW = Math.max(2, Math.min(6, W * 0.08));
         for (let i = 1; i <= n; i++) {
-          const rib = new THREE.Mesh(
-            new THREE.BoxGeometry(ribW, T * 1.05, W - 2 * T),
-            mat
-          );
+          const rib = new THREE.Mesh(new THREE.BoxGeometry(ribW, T * 1.05, W - 2 * T), mat);
           rib.position.set(-L / 2 + i * gap, -H / 2 + T / 2 + 0.01, 0);
           group.add(rib);
         }
@@ -338,35 +312,22 @@ export default function STLViewer({
 
       const r = 3;
       const hGeo = new THREE.CylinderGeometry(r, r, T * 1.6, 20);
-      const mh = new THREE.MeshStandardMaterial({
-        color: 0x111827,
-        metalness: 0,
-        roughness: 0.45,
-      });
+      const mh = new THREE.MeshStandardMaterial({ color: 0x111827, metalness: 0, roughness: 0.45 });
       const off = V / 2;
-      const holes = [
-        new THREE.Vector3(+off, 0, +off),
-        new THREE.Vector3(-off, 0, +off),
-        new THREE.Vector3(+off, 0, -off),
-        new THREE.Vector3(-off, 0, -off),
-      ].map((p) => {
-        const m = new THREE.Mesh(hGeo, mh);
-        m.position.copy(p);
-        return m;
-      });
-      group.add(...holes);
+      [new THREE.Vector3(+off, 0, +off), new THREE.Vector3(-off, 0, +off), new THREE.Vector3(+off, 0, -off), new THREE.Vector3(-off, 0, -off)]
+        .forEach((p) => {
+          const m = new THREE.Mesh(hGeo, mh);
+          m.position.copy(p);
+          group.add(m);
+        });
     }
 
     if (preview.kind === "router_mount") {
-      const { router_width_mm: W, router_depth_mm: D, thickness_mm: T } =
-        preview.params;
-
+      const { router_width_mm: W, router_depth_mm: D, thickness_mm: T } = preview.params;
       const base = new THREE.Mesh(new THREE.BoxGeometry(W, T, D), mat);
       base.position.set(0, -D * 0.3, 0);
-
       const wall = new THREE.Mesh(new THREE.BoxGeometry(W, D * 0.6, T), mat);
       wall.position.set(0, 0, -D / 2 + T / 2);
-
       group.add(base, wall);
     }
 
@@ -374,7 +335,7 @@ export default function STLViewer({
     setWire(wireframe);
   }, [preview, mode, url, modelColor, addObject, setWire, wireframe]);
 
-  // ---------- STL ----------
+  // ------- STL -------
   useEffect(() => {
     const showStl = mode === "stl" || (mode === "auto" && !!url);
     if (!showStl || !url) return;
@@ -383,25 +344,17 @@ export default function STLViewer({
     const col = new THREE.Color(modelColor);
     loader.load(
       url,
-      (geom) => {
-        // corrige normales si viniesen mal
+      (geom: any) => {
         geom.computeVertexNormals();
-        const mat = new THREE.MeshStandardMaterial({
-          color: col,
-          metalness: 0.05,
-          roughness: 0.6,
-        });
+        const mat = new THREE.MeshStandardMaterial({ color: col, metalness: 0.05, roughness: 0.6 });
         const mesh = new THREE.Mesh(geom, mat);
         mesh.castShadow = true;
         mesh.receiveShadow = true;
 
-        // centra
         geom.computeBoundingBox();
         const bb = geom.boundingBox!;
         const center = bb.getCenter(new THREE.Vector3());
-        geom.applyMatrix4(
-          new THREE.Matrix4().makeTranslation(-center.x, -center.y, -center.z)
-        );
+        geom.applyMatrix4(new THREE.Matrix4().makeTranslation(-center.x, -center.y, -center.z));
 
         addObject(mesh);
         setWire(wireframe);
@@ -411,7 +364,7 @@ export default function STLViewer({
     );
   }, [url, mode, modelColor, addObject, setWire, wireframe]);
 
-  // ---------- toolbar actions ----------
+  // ------- toolbar -------
   const toggleTheme = () => {
     const next = theme === "dark" ? "light" : "dark";
     setTheme(next);
@@ -424,8 +377,7 @@ export default function STLViewer({
       (gridRef.current.material as any).opacity = next === "dark" ? 0.3 : 0.9;
     }
     if (groundRef.current) {
-      (groundRef.current.material as THREE.ShadowMaterial).opacity =
-        next === "dark" ? 0.25 : 0.35;
+      (groundRef.current.material as any).opacity = next === "dark" ? 0.25 : 0.35;
     }
   };
 
@@ -433,45 +385,16 @@ export default function STLViewer({
     <div ref={wrapRef} className="relative w-full overflow-hidden rounded-xl" style={{ height }}>
       <div ref={mountRef} className="h-full w-full" />
 
-      {/* Toolbar */}
+      {/* Toolbar izquierda */}
       <div className="pointer-events-auto absolute left-2 top-2 flex gap-1">
-        <button
-          onClick={() => presetView("iso")}
-          className="rounded-md border bg-white/80 px-2 py-1 text-xs shadow hover:bg-white"
-          title="Vista isométrica"
-        >
-          Iso
-        </button>
-        <button
-          onClick={() => presetView("top")}
-          className="rounded-md border bg-white/80 px-2 py-1 text-xs shadow hover:bg-white"
-          title="Vista superior"
-        >
-          Top
-        </button>
-        <button
-          onClick={() => presetView("front")}
-          className="rounded-md border bg-white/80 px-2 py-1 text-xs shadow hover:bg-white"
-          title="Vista frontal"
-        >
-          Front
-        </button>
-        <button
-          onClick={() => presetView("right")}
-          className="rounded-md border bg-white/80 px-2 py-1 text-xs shadow hover:bg-white"
-          title="Vista derecha"
-        >
-          Right
-        </button>
-        <button
-          onClick={resetView}
-          className="rounded-md border bg-white/80 px-2 py-1 text-xs shadow hover:bg-white"
-          title="Reset"
-        >
-          Reset
-        </button>
+        <button onClick={() => presetView("iso")}   className="rounded-md border bg-white/80 px-2 py-1 text-xs shadow hover:bg-white"  title="Vista isométrica">Iso</button>
+        <button onClick={() => presetView("top")}   className="rounded-md border bg-white/80 px-2 py-1 text-xs shadow hover:bg-white"  title="Vista superior">Top</button>
+        <button onClick={() => presetView("front")} className="rounded-md border bg-white/80 px-2 py-1 text-xs shadow hover:bg-white"  title="Vista frontal">Front</button>
+        <button onClick={() => presetView("right")} className="rounded-md border bg-white/80 px-2 py-1 text-xs shadow hover:bg-white"  title="Vista derecha">Right</button>
+        <button onClick={resetView}                 className="rounded-md border bg-white/80 px-2 py-1 text-xs shadow hover:bg-white"  title="Reset">Reset</button>
       </div>
 
+      {/* Toolbar derecha */}
       <div className="pointer-events-auto absolute right-2 top-2 flex gap-1">
         <button
           onClick={() => setWire(!wireframe)}
@@ -481,12 +404,12 @@ export default function STLViewer({
           {wireframe ? "Wire: ON" : "Wire: OFF"}
         </button>
         <button
-          onClick={() => {
+          onClick={() =>
             setGridVisible((v) => {
               if (gridRef.current) gridRef.current.visible = !v;
               return !v;
-            });
-          }}
+            })
+          }
           className="rounded-md border bg-white/80 px-2 py-1 text-xs shadow hover:bg-white"
           title="Mostrar/Ocultar rejilla"
         >
