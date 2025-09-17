@@ -1,56 +1,39 @@
-// teknovashop-app/app/api/forge/generate/route.ts
+// app/api/forge/generate/route.ts
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
-function getBase(): string {
-  // Usamos TU variable actual
-  const raw = process.env.NEXT_PUBLIC_BACKEND_URL || "";
-  return raw.replace(/\/+$/, "");
-}
+const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "";
 
 export async function POST(req: Request) {
-  const base = getBase();
-  if (!base) {
+  if (!BACKEND) {
     return NextResponse.json(
-      { status: "error", message: "NEXT_PUBLIC_BACKEND_URL no definido" },
+      { status: "error", message: "Backend URL no configurada" },
       { status: 500 }
     );
   }
 
-  let body: any = null;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json(
-      { status: "error", message: "JSON inválido" },
-      { status: 400 }
-    );
-  }
-
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 90000); // 90s para cubrir cold start
+  const body = await req.json().catch(() => ({}));
 
   try {
-    const res = await fetch(`${base}/generate`, {
+    const r = await fetch(`${BACKEND}/generate`, {
       method: "POST",
-      body: JSON.stringify(body),
       headers: { "content-type": "application/json" },
-      signal: ctrl.signal,
+      body: JSON.stringify(body),
       cache: "no-store",
     });
 
-    const isJSON = res.headers.get("content-type")?.includes("application/json");
-    const data = isJSON ? await res.json() : null;
+    const data = await r
+      .json()
+      .catch(() => ({ status: "error", message: "Respuesta no válida del backend" }));
 
-    return NextResponse.json(
-      data ?? { status: "error", message: `HTTP ${res.status}` },
-      { status: res.status }
-    );
+    return NextResponse.json(data, { status: r.ok ? 200 : r.status });
   } catch (e: any) {
-    const msg = e?.name === "AbortError" ? "Timeout esperando al backend" : (e?.message || "Error de red");
-    return NextResponse.json({ status: "error", message: msg }, { status: 504 });
-  } finally {
-    clearTimeout(t);
+    return NextResponse.json(
+      { status: "error", message: e?.message || "Fallo conectando con el backend" },
+      { status: 502 }
+    );
   }
 }
