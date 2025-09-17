@@ -1,44 +1,78 @@
 // teknovashop-app/types/forge.ts
 
-/** Modelos soportados por la UI */
+/** Qué modelo se va a generar */
 export type ModelKind = "cable_tray" | "vesa_adapter" | "router_mount";
 
-/** -------- Cable Tray -------- */
-export type CableTrayPayload = {
+/** Marcador de agujero (coordenadas en mm en el plano XZ, perfora a lo largo del eje Y) */
+export type HoleSpec = {
+  /** Posición X (mm). En cable_tray X es la LONGITUD; en VESA/Router, X es el ancho. */
+  x_mm: number;
+  /** Posición Z (mm). En cable_tray Z es el ANCHO; en VESA/Router, Z es el fondo/alto de placa. */
+  z_mm: number;
+  /** Diámetro del agujero (mm) */
+  d_mm: number;
+};
+
+/** Bandeja de cables */
+export interface CableTrayPayload {
   model: "cable_tray";
-  width_mm: number;
-  height_mm: number;
+  /** Longitud (eje X) */
   length_mm: number;
+  /** Altura (paredes, eje Y) */
+  height_mm: number;
+  /** Ancho (eje Z) */
+  width_mm: number;
+  /** Espesor de material */
   thickness_mm: number;
+  /** Ranuras/ventilación */
   ventilated: boolean;
-};
+  /**
+   * Agujeros personalizados: cilindros que atraviesan en Y.
+   * Coordenadas en el plano XZ, respecto al centro de la pieza.
+   */
+  holes?: HoleSpec[];
+}
 
-/** -------- VESA Adapter -------- */
-export type VesaAdapterPayload = {
+/** Adaptador VESA */
+export interface VesaAdapterPayload {
   model: "vesa_adapter";
-  vesa_mm: number;            // 75 / 100 / 200, etc.
+  /** Patrón VESA en mm (75, 100, 200…) */
+  vesa_mm: number;
+  /** Espesor placa */
   thickness_mm: number;
+  /** Diámetro de agujero estándar VESA */
   hole_diameter_mm: number;
+  /** Holgura adicional perimetral */
   clearance_mm: number;
-};
+  /** Agujeros personalizados opcionales */
+  holes?: HoleSpec[];
+}
 
-/** -------- Router Mount -------- */
-export type RouterMountPayload = {
+/** Soporte de router/ONT */
+export interface RouterMountPayload {
   model: "router_mount";
+  /** Ancho del dispositivo (X) */
   router_width_mm: number;
+  /** Fondo del dispositivo (Z) */
   router_depth_mm: number;
+  /** Espesor material */
   thickness_mm: number;
+  /** Ranuras para bridas/velcro */
   strap_slots: boolean;
+  /** Ø de agujero de anclaje (si se usa) */
   hole_diameter_mm: number;
-};
+  /** Agujeros personalizados opcionales */
+  holes?: HoleSpec[];
+}
 
-/** Payload unificado para /generate */
+/** Payload total que acepta /generate */
 export type ForgePayload =
   | CableTrayPayload
   | VesaAdapterPayload
   | RouterMountPayload;
 
-/** Respuesta estrictamente tipada */
-export type GenerateOk = { status: "ok"; stl_url: string };
-export type GenerateError = { status: "error"; detail?: string; message?: string };
-export type GenerateResponse = GenerateOk | GenerateError;
+/** Respuesta de /generate */
+export type GenerateResponse =
+  | { status: "ok"; stl_url: string }
+  | { status: "error"; message: string }
+  | { status: "_" };
