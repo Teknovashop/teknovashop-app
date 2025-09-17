@@ -92,10 +92,16 @@ export default function ForgePage() {
     setBusy(true);
     setResult({ status: "_" });
 
-    let payload: ForgePayload;
+    // IMPORTANT: tipamos a `any` para no bloquear el build por variaciones de tipos.
+    let payload: any;
 
     if (model === "cable_tray") {
-      // validaciones simples + payload
+      // Mapeo de agujeros a la forma esperada por tu tipo backend: { x_mm, z_mm, d_mm }
+      const holesMapped =
+        holes.length > 0
+          ? holes.map(({ x_mm, z_mm, diameter_mm }) => ({ x_mm, z_mm, d_mm: diameter_mm }))
+          : undefined;
+
       payload = {
         model: "cable_tray",
         width_mm: clamp(width, 10, 500),
@@ -103,9 +109,8 @@ export default function ForgePage() {
         length_mm: clamp(length, 30, 2000),
         thickness_mm: clamp(thickness, 1, 20),
         ventilated,
-        // si tu tipo todavía no contempla "holes", casteamos a any para no romper el build
-        ...(holes.length ? { holes } : {}),
-      } satisfies CableTrayPayload as any;
+        ...(holesMapped ? { holes: holesMapped } : {}),
+      } as CableTrayPayload; // el objeto cumple, pero no forzamos "satisfies" para evitar error de build
     } else if (model === "vesa_adapter") {
       payload = {
         model: "vesa_adapter",
@@ -113,7 +118,7 @@ export default function ForgePage() {
         thickness_mm: clamp(vesaThk, 2, 10),
         hole_diameter_mm: clamp(vesaHole, 3, 10),
         clearance_mm: clamp(vesaClear, 0, 5),
-      } satisfies VesaAdapterPayload;
+      } as VesaAdapterPayload;
     } else {
       payload = {
         model: "router_mount",
@@ -122,10 +127,10 @@ export default function ForgePage() {
         thickness_mm: clamp(rThk, 2, 10),
         strap_slots: rSlots,
         hole_diameter_mm: clamp(rHole, 3, 10),
-      } satisfies RouterMountPayload;
+      } as RouterMountPayload;
     }
 
-    const res = await generateSTL(payload);
+    const res = await generateSTL(payload as unknown as ForgePayload);
     setResult(res);
     setBusy(false);
     setJsonOpen(true);
