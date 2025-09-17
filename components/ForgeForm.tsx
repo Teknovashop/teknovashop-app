@@ -103,13 +103,21 @@ export default function ForgeForm() {
       ventilated: cfg.ventilated,
     });
     setResp(res);
-    if (res.status === "ok") {
-      // Fallback defensivo para contentar al checker de tipos de Vercel
-      setStlUrl(res.stl_url ?? null);
+
+    // type-safe guard para stl_url
+    if (res && res.status === "ok" && (res as any).stl_url) {
+      setStlUrl((res as any).stl_url ?? null);
       setToast("STL listo ✅");
     } else {
-      setToast(res.detail || res.message || "Error generando STL");
+      // no asumimos 'detail' en el tipo; lo probamos con guards
+      const anyRes = res as any;
+      const msg =
+        (anyRes && typeof anyRes === "object" && (anyRes.detail as string)) ||
+        (anyRes && typeof anyRes === "object" && (anyRes.message as string)) ||
+        "Error generando STL";
+      setToast(msg);
     }
+
     setBusy(false);
     setTimeout(() => setToast(null), 1800);
   }, [cfg]);
@@ -214,7 +222,7 @@ export default function ForgeForm() {
                 {busy ? "Generando…" : "Generar STL"}
               </button>
 
-            <a
+              <a
                 href={stlUrl ?? "#"}
                 target="_blank"
                 className={`px-3 py-2 rounded-lg border text-sm ${
@@ -222,6 +230,7 @@ export default function ForgeForm() {
                     ? "border-gray-300 hover:bg-gray-50"
                     : "border-dashed border-gray-300 text-gray-400 pointer-events-none"
                 }`}
+                rel="noreferrer"
               >
                 Descargar STL (en Supabase)
               </a>
