@@ -6,14 +6,19 @@ import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
-/** Qué quiere renderizar el visor */
+/** Modo de renderizado */
 type Mode = "auto" | "preview" | "stl";
 
+/** Preview paramétrico (ligero) */
 type Preview =
-  | { kind: "cable_tray"; params: { width_mm: number; height_mm: number; length_mm: number; thickness_mm: number; ventilated: boolean } }
+  | {
+      kind: "cable_tray";
+      params: { width_mm: number; height_mm: number; length_mm: number; thickness_mm: number; ventilated: boolean };
+    }
   | { kind: "vesa_adapter"; params: { vesa_mm: number; thickness_mm: number; clearance_mm: number } }
   | { kind: "router_mount"; params: { router_width_mm: number; router_depth_mm: number; thickness_mm: number } };
 
+/** Props del visor */
 type Props = {
   url?: string;
   preview?: Preview;
@@ -21,16 +26,18 @@ type Props = {
   height: number;
   background?: string;
   modelColor?: string;
+
+  // “Pro” options
   quality?: "low" | "high";
   showAxes?: boolean;
   showGrid?: boolean;
 
-  /** Interacción agujeros (solo preview) */
-  allowHolePlacement?: boolean;
+  // UI de agujeros
+  allowHolePlacement?: boolean; // si está activo, click en el modelo genera marcador
   holeRadiusMm?: number;
-  onAddHole?: (pt: { x: number; z: number }) => void;
+  onAddHole?: (p: { x: number; z: number }) => void;
 
-  /** Texto discreto en esquina inferior */
+  // Watermark
   watermark?: string;
 };
 
@@ -50,13 +57,20 @@ export default function STLViewer({
   watermark,
 }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
+
+  // IMPORTANTE: evitamos tipos de THREE en generics; usamos `any` para no romper el build en Vercel
   const rendererRef = useRef<any>(null);
   const sceneRef = useRef<any>(null);
   const cameraRef = useRef<any>(null);
-  const objectRef = useRef<any>(null);   // mesh o grupo actual
+  const objectRef = useRef<any>(null); // mesh o grupo actual (modelo)
   const controlsRef = useRef<any>(null);
-  const markersRef = useRef<THREE.Group | null>(null);
+  const markersRef = useRef<any>(null); // grupo de marcadores
+  const gridRef = useRef<any>(null);
+  const axesRef = useRef<any>(null);
+
   const raycaster = useRef(new THREE.Raycaster());
+  const pointer = useRef(new THREE.Vector2());
+
   const [sizeLabel, setSizeLabel] = useState<string>("");
 
   // ---------- init ----------
@@ -66,26 +80,48 @@ export default function STLViewer({
     scene.background = new THREE.Color(background);
     sceneRef.current = scene;
 
-    const w = container.clientWidth || 800;
-    const camera = new THREE.PerspectiveCamera(45, w / height, 0.1, 20000);
+    const camera = new THREE.PerspectiveCamera(45, container.clientWidth / height, 0.1, 10000);
     camera.position.set(420, 320, 420);
     cameraRef.current = camera;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
-    const DPR = quality === "high" ? Math.min(window.devicePixelRatio ?? 1, 2) : 1;
-    renderer.setPixelRatio(DPR);
-    renderer.shadowMap.enabled = quality === "high";
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.setSize(w, height);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio ?? 1, 2));
+    renderer.setSize(container.clientWidth, height);
+    if (quality === "high") {
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    }
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
     // Luces
-    const hemi = new THREE.HemisphereLight(0xffffff, 0xa3a3a3, 0.9);
-    const dir = new THREE.DirectionalLight(0xffffff, 0.75);
-    dir.position.set(500, 800, 600);
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x9aa3af, 1.0);
+    const dir = new THREE.DirectionalLight(0xffffff, 0.6);
+    dir.position.set(300, 500, 400);
     dir.castShadow = quality === "high";
     scene.add(hemi, dir);
+
+    // Grid
+    if (showGrid) {
+      const grid = new THREE.GridHelper(3000, 60, 0xe5e7eb, 0xeff2f6);
+      (grid.material as any).transparent = true;
+      (grid.material as any).opacity = 0.9;
+      grid.position.y = -0.01;
+      scene.add(grid);
+      gridRef.current = grid;
+    }
+
+    // Axes
+    if (showAxes) {
+      const axes = new THREE.AxesHelper(120);
+      axesRef.current = axes;
+      scene.add(axes);
+    }
+
+    // Markers group
+    const markers = new THREE.Group();
+    scene.add(markers);
+    markersRef.current = markers;
 
     // Controles
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -93,50 +129,54 @@ export default function STLViewer({
     controls.dampingFactor = 0.06;
     controlsRef.current = controls;
 
-    // Auxiliares
-    if (showAxes) {
-      const axes = new THREE.AxesHelper(80);
-      axes.position.y = 0.01;
-      scene.add(axes);
-    }
-    if (showGrid) {
-      const grid = new THREE.GridHelper(3000, 60, 0xe5e7eb, 0xeff2f6);
-      (grid.material as any).transparent = true;
-      (grid.material as any).opacity = 0.85;
-      grid.position.y = -0.01;
-      scene.add(grid);
-    }
-
-    // Grupo para marcadores (agujeros)
-    const markers = new THREE.Group();
-    scene.add(markers);
-    markersRef.current = markers;
-
-    // Resize
     const onResize = () => {
       if (!rendererRef.current || !cameraRef.current || !mountRef.current) return;
-      const w2 = mountRef.current.clientWidth;
-      cameraRef.current.aspect = w2 / height;
+      const w = mountRef.current.clientWidth;
+      cameraRef.current.aspect = w / height;
       cameraRef.current.updateProjectionMatrix();
-      rendererRef.current.setSize(w2, height);
+      rendererRef.current.setSize(w, height);
     };
     window.addEventListener("resize", onResize);
 
+    const onClick = (event: MouseEvent) => {
+      if (!allowHolePlacement || !objectRef.current) return;
+
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointer.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.current.setFromCamera(pointer.current, cameraRef.current);
+      const intersects = raycaster.current.intersectObject(objectRef.current, true);
+      if (intersects.length === 0) return;
+
+      const p = intersects[0].point.clone(); // coordenadas en mundo
+      // Como centramos el modelo en el origen, p ya está en torno (0,0,0), tomamos X/Z
+      const marker = makeMarker(holeRadiusMm, modelColor);
+      marker.position.copy(p);
+      markersRef.current.add(marker);
+
+      onAddHole?.({ x: p.x, z: p.z });
+    };
+
+    renderer.domElement.addEventListener("click", onClick);
+
+    // Loop
     let raf = 0;
     const loop = () => {
       raf = requestAnimationFrame(loop);
-      controlsRef.current?.update?.();
-      if (rendererRef.current && cameraRef.current && sceneRef.current) {
-        rendererRef.current.render(sceneRef.current, cameraRef.current);
-      }
+      controls.update();
+      renderer.render(scene, camera);
     };
     loop();
 
     return () => {
       cancelAnimationFrame(raf);
+      renderer.domElement.removeEventListener("click", onClick);
       window.removeEventListener("resize", onResize);
-      controlsRef.current?.dispose?.();
-      rendererRef.current?.dispose?.();
+
+      controls.dispose();
+      renderer.dispose();
+
       scene.traverse((o: any) => {
         if (o.isMesh) {
           o.geometry?.dispose?.();
@@ -144,22 +184,27 @@ export default function STLViewer({
           mats.forEach((m: any) => m?.dispose?.());
         }
       });
+
       try {
         if (renderer.domElement.parentNode) renderer.domElement.parentNode.removeChild(renderer.domElement);
       } catch {}
+
       controlsRef.current = null;
       objectRef.current = null;
-      markersRef.current = null;
       rendererRef.current = null;
       cameraRef.current = null;
       sceneRef.current = null;
+      markersRef.current = null;
+      gridRef.current = null;
+      axesRef.current = null;
     };
-  }, [height, background, quality, showAxes, showGrid]);
+  }, [height, background, quality, showAxes, showGrid, allowHolePlacement, holeRadiusMm, modelColor, onAddHole]);
 
   // ---------- helpers ----------
   function addObject(obj: any) {
     const scene = sceneRef.current;
     if (!scene) return;
+
     if (objectRef.current) {
       scene.remove(objectRef.current);
       objectRef.current.traverse?.((o: any) => {
@@ -173,17 +218,19 @@ export default function STLViewer({
     }
     scene.add(obj);
     objectRef.current = obj;
+
     fitCamera(obj);
-    showSizeLabel(obj);
+    updateSizeLabel(obj);
   }
 
   function fitCamera(obj: any) {
     const camera = cameraRef.current;
     if (!camera || !obj) return;
+
     const box = new THREE.Box3().setFromObject(obj);
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
-    obj.position.sub(center); // centrado
+    obj.position.sub(center); // centramos el objeto
 
     const maxDim = Math.max(size.x, size.y, size.z) || 1;
     const dist = maxDim * 2.2;
@@ -194,45 +241,40 @@ export default function STLViewer({
     camera.updateProjectionMatrix();
   }
 
-  function showSizeLabel(obj: any) {
+  function updateSizeLabel(obj: any) {
     const box = new THREE.Box3().setFromObject(obj);
-    const s = box.getSize(new THREE.Vector3());
-    setSizeLabel(`${s.x.toFixed(0)} × ${s.y.toFixed(0)} × ${s.z.toFixed(0)} mm`);
+    const size = box.getSize(new THREE.Vector3());
+    const gridStep = 50; // mm aprox en nuestro world
+    setSizeLabel(`${size.x.toFixed(0)} × ${size.y.toFixed(0)} × ${size.z.toFixed(0)} mm · grid ${gridStep} mm`);
   }
 
-  function addMarkerAt(point: THREE.Vector3) {
-    if (!markersRef.current) return;
-    const col = new THREE.Color("#10b981"); // verde
-    const sphere = new THREE.Mesh(
-      new THREE.SphereGeometry(Math.max(1.2, holeRadiusMm * 0.15), 16, 12),
-      new THREE.MeshStandardMaterial({ color: col, metalness: 0, roughness: 0.4 })
-    );
-    sphere.position.copy(point);
-    markersRef.current.add(sphere);
+  function makeMarker(r_mm: number, color: string) {
+    const geo = new THREE.SphereGeometry(Math.max(1, r_mm * 0.5), 18, 18);
+    const mat = new THREE.MeshStandardMaterial({ color, metalness: 0, roughness: 0.35 });
+    const m = new THREE.Mesh(geo, mat);
+    m.castShadow = quality === "high";
+    return m;
   }
 
-  // ---------- PREVIEW ----------
+  // ---------- PREVIEW paramétrico ----------
   useEffect(() => {
     const shouldShowPreview = mode === "preview" || (mode === "auto" && !url);
-    if (!shouldShowPreview || !preview || !sceneRef.current) return;
+    if (!shouldShowPreview || !preview) return;
 
     const col = new THREE.Color(modelColor);
     const group = new THREE.Group();
 
     if (preview.kind === "cable_tray") {
       const { width_mm: W, height_mm: H, length_mm: L, thickness_mm: T } = preview.params;
-      const mat = new THREE.MeshStandardMaterial({ color: col, metalness: 0, roughness: 0.55 });
+      const mat = new THREE.MeshStandardMaterial({ color: col, metalness: 0, roughness: 0.6 });
 
       const base = new THREE.Mesh(new THREE.BoxGeometry(L, T, W), mat);
-      base.receiveShadow = true; base.castShadow = true;
       base.position.set(0, -H / 2 + T / 2, 0);
 
       const side1 = new THREE.Mesh(new THREE.BoxGeometry(L, H, T), mat);
-      side1.receiveShadow = true; side1.castShadow = true;
       side1.position.set(0, 0, -W / 2 + T / 2);
 
       const side2 = new THREE.Mesh(new THREE.BoxGeometry(L, H, T), mat);
-      side2.receiveShadow = true; side2.castShadow = true;
       side2.position.set(0, 0, W / 2 - T / 2);
 
       group.add(base, side1, side2);
@@ -241,9 +283,8 @@ export default function STLViewer({
     if (preview.kind === "vesa_adapter") {
       const { vesa_mm: V, thickness_mm: T, clearance_mm: C } = preview.params;
       const size = V + 2 * C + 20;
-      const mat = new THREE.MeshStandardMaterial({ color: col, metalness: 0, roughness: 0.55 });
+      const mat = new THREE.MeshStandardMaterial({ color: col, metalness: 0, roughness: 0.6 });
       const plate = new THREE.Mesh(new THREE.BoxGeometry(size, T, size), mat);
-      plate.castShadow = true; plate.receiveShadow = true;
       group.add(plate);
 
       const r = 3;
@@ -255,20 +296,22 @@ export default function STLViewer({
         new THREE.Vector3(-off, 0, +off),
         new THREE.Vector3(+off, 0, -off),
         new THREE.Vector3(-off, 0, -off),
-      ].map((p) => { const m = new THREE.Mesh(hGeo, mh); m.position.copy(p); return m; });
+      ].map((p) => {
+        const m = new THREE.Mesh(hGeo, mh);
+        m.position.copy(p);
+        return m;
+      });
       group.add(...holes);
     }
 
     if (preview.kind === "router_mount") {
       const { router_width_mm: W, router_depth_mm: D, thickness_mm: T } = preview.params;
-      const mat = new THREE.MeshStandardMaterial({ color: col, metalness: 0, roughness: 0.55 });
+      const mat = new THREE.MeshStandardMaterial({ color: col, metalness: 0, roughness: 0.6 });
 
       const base = new THREE.Mesh(new THREE.BoxGeometry(W, T, D), mat);
-      base.castShadow = true; base.receiveShadow = true;
       base.position.set(0, -D * 0.3, 0);
 
       const wall = new THREE.Mesh(new THREE.BoxGeometry(W, D * 0.6, T), mat);
-      wall.castShadow = true; wall.receiveShadow = true;
       wall.position.set(0, 0, -D / 2 + T / 2);
 
       group.add(base, wall);
@@ -280,60 +323,41 @@ export default function STLViewer({
   // ---------- STL ----------
   useEffect(() => {
     const shouldShowStl = mode === "stl" || (mode === "auto" && !!url);
-    if (!shouldShowStl || !url || !sceneRef.current) return;
+    if (!shouldShowStl || !url) return;
 
     const loader = new STLLoader();
     const col = new THREE.Color(modelColor);
+
     loader.load(
       url,
       (geom) => {
-        const mat = new THREE.MeshStandardMaterial({ color: col, metalness: 0, roughness: 0.55 });
+        const mat = new THREE.MeshStandardMaterial({ color: col, metalness: 0, roughness: 0.6 });
         const mesh = new THREE.Mesh(geom, mat);
-        mesh.castShadow = true; mesh.receiveShadow = true;
+        mesh.castShadow = quality === "high";
+
+        // centrar en origen
         geom.computeBoundingBox();
         const bb = geom.boundingBox!;
         const center = bb.getCenter(new THREE.Vector3());
         geom.applyMatrix4(new THREE.Matrix4().makeTranslation(-center.x, -center.y, -center.z));
+
         addObject(mesh);
       },
       undefined,
       (err) => console.error("STL load error", err)
     );
-  }, [url, mode, modelColor]);
-
-  // ---------- interacción: click para “agujeros” ----------
-  useEffect(() => {
-    const el = mountRef.current;
-    if (!el) return;
-    const onClick = (ev: MouseEvent) => {
-      if (!allowHolePlacement || !objectRef.current || !onAddHole) return;
-
-      const rect = (ev.target as HTMLElement).getBoundingClientRect();
-      const x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
-      const y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
-
-      raycaster.current.setFromCamera(new THREE.Vector2(x, y), cameraRef.current);
-      const hits = raycaster.current.intersectObject(objectRef.current, true);
-      if (hits && hits.length > 0) {
-        const p = hits[0].point.clone();
-        addMarkerAt(p);
-        onAddHole({ x: p.x, z: p.z });
-      }
-    };
-    el.addEventListener("click", onClick);
-    return () => el.removeEventListener("click", onClick);
-  }, [allowHolePlacement, onAddHole, holeRadiusMm]);
+  }, [url, mode, modelColor, quality]);
 
   return (
-    <div ref={mountRef} style={{ height }} className="relative w-full overflow-hidden rounded-xl">
-      {/* HUD inferior izquierda */}
-      {sizeLabel && (
-        <div className="pointer-events-none absolute bottom-2 left-2 rounded-md bg-white/80 px-2 py-1 text-[11px] text-gray-700 shadow-sm">
-          {sizeLabel} · grid 50 mm
-        </div>
-      )}
+    <div className="relative">
+      <div ref={mountRef} style={{ height }} className="w-full rounded-xl overflow-hidden" />
+      {/* HUD inferior izquierda (medidas) */}
+      <div className="pointer-events-none absolute left-3 bottom-3 rounded-md bg-white/80 px-2 py-1 text-[11px] text-gray-700 shadow-sm">
+        {sizeLabel}
+      </div>
+      {/* Watermark */}
       {watermark && (
-        <div className="pointer-events-none absolute bottom-2 right-2 rounded-md bg-white/80 px-2 py-1 text-[11px] text-gray-600 shadow-sm">
+        <div className="pointer-events-none absolute right-3 bottom-3 select-none rounded-md bg-white/70 px-2 py-1 text-[11px] font-medium text-gray-500 shadow-sm">
           {watermark}
         </div>
       )}
