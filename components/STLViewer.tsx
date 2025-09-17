@@ -1,7 +1,7 @@
 // teknovashop-app/components/STLViewer.tsx
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -25,9 +25,11 @@ type Preview =
       params: { vesa_mm: number; thickness_mm: number; clearance_mm: number };
     }
   | {
-    kind: "router_mount";
-    params: { router_width_mm: number; router_depth_mm: number; thickness_mm: number };
-  };
+      kind: "router_mount";
+      params: { router_width_mm: number; router_depth_mm: number; thickness_mm: number };
+    };
+
+type Marker = { x: number; z: number; d: number };
 
 type Props = {
   url?: string;
@@ -38,6 +40,10 @@ type Props = {
   modelColor?: string;
   quality?: Quality;
   watermark?: string;
+  rulers?: boolean;
+  showAxes?: boolean;
+  markers?: Marker[];
+  editing?: { enabled: boolean; onPick?: (p: { x: number; z: number }) => void };
 };
 
 export default function STLViewer({
@@ -49,11 +55,15 @@ export default function STLViewer({
   modelColor = "#3f444c",
   quality = "high",
   watermark,
+  rulers = true,
+  showAxes = true,
+  markers = [],
+  editing = { enabled: false },
 }: Props) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const mountRef = useRef<HTMLDivElement | null>(null);
 
-  // IMPORTANT: usamos `any` para evitar fricciones de tipos en el build de Vercel
+  // `any` para evitar problemas de tipos en Vercel
   const rendererRef = useRef<any>(null);
   const sceneRef = useRef<any>(null);
   const cameraRef = useRef<any>(null);
@@ -63,6 +73,7 @@ export default function STLViewer({
   const gridRef = useRef<any>(null);
   const groundRef = useRef<any>(null);
   const axesRef = useRef<any>(null);
+  const markersGroupRef = useRef<any>(null);
 
   const [wireframe, setWireframe] = useState(false);
   const [gridVisible, setGridVisible] = useState(true);
@@ -70,7 +81,9 @@ export default function STLViewer({
     background === "#111827" ? "dark" : "light"
   );
 
-  // ------- helpers (sin tipos Three para compilar limpio) -------
+  const [dims, setDims] = useState<{ x: number; y: number; z: number }>({ x: 0, y: 0, z: 0 });
+
+  /** -------------- Utils -------------- */
   const traverseMaterials = (obj: any, fn: (m: any) => void) => {
     obj.traverse((o: any) => {
       if (o.isMesh) {
@@ -88,6 +101,8 @@ export default function STLViewer({
     const box = new THREE.Box3().setFromObject(obj);
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
+
+    setDims({ x: size.x, y: size.y, z: size.z });
 
     obj.position.sub(center);
 
@@ -107,46 +122,49 @@ export default function STLViewer({
     if (ground) ground.scale.setScalar(Math.max(1200, maxDim * 4));
   }, []);
 
-  const addObject = useCallback((obj: any) => {
-    const scene = sceneRef.current!;
-    if (objectRef.current) {
-      scene.remove(objectRef.current);
-      objectRef.current.traverse((o: any) => {
+  const addObject = useCallback(
+    (obj: any) => {
+      const scene = sceneRef.current!;
+      if (objectRef.current) {
+        scene.remove(objectRef.current);
+        objectRef.current.traverse((o: any) => {
+          if (o.isMesh) {
+            o.geometry?.dispose?.();
+            const mats = Array.isArray(o.material) ? o.material : [o.material];
+            mats.forEach((m: any) => m?.dispose?.());
+          }
+        });
+      }
+      obj.traverse((o: any) => {
         if (o.isMesh) {
-          o.geometry?.dispose?.();
-          const mats = Array.isArray(o.material) ? o.material : [o.material];
-          mats.forEach((m: any) => m?.dispose?.());
+          o.castShadow = true;
+          o.receiveShadow = true;
         }
       });
-    }
-    obj.traverse((o: any) => {
-      if (o.isMesh) {
-        o.castShadow = true;
-        o.receiveShadow = true;
-      }
-    });
 
-    scene.add(obj);
-    objectRef.current = obj;
-    fitCamera(obj);
-  }, [fitCamera]);
+      scene.add(obj);
+      objectRef.current = obj;
+      fitCamera(obj);
+    },
+    [fitCamera]
+  );
 
-  const setWire = useCallback((on: boolean) => {
-    setWireframe(on);
-    if (!objectRef.current) return;
-    traverseMaterials(objectRef.current, (m) => {
-      (m as any).wireframe = on;
-      m.needsUpdate = true;
-    });
-  }, []);
+  const setWire = useCallback(
+    (on: boolean) => {
+      setWireframe(on);
+      if (!objectRef.current) return;
+      traverseMaterials(objectRef.current, (m) => {
+        (m as any).wireframe = on;
+        m.needsUpdate = true;
+      });
+    },
+    []
+  );
 
   const presetView = useCallback((kind: "iso" | "top" | "front" | "right") => {
     const camera = cameraRef.current!;
     const controls = controlsRef.current!;
-    const obj = objectRef.current;
-    const size = obj
-      ? new THREE.Box3().setFromObject(obj).getSize(new THREE.Vector3())
-      : new THREE.Vector3(200, 200, 200);
+    const size = dims;
     const maxDim = Math.max(size.x, size.y, size.z) || 200;
     const d = maxDim * 2.0;
 
@@ -158,17 +176,16 @@ export default function STLViewer({
     camera.lookAt(0, 0, 0);
     controls.target.set(0, 0, 0);
     controls.update();
-  }, []);
+  }, [dims]);
 
   const resetView = useCallback(() => {
     controlsRef.current?.reset();
     presetView("iso");
   }, [presetView]);
 
-  // ------- init -------
+  /** -------------- Init -------------- */
   useEffect(() => {
     const container = mountRef.current!;
-    const wrap = wrapRef.current!;
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(theme === "dark" ? "#111827" : background);
     scene.fog = new THREE.Fog(scene.background.getHex(), 1200, 4000);
@@ -222,10 +239,17 @@ export default function STLViewer({
     scene.add(ground);
     groundRef.current = ground;
 
-    const axes = new THREE.AxesHelper(120);
-    axes.position.set(-450, 0, -450);
-    axesRef.current = axes;
-    scene.add(axes);
+    if (showAxes) {
+      const axes = new THREE.AxesHelper(120);
+      axes.position.set(-450, 0, -450);
+      axesRef.current = axes;
+      scene.add(axes);
+    }
+
+    // Grupo para marcadores de agujero
+    const markersGroup = new THREE.Group();
+    scene.add(markersGroup);
+    markersGroupRef.current = markersGroup;
 
     const onResize = () => {
       if (!rendererRef.current || !cameraRef.current || !mountRef.current) return;
@@ -267,9 +291,9 @@ export default function STLViewer({
       cameraRef.current = null;
       sceneRef.current = null;
     };
-  }, [height, background, theme, quality, gridVisible, presetView]);
+  }, [height, background, theme, quality, gridVisible, showAxes, presetView]);
 
-  // ------- PREVIEW -------
+  /** -------------- PREVIEW -------------- */
   useEffect(() => {
     const showPreview = mode === "preview" || (mode === "auto" && !url);
     if (!showPreview || !preview || !sceneRef.current) return;
@@ -283,13 +307,10 @@ export default function STLViewer({
 
       const base = new THREE.Mesh(new THREE.BoxGeometry(L, T, W), mat);
       base.position.set(0, -H / 2 + T / 2, 0);
-
       const side1 = new THREE.Mesh(new THREE.BoxGeometry(L, H, T), mat);
       side1.position.set(0, 0, -W / 2 + T / 2);
-
       const side2 = new THREE.Mesh(new THREE.BoxGeometry(L, H, T), mat);
       side2.position.set(0, 0, W / 2 - T / 2);
-
       group.add(base, side1, side2);
 
       if (ventilated) {
@@ -335,7 +356,7 @@ export default function STLViewer({
     setWire(wireframe);
   }, [preview, mode, url, modelColor, addObject, setWire, wireframe]);
 
-  // ------- STL -------
+  /** -------------- STL -------------- */
   useEffect(() => {
     const showStl = mode === "stl" || (mode === "auto" && !!url);
     if (!showStl || !url) return;
@@ -364,7 +385,66 @@ export default function STLViewer({
     );
   }, [url, mode, modelColor, addObject, setWire, wireframe]);
 
-  // ------- toolbar -------
+  /** -------------- Marcadores de agujero -------------- */
+  useEffect(() => {
+    const group = markersGroupRef.current as any;
+    if (!group) return;
+    // limpiar
+    while (group.children.length) {
+      const ch = group.children.pop();
+      if (ch?.geometry) ch.geometry.dispose();
+      if (ch?.material) ch.material.dispose();
+    }
+    if (!markers.length) return;
+
+    // Altura de los cilindros = bounding box de la pieza (si la hay)
+    const h =
+      objectRef.current
+        ? new THREE.Box3().setFromObject(objectRef.current).getSize(new THREE.Vector3()).y + 2
+        : 20;
+
+    markers.forEach((m) => {
+      const geo = new THREE.CylinderGeometry(m.d / 2, m.d / 2, h, 24);
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0x0ea5e9,
+        metalness: 0.1,
+        roughness: 0.3,
+        transparent: true,
+        opacity: 0.8,
+      });
+      const cyl = new THREE.Mesh(geo, mat);
+      cyl.position.set(m.x, 0, m.z);
+      group.add(cyl);
+    });
+  }, [markers]);
+
+  /** -------------- Edición (click to add) -------------- */
+  useEffect(() => {
+    if (!editing?.enabled) return;
+    const el = rendererRef.current?.domElement as HTMLCanvasElement | undefined;
+    if (!el) return;
+
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    const onClick = (e: MouseEvent) => {
+      if (!editing?.enabled || !groundRef.current || !cameraRef.current) return;
+      const rect = el.getBoundingClientRect();
+      pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(pointer, cameraRef.current);
+      const inter = raycaster.intersectObject(groundRef.current, false)[0];
+      if (inter && editing.onPick) {
+        const p = inter.point; // unidades = mm
+        editing.onPick({ x: p.x, z: p.z });
+      }
+    };
+
+    el.addEventListener("click", onClick);
+    return () => el.removeEventListener("click", onClick);
+  }, [editing]);
+
+  /** -------------- UI Toolbar y overlay -------------- */
   const toggleTheme = () => {
     const next = theme === "dark" ? "light" : "dark";
     setTheme(next);
@@ -381,21 +461,63 @@ export default function STLViewer({
     }
   };
 
+  const dimsText = useMemo(
+    () =>
+      dims.x || dims.y || dims.z
+        ? `${Math.round(dims.x)} × ${Math.round(dims.y)} × ${Math.round(dims.z)} mm`
+        : "",
+    [dims]
+  );
+
   return (
     <div ref={wrapRef} className="relative w-full overflow-hidden rounded-xl" style={{ height }}>
+      {/* Frame / borde */}
+      <div className="absolute inset-0 rounded-xl ring-1 ring-gray-200" />
+
+      {/* Canvas */}
       <div ref={mountRef} className="h-full w-full" />
 
       {/* Toolbar izquierda */}
-      <div className="pointer-events-auto absolute left-2 top-2 flex gap-1">
-        <button onClick={() => presetView("iso")}   className="rounded-md border bg-white/80 px-2 py-1 text-xs shadow hover:bg-white"  title="Vista isométrica">Iso</button>
-        <button onClick={() => presetView("top")}   className="rounded-md border bg-white/80 px-2 py-1 text-xs shadow hover:bg-white"  title="Vista superior">Top</button>
-        <button onClick={() => presetView("front")} className="rounded-md border bg-white/80 px-2 py-1 text-xs shadow hover:bg-white"  title="Vista frontal">Front</button>
-        <button onClick={() => presetView("right")} className="rounded-md border bg-white/80 px-2 py-1 text-xs shadow hover:bg-white"  title="Vista derecha">Right</button>
-        <button onClick={resetView}                 className="rounded-md border bg-white/80 px-2 py-1 text-xs shadow hover:bg-white"  title="Reset">Reset</button>
+      <div className="pointer-events-auto absolute left-2 top-2 z-10 flex gap-1">
+        <button
+          onClick={() => presetView("iso")}
+          className="rounded-md border bg-white/80 px-2 py-1 text-xs shadow hover:bg-white"
+          title="Vista isométrica"
+        >
+          Iso
+        </button>
+        <button
+          onClick={() => presetView("top")}
+          className="rounded-md border bg-white/80 px-2 py-1 text-xs shadow hover:bg-white"
+          title="Vista superior"
+        >
+          Top
+        </button>
+        <button
+          onClick={() => presetView("front")}
+          className="rounded-md border bg-white/80 px-2 py-1 text-xs shadow hover:bg-white"
+          title="Vista frontal"
+        >
+          Front
+        </button>
+        <button
+          onClick={() => presetView("right")}
+          className="rounded-md border bg-white/80 px-2 py-1 text-xs shadow hover:bg-white"
+          title="Vista derecha"
+        >
+          Right
+        </button>
+        <button
+          onClick={resetView}
+          className="rounded-md border bg-white/80 px-2 py-1 text-xs shadow hover:bg-white"
+          title="Reset cámara"
+        >
+          Reset
+        </button>
       </div>
 
       {/* Toolbar derecha */}
-      <div className="pointer-events-auto absolute right-2 top-2 flex gap-1">
+      <div className="pointer-events-auto absolute right-2 top-2 z-10 flex gap-1">
         <button
           onClick={() => setWire(!wireframe)}
           className="rounded-md border bg-white/80 px-2 py-1 text-xs shadow hover:bg-white"
@@ -431,9 +553,15 @@ export default function STLViewer({
         </button>
       </div>
 
+      {/* Overlay bottom-left: dims + rulers hint */}
+      <div className="pointer-events-none absolute bottom-2 left-2 z-10 flex select-none items-center gap-2 rounded bg-white/70 px-2 py-1 text-[11px] text-gray-700 shadow">
+        {dimsText ? <span>{dimsText}</span> : null}
+        {rulers && <span className="text-gray-500">· grid 50 mm</span>}
+      </div>
+
       {/* Watermark */}
       {watermark && (
-        <div className="pointer-events-none absolute bottom-2 right-2 select-none rounded bg-white/70 px-2 py-0.5 text-[11px] text-gray-700 shadow">
+        <div className="pointer-events-none absolute bottom-2 right-2 z-10 select-none rounded bg-white/70 px-2 py-0.5 text-[11px] text-gray-700 shadow">
           {watermark}
         </div>
       )}
