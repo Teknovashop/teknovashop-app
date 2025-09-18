@@ -1,32 +1,43 @@
-// teknovashop-app/lib/api.ts
 import type { ForgePayload, GenerateResponse } from "@/types/forge";
 
-// Llama SIEMPRE al proxy interno de Next (mismo dominio) → adiós CORS
-export async function generateSTL(payload: ForgePayload): Promise<GenerateResponse> {
-  // Precalentamos el backend a través del proxy (no bloquea)
-  fetch("/api/forge/health").catch(() => {});
+function backendUrl(path: string) {
+  const base = process.env.NEXT_PUBLIC_BACKEND_URL || "";
+  // Quitamos doble barra si el usuario pone / al final
+  return `${base.replace(/\/$/, "")}${path.startsWith("/") ? "" : "/"}${path}`;
+}
 
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 90000); // 90s
+export async function health(): Promise<boolean> {
   try {
-    const res = await fetch("/api/forge/generate", {
+    const res = await fetch(backendUrl("/health"), { cache: "no-store" });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function generateSTL(payload: ForgePayload): Promise<GenerateResponse> {
+  try {
+    const res = await fetch(backendUrl("/generate"), {
       method: "POST",
-      body: JSON.stringify(payload),
       headers: { "content-type": "application/json" },
-      signal: ctrl.signal,
-      cache: "no-store",
+      body: JSON.stringify(payload),
     });
-    const data = await res.json().catch(() => ({}));
+
     if (!res.ok) {
-      return { status: "error", message: data?.detail || data?.message || `HTTP ${res.status}` };
+      const txt = await res.text().catch(()=>"");
+      return { status: "error", message: txt || `HTTP ${res.status}` };
     }
-    return data as GenerateResponse;
+    // puede venir application/json o texto JSON
+    const data = (await res.json().catch(async () => JSON.parse(await res.text()))) as any;
+
+    if (data?.status === "ok" && typeof data?.stl_url === "string") {
+      return data as GenerateResponse;
+    }
+    if (data?.detail || data?.message) {
+      return { status: "error", message: String(data.detail || data.message) };
+    }
+    return { status: "_" };
   } catch (e: any) {
-    return {
-      status: "error",
-      message: e?.name === "AbortError" ? "Timeout esperando al backend" : (e?.message || "Fallo de red"),
-    };
-  } finally {
-    clearTimeout(t);
+    return { status: "error", message: e?.message || "Network error" };
   }
 }
