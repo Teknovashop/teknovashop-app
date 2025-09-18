@@ -71,8 +71,16 @@ export type ForgePayload =
   | VesaAdapterPayload
   | RouterMountPayload;
 
-/** Respuesta de /generate */
-export type GenerateResponse =
-  | { status: "ok"; stl_url: string }
-  | { status: "error"; message: string }
-  | { status: "_" };
+/** Respuestas de /generate */
+export type GenerateOk = {
+  status: "ok";
+  stl_url: string;
+  model?: ModelKind;
+};
+
+export type GenerateErr =
+  | { status: "error"; message?: string; detail?: string }
+  | { status: "_"; message?: string; detail?: string };
+
+/** Respuesta de /generate (union) */
+export type GenerateResponse = GenerateOk | GenerateErr;
