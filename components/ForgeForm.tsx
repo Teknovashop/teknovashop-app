@@ -98,7 +98,9 @@ export default function ForgeForm() {
         setStlUrl(res.stl_url);
         setToast("STL listo ✅");
       } else {
-        setToast(res.message || "Error generando STL");
+        // 🔧 Narrowing seguro: solo leemos message si el status es "error"
+        const msg = res.status === "error" ? res.message : "Error generando STL";
+        setToast(msg);
       }
     } catch (e: any) {
       setToast(e?.message || "Error inesperado");
