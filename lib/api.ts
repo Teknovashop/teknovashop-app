@@ -1,43 +1,43 @@
 import type { ForgePayload, GenerateResponse } from "@/types/forge";
 
-function backendUrl(path: string) {
-  const base = process.env.NEXT_PUBLIC_BACKEND_URL || "";
-  // Quitamos doble barra si el usuario pone / al final
-  return `${base.replace(/\/$/, "")}${path.startsWith("/") ? "" : "/"}${path}`;
-}
+const BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "";
 
-export async function health(): Promise<boolean> {
+/** Ping no-bloqueante: devuelve "ok" si el backend responde 200, si no "down" */
+export async function pingHealth(): Promise<"ok" | "down"> {
+  if (!BASE) return "down";
   try {
-    const res = await fetch(backendUrl("/health"), { cache: "no-store" });
-    return res.ok;
+    const r = await fetch(`${BASE.replace(/\/$/, "")}/health`, { cache: "no-store" });
+    return r.ok ? "ok" : "down";
   } catch {
-    return false;
+    return "down";
   }
 }
 
+/** POST /generate */
 export async function generateSTL(payload: ForgePayload): Promise<GenerateResponse> {
+  if (!BASE) {
+    return { status: "error", message: "Backend no configurado (NEXT_PUBLIC_BACKEND_URL)" };
+  }
   try {
-    const res = await fetch(backendUrl("/generate"), {
+    const r = await fetch(`${BASE.replace(/\/$/, "")}/generate`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
     });
-
-    if (!res.ok) {
-      const txt = await res.text().catch(()=>"");
-      return { status: "error", message: txt || `HTTP ${res.status}` };
+    const data = await r.json().catch(() => null);
+    if (!r.ok) {
+      const msg = (data && (data.detail || data.message)) || `HTTP ${r.status}`;
+      return { status: "error", message: String(msg) };
     }
-    // puede venir application/json o texto JSON
-    const data = (await res.json().catch(async () => JSON.parse(await res.text()))) as any;
-
-    if (data?.status === "ok" && typeof data?.stl_url === "string") {
-      return data as GenerateResponse;
+    // normalizamos: si backend manda {status:"ok", stl_url:"..."}
+    if (data && data.status === "ok" && typeof data.stl_url === "string") {
+      return { status: "ok", stl_url: data.stl_url };
     }
-    if (data?.detail || data?.message) {
-      return { status: "error", message: String(data.detail || data.message) };
+    if (data && data.status === "error") {
+      return { status: "error", message: String(data.message || "Error generando STL") };
     }
     return { status: "_" };
   } catch (e: any) {
-    return { status: "error", message: e?.message || "Network error" };
+    return { status: "error", message: e?.message || "Error de red" };
   }
 }
