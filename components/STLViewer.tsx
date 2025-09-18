@@ -1,299 +1,193 @@
-// teknovashop-app/components/STLViewer.tsx
 "use client";
 
-import React, { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
-import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
-type HoleSpec = { x_mm: number; z_mm: number; d_mm: number };
+/** marcador de agujero dibujado en el visor */
+export type Marker = { x_mm: number; z_mm: number; d_mm: number };
 
+type Mode = "preview" | "stl";
 type Props = {
-  url?: string;
-  height: number;
+  height?: number;
   background?: string;
-  modelColor?: string;
-
+  /** url STL (opcional; por ahora el preview es paramétrico simple) */
+  url?: string;
+  /** bounding box del preview para pintar la caja vacía (L x H x W) en mm */
+  box?: { length: number; height: number; width: number };
+  /** marcadores (se dibujan como esferas) */
+  markers?: Marker[];
+  /** si true, al hacer click en el plano XZ añade marcador → llama onAddMarker */
   holesMode?: boolean;
-  holeDiameter?: number;
-  holes?: HoleSpec[];
-  onAddHole?: (h: HoleSpec) => void;
-
-  statusText?: string;
+  addDiameter?: number;
+  onAddMarker?: (m: Marker) => void;
 };
 
 export default function STLViewer({
-  url,
-  height,
+  height = 520,
   background = "#ffffff",
-  modelColor = "#3f444c",
-
+  url,
+  box,
+  markers = [],
   holesMode = false,
-  holeDiameter = 5,
-  holes = [],
-  onAddHole,
-
-  statusText,
+  addDiameter = 5,
+  onAddMarker,
 }: Props) {
-  // Refs con tipos relajados para evitar conflictos de definiciones en CI
-  const mountRef = useRef<any>(null);
+  const mountRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<any>(null);
   const sceneRef = useRef<any>(null);
   const cameraRef = useRef<any>(null);
   const controlsRef = useRef<any>(null);
   const modelRef = useRef<any>(null);
-  const markersRef = useRef<any>(null);
-  const raycaster = useRef<any>(new THREE.Raycaster());
-  const mouse = useRef<any>(new THREE.Vector2());
+  const markersGroupRef = useRef<any>(null);
+  const raycaster = useRef(new THREE.Raycaster());
+  const mouse = useRef(new THREE.Vector2());
 
   // ---------- init ----------
   useEffect(() => {
-    const container = mountRef.current!;
+    const root = mountRef.current!;
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(background);
     sceneRef.current = scene;
 
-    const cam = new THREE.PerspectiveCamera(45, container.clientWidth / height, 0.1, 20000);
-    cam.position.set(420, 320, 420);
-    cameraRef.current = cam;
+    const camera = new THREE.PerspectiveCamera(45, root.clientWidth / height, 0.1, 20000);
+    camera.position.set(500, 360, 520);
+    cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio ?? 1, 2));
-    renderer.setSize(container.clientWidth, height);
-    container.appendChild(renderer.domElement);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(root.clientWidth, height);
+    root.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // Luces
-    const hemi = new THREE.HemisphereLight(0xffffff, 0x9aa3af, 1.0);
+    // marco
+    root.style.border = "1px solid #e5e7eb";
+    root.style.borderRadius = "12px";
+    root.style.overflow = "hidden";
+    root.style.background = "#fff";
+
+    // luces
+    const hemi = new THREE.HemisphereLight(0xffffff, 0xb0b4b9, 1.0);
     const dir = new THREE.DirectionalLight(0xffffff, 0.8);
-    dir.position.set(300, 500, 400);
+    dir.position.set(600, 800, 300);
     scene.add(hemi, dir);
 
-    // Grid + ejes
-    const grid = new THREE.GridHelper(3000, 60, 0xe5e7eb, 0xeff2f6);
+    // grid + ejes
+    const grid = new THREE.GridHelper(3000, 60, 0xE5E7EB, 0xEFF2F6);
     (grid.material as any).transparent = true;
     (grid.material as any).opacity = 0.9;
-    grid.position.y = -0.01;
-    const axes = new THREE.AxesHelper(140);
-    scene.add(grid, axes);
+    grid.position.y = 0;
+    scene.add(grid);
+    const axes = new THREE.AxesHelper(200);
+    axes.position.y = 0.1;
+    scene.add(axes);
 
-    // Grupo de marcadores
-    const markers = new THREE.Group();
-    markersRef.current = markers;
-    scene.add(markers);
-
-    // Controles
-    const controls = new OrbitControls(cam, renderer.domElement);
+    const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.06;
     controlsRef.current = controls;
 
-    // Resize
     const onResize = () => {
-      if (!rendererRef.current || !cameraRef.current || !mountRef.current) return;
-      const w = mountRef.current.clientWidth;
-      cameraRef.current.aspect = w / height;
-      cameraRef.current.updateProjectionMatrix();
-      rendererRef.current.setSize(w, height);
+      const w = root.clientWidth;
+      camera.aspect = w / height;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, height);
     };
     window.addEventListener("resize", onResize);
 
     let raf = 0;
     const loop = () => {
       raf = requestAnimationFrame(loop);
-      controlsRef.current?.update?.();
-      rendererRef.current?.render?.(sceneRef.current, cameraRef.current);
+      controls.update();
+      renderer.render(scene, camera);
     };
     loop();
 
+    // markers group
+    const g = new THREE.Group();
+    scene.add(g);
+    markersGroupRef.current = g;
+
+    // click-to-add markers (intersección con plano XZ)
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0); // y=0
+    const clickHandler = (ev: MouseEvent) => {
+      if (!holesMode || !onAddMarker) return;
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouse.current.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.current.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.current.setFromCamera(mouse.current, camera);
+      const point = new THREE.Vector3();
+      raycaster.current.ray.intersectPlane(plane, point);
+      // convertimos al sistema del modelo (suponemos centrado en origen)
+      onAddMarker({ x_mm: point.x, z_mm: point.z, d_mm: addDiameter });
+    };
+    renderer.domElement.addEventListener("click", clickHandler);
+
     return () => {
+      renderer.domElement.removeEventListener("click", clickHandler);
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", onResize);
-      controlsRef.current?.dispose?.();
-      rendererRef.current?.dispose?.();
-      scene.traverse((o: any) => {
-        if (o.isMesh) {
-          o.geometry?.dispose?.();
-          const mats = Array.isArray(o.material) ? o.material : [o.material];
-          mats.forEach((m: any) => m?.dispose?.());
-        }
-      });
-      try {
-        if (renderer.domElement?.parentNode) {
-          renderer.domElement.parentNode.removeChild(renderer.domElement);
-        }
-      } catch {}
-      rendererRef.current = null;
-      cameraRef.current = null;
-      sceneRef.current = null;
-      controlsRef.current = null;
-      modelRef.current = null;
-      markersRef.current = null;
+      controls.dispose();
+      renderer.dispose();
+      if (renderer.domElement.parentNode) renderer.domElement.parentNode.removeChild(renderer.domElement);
     };
-  }, [height, background]);
+  }, [height, background, holesMode, addDiameter, onAddMarker]);
 
-  // ---------- helpers ----------
-  function fitCamera(obj: any) {
-    const camera = cameraRef.current;
-    if (!camera || !obj) return;
-    const box = new THREE.Box3().setFromObject(obj);
-    const size = box.getSize(new THREE.Vector3());
-    const center = box.getCenter(new THREE.Vector3());
-    obj.position.sub(center); // centro al origen
-    const maxDim = Math.max(size.x, size.y, size.z) || 1;
-    const dist = maxDim * 2.2;
-    camera.position.set(dist, dist * 0.7, dist);
-    camera.near = 0.1;
-    camera.far = dist * 10;
-    camera.lookAt(0, 0, 0);
-    camera.updateProjectionMatrix();
-  }
+  // ---------- preview paramétrico: caja alámbrica ----------
+  useEffect(() => {
+    const scene = sceneRef.current as any;
+    if (!scene || !box) return;
 
-  function clearModel() {
-    const scene = sceneRef.current;
-    if (!scene) return;
     if (modelRef.current) {
       scene.remove(modelRef.current);
       modelRef.current.traverse?.((o: any) => {
-        if (o.isMesh) {
-          o.geometry?.dispose?.();
-          const mats = Array.isArray(o.material) ? o.material : [o.material];
-          mats.forEach((m: any) => m?.dispose?.());
-        }
+        o.geometry?.dispose?.();
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        mats.forEach((m: any) => m?.dispose?.());
       });
       modelRef.current = null;
     }
-  }
 
-  function addMarkerXZ(x: number, z: number, d: number) {
-    const r = Math.max(0.5, d / 2);
-    const geo = new THREE.CircleGeometry(r, 32);
-    const mat = new THREE.MeshBasicMaterial({ color: 0x10b981, transparent: true, opacity: 0.9, depthWrite: false });
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.set(x, 0.1, z);
-    mesh.rotation.x = -Math.PI / 2;
-    markersRef.current?.add(mesh);
-  }
+    const { length: L, height: H, width: W } = box;
+    const g = new THREE.BoxGeometry(L, H, W);
+    const m = new THREE.MeshBasicMaterial({ color: 0x94a3b8, wireframe: true });
+    const mesh = new THREE.Mesh(g, m);
+    mesh.position.y = H / 2;
+    scene.add(mesh);
+    modelRef.current = mesh;
+  }, [box]);
 
-  // ---------- carga STL ----------
+  // ---------- dibujar marcadores ----------
   useEffect(() => {
-    if (!sceneRef.current) return;
-
-    clearModel();
-    markersRef.current?.clear?.();
-
-    if (!url) return;
-
-    const loader = new STLLoader();
-    const col = new THREE.Color(modelColor);
-    loader.load(
-      url,
-      (geom) => {
-        const mat = new THREE.MeshStandardMaterial({ color: col, metalness: 0, roughness: 0.55 });
-        const mesh = new THREE.Mesh(geom, mat);
-        geom.computeBoundingBox();
-        const bb = geom.boundingBox!;
-        const center = bb.getCenter(new THREE.Vector3());
-        geom.applyMatrix4(new THREE.Matrix4().makeTranslation(-center.x, -center.y, -center.z));
-
-        modelRef.current = mesh;
-        sceneRef.current.add(mesh);
-        fitCamera(mesh);
-
-        holes.forEach((h) => addMarkerXZ(h.x_mm, h.z_mm, h.d_mm));
-      },
-      undefined,
-      (err) => console.error("STL load error", err)
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [url, modelColor]);
-
-  // ---------- repintar marcadores si cambian ----------
-  useEffect(() => {
-    if (!markersRef.current) return;
-    markersRef.current.clear?.();
-    holes.forEach((h) => addMarkerXZ(h.x_mm, h.z_mm, h.d_mm));
-  }, [holes]);
-
-  // ---------- picking para “agujeros” ----------
-  useEffect(() => {
-    const el = rendererRef.current?.domElement as HTMLCanvasElement | undefined;
-    if (!el) return;
-
-    const onClick = (ev: MouseEvent) => {
-      if (!holesMode) return;
-      if (!sceneRef.current || !cameraRef.current) return;
-
-      const rect = el.getBoundingClientRect();
-      mouse.current.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
-      mouse.current.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
-
-      raycaster.current.setFromCamera(mouse.current, cameraRef.current);
-
-      const target = modelRef.current ? [modelRef.current] : [];
-      let pointWorld: any | null = null; // ← ¡CAMBIO CLAVE! (antes THREE.Vector3 | null)
-
-      if (target.length) {
-        const hits = raycaster.current.intersectObjects(target, true);
-        if (hits.length > 0) {
-          pointWorld = hits[0].point.clone();
-        }
-      }
-      if (!pointWorld) return;
-
-      const local = modelRef.current.worldToLocal(pointWorld.clone());
-      const x_mm = local.x;
-      const z_mm = local.z;
-
-      addMarkerXZ(x_mm, z_mm, holeDiameter);
-      onAddHole?.({ x_mm, z_mm, d_mm: holeDiameter });
-    };
-
-    el.addEventListener("click", onClick);
-    return () => el.removeEventListener("click", onClick);
-  }, [holesMode, holeDiameter, onAddHole]);
-
-  // ---------- HUD ----------
-  const hud = useMemo(() => {
-    if (!statusText) return null;
-    return (
-      <div className="pointer-events-none absolute left-3 top-2 z-10 rounded bg-white/80 px-2 py-1 text-[11px] text-gray-700 shadow">
-        {statusText}
-      </div>
-    );
-  }, [statusText]);
-
-  // ---------- botones de vista ----------
-  const viewBtns = (
-    <div className="absolute bottom-3 left-3 z-10 flex gap-2">
-      {[
-        { k: "Iso", fn: () => cameraRef.current?.position.set(420, 320, 420) },
-        { k: "Top", fn: () => cameraRef.current?.position.set(0, 600, 0) },
-        { k: "Front", fn: () => cameraRef.current?.position.set(600, 100, 0) },
-        { k: "Right", fn: () => cameraRef.current?.position.set(0, 100, 600) },
-        { k: "Reset", fn: () => fitCamera(modelRef.current) },
-      ].map((b) => (
-        <button
-          key={b.k}
-          onClick={b.fn}
-          className="rounded border border-gray-300 bg-white/90 px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50"
-          type="button"
-        >
-          {b.k}
-        </button>
-      ))}
-    </div>
-  );
+    const group = markersGroupRef.current as any;
+    if (!group) return;
+    // limpiar
+    for (let i = group.children.length - 1; i >= 0; i--) {
+      const ch = group.children[i];
+      ch.geometry?.dispose?.();
+      ch.material?.dispose?.();
+      group.remove(ch);
+    }
+    // añadir
+    const mat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.5 });
+    markers.forEach((mk) => {
+      const r = Math.max(0.8, mk.d_mm / 2);
+      const s = new THREE.Mesh(new THREE.SphereGeometry(r, 20, 20), mat);
+      s.position.set(mk.x_mm, 0.1, mk.z_mm);
+      group.add(s);
+    });
+  }, [markers]);
 
   return (
-    <div className="relative w-full">
-      {hud}
-      {viewBtns}
-      <div
-        ref={mountRef}
-        className="w-full overflow-hidden rounded-xl border border-gray-200 shadow-sm"
-        style={{ height }}
-      />
+    <div className="relative w-full" style={{ height }}>
+      {/* Barra superior del visor */}
+      <div className="absolute left-0 right-0 top-0 z-10 flex items-center justify-between bg-white/80 backdrop-blur px-3 py-1 border-b border-gray-200">
+        <div className="text-xs text-gray-600">Visor 3D · arrastra para rotar · rueda para zoom · Shift+drag pan</div>
+        <div className="flex gap-6 text-xs text-gray-500">
+          <span>L</span><span>H</span><span>W</span>
+        </div>
+      </div>
+      <div ref={mountRef} className="w-full h-full" />
     </div>
   );
 }
