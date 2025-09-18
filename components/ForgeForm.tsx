@@ -1,9 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import STLViewer from "@/components/STLViewer";
-import { generateSTL, health } from "@/lib/api";
-import type { GenerateResponse, ModelKind, HoleSpec } from "@/types/forge";
+import dynamic from "next/dynamic";
+import { useEffect, useMemo, useState } from "react";
+import { generateSTL, pingHealth } from "@/lib/api";
+import type { GenerateResponse, HoleSpec, ModelKind } from "@/types/forge";
+
+const STLViewer = dynamic(() => import("@/components/STLViewer"), { ssr: false });
 
 type CableTrayState = {
   width: number;
@@ -22,122 +24,141 @@ const DEFAULTS: CableTrayState = {
   thickness: 3,
   ventilated: true,
   holes: [],
-  holeDiameter: 5
+  holeDiameter: 5,
 };
 
-function useURLState(model: ModelKind, state: CableTrayState) {
-  useEffect(() => {
-    const params = new URLSearchParams();
-    params.set("model", model);
-    params.set("width", String(state.width));
-    params.set("height", String(state.height));
-    params.set("length", String(state.length));
-    params.set("thickness", String(state.thickness));
-    params.set("ventilated", state.ventilated ? "1" : "0");
-    if (state.holes.length) params.set("holes", String(state.holes.length));
-    history.replaceState(null, "", `?${params.toString()}`);
-  }, [model, state]);
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
 }
 
 export default function ForgeForm() {
-  const [ok, setOk] = useState<boolean | null>(null);
-  useEffect(() => { health().then(setOk); }, []);
-
+  // Estado general
+  const [backendUp, setBackendUp] = useState<"ok" | "down">("down");
   const [model, setModel] = useState<ModelKind>("cable_tray");
-  const [cfg, setCfg] = useState<CableTrayState>(DEFAULTS);
-  const [holeMode, setHoleMode] = useState(true);
-
-  const [stlUrl, setStlUrl] = useState<string | null>(null);
-  const [resp, setResp] = useState<GenerateResponse | null>(null);
+  const [cfg, setCfg] = useState<CableTrayState>({ ...DEFAULTS });
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [resp, setResp] = useState<GenerateResponse | null>(null);
+  const [stlUrl, setStlUrl] = useState<string | null>(null);
+  const [holesMode, setHolesMode] = useState(true);
 
-  useURLState(model, cfg);
+  // Health check (no bloqueante)
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const s = await pingHealth();
+      if (mounted) setBackendUp(s);
+    })();
+    const id = setInterval(async () => {
+      const s = await pingHealth();
+      setBackendUp(s);
+    }, 15000);
+    return () => { mounted = false; clearInterval(id); };
+  }, []);
 
-  const update = (patch: Partial<CableTrayState>) =>
-    setCfg((s) => ({ ...s, ...patch }));
+  const update = (patch: Partial<CableTrayState>) => setCfg((s) => ({ ...s, ...patch }));
 
-  const onPick = (x_mm: number, z_mm: number) => {
-    const d = Math.max(2, Math.min(30, cfg.holeDiameter));
-    setCfg((s) => ({ ...s, holes: [...s.holes, { x_mm, z_mm, d_mm: d }] }));
+  const statusText = useMemo(() => {
+    return `${cfg.length} × ${cfg.height} × ${cfg.width} mm · grid 50 mm`;
+  }, [cfg]);
+
+  const onAddHole = (h: HoleSpec) => {
+    update({ holes: [...cfg.holes, h] });
   };
 
   const clearHoles = () => update({ holes: [] });
 
-  const genCableTray = useCallback(async () => {
+  const onGenerate = async () => {
     setBusy(true);
     setToast("Generando STL…");
-    setResp(null);
     setStlUrl(null);
+    setResp(null);
 
-    const res = await generateSTL({
-      model: "cable_tray",
-      width_mm: cfg.width,
-      height_mm: cfg.height,
-      length_mm: cfg.length,
-      thickness_mm: cfg.thickness,
-      ventilated: cfg.ventilated,
-      ...(cfg.holes.length ? { holes: cfg.holes } : {})
-    } as any);
+    try {
+      if (model !== "cable_tray") {
+        setToast("De momento está activo el modelo Cable Tray.");
+        setBusy(false);
+        setTimeout(() => setToast(null), 1600);
+        return;
+      }
 
-    setResp(res);
+      const payload = {
+        model: "cable_tray" as const,
+        width_mm: clamp(cfg.width, 30, 1000),
+        height_mm: clamp(cfg.height, 10, 600),
+        length_mm: clamp(cfg.length, 60, 4000),
+        thickness_mm: clamp(cfg.thickness, 1, 20),
+        ventilated: !!cfg.ventilated,
+        ...(cfg.holes.length ? { holes: cfg.holes } : {}),
+      };
 
-    if (res && res.status === "ok" && (res as any).stl_url) {
-      setStlUrl((res as any).stl_url ?? null);
-      setToast("STL listo ✅");
-    } else {
-      const anyRes = res as any;
-      const msg =
-        (anyRes && typeof anyRes === "object" && (anyRes.detail as string)) ||
-        (anyRes && typeof anyRes === "object" && (anyRes.message as string)) ||
-        "Error generando STL";
-      setToast(msg);
+      const res = await generateSTL(payload as any);
+      setResp(res);
+      if (res.status === "ok") {
+        setStlUrl(res.stl_url);
+        setToast("STL listo ✅");
+      } else {
+        setToast(res.message || "Error generando STL");
+      }
+    } catch (e: any) {
+      setToast(e?.message || "Error inesperado");
+    } finally {
+      setBusy(false);
+      setTimeout(() => setToast(null), 1800);
     }
-    setBusy(false);
-    setTimeout(() => setToast(null), 2000);
-  }, [cfg]);
+  };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[420px,1fr] gap-6">
-      {/* Panel izquierdo */}
-      <div className="space-y-6">
-        {/* Estado backend */}
-        <div className="text-xs text-gray-600">
-          Backend:{" "}
-          {ok === null ? "comprobando…" : ok ? "OK" : "no disponible"}
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[420px,1fr]">
+      {/* Panel IZQ: Formulario */}
+      <section className="h-fit rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        {/* Header pequeño */}
+        <div className="mb-2 flex items-center justify-between">
+          <div className="text-sm font-medium text-gray-700">
+            {backendUp === "ok" ? (
+              <span className="inline-flex items-center gap-1.5 text-green-600">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-500" />
+                Backend: OK
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 text-red-600">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-500" />
+                Backend: no disponible
+              </span>
+            )}
+          </div>
         </div>
 
-        {/* Tabs de modelos */}
-        <div className="bg-white border border-gray-200 rounded-xl p-1 flex gap-1">
+        {/* Tabs modelos */}
+        <div className="mb-4 inline-flex rounded-xl border border-gray-200 p-1">
           {[
             { id: "cable_tray", label: "Cable Tray" },
             { id: "vesa_adapter", label: "VESA (próximamente)", disabled: true },
-            { id: "router_mount", label: "Router Mount (próx.)", disabled: true },
+            { id: "router_mount", label: "Router (próx.)", disabled: true },
           ].map((t) => (
             <button
               key={t.id}
               onClick={() => !t.disabled && setModel(t.id as ModelKind)}
-              disabled={t.disabled}
-              className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition
-              ${model === t.id ? "bg-gray-900 text-white" : t.disabled ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-              : "hover:bg-gray-100 text-gray-700"}`}
+              className={`mx-0.5 rounded-lg px-3 py-1.5 text-sm ${
+                model === t.id ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
+              } ${t.disabled ? "opacity-50 cursor-not-allowed" : ""}`}
             >
               {t.label}
             </button>
           ))}
         </div>
 
-        {/* Formulario: Cable Tray */}
-        <div className="bg-white/80 backdrop-blur border border-gray-200 rounded-xl p-4 space-y-4">
+        {/* Parámetros Cable Tray */}
+        <div className="space-y-4">
           {[
-            { k: "width", label: "Ancho (mm)", min: 30, max: 400, step: 1, value: cfg.width },
-            { k: "height", label: "Alto (mm)", min: 10, max: 120, step: 1, value: cfg.height },
-            { k: "length", label: "Longitud (mm)", min: 80, max: 2000, step: 1, value: cfg.length },
-            { k: "thickness", label: "Espesor (mm)", min: 2, max: 20, step: 1, value: cfg.thickness },
+            { k: "width", label: "Ancho (mm)", min: 30, max: 200, value: cfg.width },
+            { k: "height", label: "Alto (mm)", min: 10, max: 80, value: cfg.height },
+            { k: "length", label: "Longitud (mm)", min: 60, max: 600, value: cfg.length },
+            { k: "thickness", label: "Espesor (mm)", min: 1, max: 10, value: cfg.thickness },
           ].map((f) => (
             <div key={f.k}>
-              <div className="flex items-center justify-between">
-                <label className="text-sm font-medium text-gray-700">{f.label}</label>
+              <div className="mb-1 flex items-center justify-between">
+                <label className="text-sm text-gray-700">{f.label}</label>
                 <span className="text-sm tabular-nums text-gray-600">{f.value}</span>
               </div>
               <input
@@ -145,14 +166,12 @@ export default function ForgeForm() {
                 className="w-full"
                 min={f.min}
                 max={f.max}
-                step={f.step}
                 value={f.value}
                 onChange={(e) => update({ [f.k]: Number(e.target.value) } as any)}
               />
             </div>
           ))}
-
-          <label className="flex items-center gap-2 text-sm">
+          <label className="inline-flex select-none items-center gap-2 text-sm">
             <input
               type="checkbox"
               checked={cfg.ventilated}
@@ -160,94 +179,103 @@ export default function ForgeForm() {
             />
             Con ranuras de ventilación
           </label>
-
-          <div className="pt-1 space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="text-sm font-medium text-gray-700">Agujeros personalizados</div>
-              <label className="text-xs flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={holeMode}
-                  onChange={(e) => setHoleMode(e.target.checked)}
-                />
-                Modo “agujeros” (click en el visor)
-              </label>
-            </div>
-            <div className="flex items-center gap-3">
-              <label className="text-sm text-gray-700">Ø a añadir (mm)</label>
-              <input
-                type="number"
-                min={2}
-                max={30}
-                step={0.5}
-                value={cfg.holeDiameter}
-                onChange={(e) => update({ holeDiameter: Number(e.target.value) })}
-                className="w-24 rounded-md border px-2 py-1 text-sm"
-              />
-              <button
-                onClick={clearHoles}
-                className="ml-auto px-3 py-1.5 rounded-lg border text-sm hover:bg-gray-50"
-              >
-                Borrar agujeros
-              </button>
-            </div>
-            <div className="text-xs text-gray-600">
-              {cfg.holes.length ? `${cfg.holes.length} agujero(s) definidos.` : "No hay agujeros todavía."}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 pt-2">
-            <button
-              onClick={genCableTray}
-              disabled={busy}
-              className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm font-semibold hover:bg-black/90 disabled:opacity-60"
-            >
-              {busy ? "Generando…" : "Generar STL"}
-            </button>
-            <a
-              href={stlUrl ?? "#"}
-              target="_blank"
-              className={`px-3 py-2 rounded-lg border text-sm ${
-                stlUrl ? "border-gray-300 hover:bg-gray-50" : "border-dashed border-gray-300 text-gray-400 pointer-events-none"
-              }`}
-              rel="noreferrer"
-            >
-              Descargar STL
-            </a>
-          </div>
-
-          <details className="mt-2">
-            <summary className="cursor-pointer text-sm text-gray-600">
-              Ver respuesta JSON
-            </summary>
-            <textarea
-              readOnly
-              value={JSON.stringify(resp ?? {}, null, 2)}
-              className="w-full h-40 mt-2 text-xs bg-gray-50 rounded-md border p-2 font-mono"
-            />
-          </details>
         </div>
-      </div>
 
-      {/* Panel derecho (visor) */}
-      <div className="space-y-2">
+        {/* Agujeros personalizados */}
+        <div className="mt-5 rounded-xl border border-gray-200 p-3">
+          <div className="mb-2 text-sm font-medium text-gray-800">Agujeros personalizados</div>
+          <label className="inline-flex select-none items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={holesMode}
+              onChange={(e) => setHolesMode(e.target.checked)}
+            />
+            Modo “agujeros” (click en el visor)
+          </label>
+          <div className="mt-2 flex items-center gap-3">
+            <span className="text-sm text-gray-700">Ø a añadir (mm)</span>
+            <input
+              type="number"
+              value={cfg.holeDiameter}
+              min={2}
+              max={30}
+              step={0.5}
+              onChange={(e) => update({ holeDiameter: Number(e.target.value) || 5 })}
+              className="w-20 rounded border px-2 py-1 text-sm"
+            />
+            <button
+              onClick={clearHoles}
+              className="rounded border px-2 py-1 text-sm hover:bg-gray-50"
+            >
+              Borrar agujeros
+            </button>
+          </div>
+          {cfg.holes.length === 0 ? (
+            <p className="mt-2 text-xs text-gray-500">No hay agujeros todavía. Activa el modo y haz click sobre el modelo.</p>
+          ) : (
+            <details className="mt-2">
+              <summary className="cursor-pointer text-xs text-gray-600">Ver lista ({cfg.holes.length})</summary>
+              <pre className="mt-1 max-h-40 overflow-auto rounded bg-gray-50 p-2 text-[11px]">
+                {JSON.stringify(cfg.holes, null, 2)}
+              </pre>
+            </details>
+          )}
+        </div>
+
+        {/* Acciones */}
+        <div className="mt-5 flex flex-wrap items-center gap-3">
+          <button
+            onClick={onGenerate}
+            disabled={busy || backendUp !== "ok"}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-4 py-2 text-white hover:bg-black disabled:opacity-50"
+          >
+            {busy ? "Generando…" : "Generar STL"}
+          </button>
+          <a
+            href={stlUrl || "#"}
+            target="_blank"
+            rel="noreferrer"
+            className={`rounded-xl border px-3 py-2 text-sm ${
+              stlUrl ? "hover:bg-gray-50" : "pointer-events-none opacity-50"
+            }`}
+          >
+            Descargar STL
+          </a>
+        </div>
+
+        <details className="mt-3">
+          <summary className="cursor-pointer text-sm text-gray-700">Ver respuesta JSON</summary>
+          <textarea
+            readOnly
+            value={JSON.stringify(resp ?? {}, null, 2)}
+            className="mt-2 h-40 w-full rounded-xl border p-2 font-mono text-xs"
+          />
+        </details>
+      </section>
+
+      {/* Panel DCHO: Visor enmarcado */}
+      <section className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
         <STLViewer
           url={stlUrl || undefined}
           height={560}
           background="#ffffff"
+          modelColor="#3f444c"
+          holesMode={holesMode}
+          holeDiameter={cfg.holeDiameter}
           holes={cfg.holes}
-          holeMode={holeMode}
-          onPick={onPick}
+          onAddHole={onAddHole}
+          statusText={statusText}
         />
-        <p className="text-xs text-gray-500">
-          Arrastra para rotar · Rueda para zoom · Shift+arrastrar para pan · Click (modo agujeros) para añadir marcador
+        <p className="px-1 pt-2 text-xs text-gray-500">
+          Arrastra para rotar · Rueda para zoom · <kbd>Shift</kbd>+arrastrar para pan ·
+          Click para añadir agujeros (si el modo está activo)
         </p>
-      </div>
+      </section>
 
       {/* Toast */}
       {toast && (
         <div className="fixed bottom-5 right-5 z-50">
-          <div className="rounded-lg bg-gray-900 text-white px-4 py-2 text-sm shadow-lg">
+          <div className="rounded-lg bg-gray-900 px-4 py-2 text-sm text-white shadow-lg">
             {toast}
           </div>
         </div>
