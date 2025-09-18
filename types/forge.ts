@@ -1,5 +1,3 @@
-// teknovashop-app/types/forge.ts
-
 /** Qué modelo se va a generar */
 export type ModelKind = "cable_tray" | "vesa_adapter" | "router_mount";
 
@@ -71,16 +69,8 @@ export type ForgePayload =
   | VesaAdapterPayload
   | RouterMountPayload;
 
-/** Respuestas de /generate */
-export type GenerateOk = {
-  status: "ok";
-  stl_url: string;
-  model?: ModelKind;
-};
-
-export type GenerateErr =
-  | { status: "error"; message?: string; detail?: string }
-  | { status: "_"; message?: string; detail?: string };
-
-/** Respuesta de /generate (union) */
-export type GenerateResponse = GenerateOk | GenerateErr;
+/** Respuesta de /generate */
+export type GenerateResponse =
+  | { status: "ok"; stl_url: string }
+  | { status: "error"; message: string }
+  | { status: "_" };
