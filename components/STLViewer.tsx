@@ -1,3 +1,4 @@
+// teknovashop-app/components/STLViewer.tsx
 "use client";
 
 import React, { useEffect, useMemo, useRef } from "react";
@@ -5,13 +6,6 @@ import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
-/**
- * Props del visor. Los parámetros de agujeros son para la UI interactiva:
- * - holesMode: si true, el click añade un marcador
- * - holeDiameter: diámetro a usar en el callback onAddHole
- * - holes: lista actual (para pintar marcadores)
- * - onAddHole: callback al hacer click (en coords locales del modelo: X/Z mm)
- */
 type HoleSpec = { x_mm: number; z_mm: number; d_mm: number };
 
 type Props = {
@@ -41,14 +35,14 @@ export default function STLViewer({
 
   statusText,
 }: Props) {
-  // Refs (relajamos tipos para evitar errores de build en CI)
+  // Refs con tipos relajados para evitar conflictos de definiciones en CI
   const mountRef = useRef<any>(null);
   const rendererRef = useRef<any>(null);
   const sceneRef = useRef<any>(null);
   const cameraRef = useRef<any>(null);
   const controlsRef = useRef<any>(null);
-  const modelRef = useRef<any>(null);      // Mesh/Group cargado (STL)
-  const markersRef = useRef<any>(null);    // Grupo con marcadores
+  const modelRef = useRef<any>(null);
+  const markersRef = useRef<any>(null);
   const raycaster = useRef<any>(new THREE.Raycaster());
   const mouse = useRef<any>(new THREE.Vector2());
 
@@ -59,12 +53,10 @@ export default function STLViewer({
     scene.background = new THREE.Color(background);
     sceneRef.current = scene;
 
-    // Cámara
     const cam = new THREE.PerspectiveCamera(45, container.clientWidth / height, 0.1, 20000);
     cam.position.set(420, 320, 420);
     cameraRef.current = cam;
 
-    // Renderer
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio ?? 1, 2));
     renderer.setSize(container.clientWidth, height);
@@ -83,15 +75,14 @@ export default function STLViewer({
     (grid.material as any).opacity = 0.9;
     grid.position.y = -0.01;
     const axes = new THREE.AxesHelper(140);
-    axes.position.set(0, 0, 0);
     scene.add(grid, axes);
 
-    // Marcadores (grupo)
+    // Grupo de marcadores
     const markers = new THREE.Group();
     markersRef.current = markers;
     scene.add(markers);
 
-    // OrbitControls
+    // Controles
     const controls = new OrbitControls(cam, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.06;
@@ -118,11 +109,8 @@ export default function STLViewer({
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", onResize);
-      try {
-        controlsRef.current?.dispose?.();
-        rendererRef.current?.dispose?.();
-      } catch {}
-      // Limpieza de geometrías/materiales
+      controlsRef.current?.dispose?.();
+      rendererRef.current?.dispose?.();
       scene.traverse((o: any) => {
         if (o.isMesh) {
           o.geometry?.dispose?.();
@@ -151,7 +139,7 @@ export default function STLViewer({
     const box = new THREE.Box3().setFromObject(obj);
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
-    obj.position.sub(center); // centramos el modelo (0,0,0)
+    obj.position.sub(center); // centro al origen
     const maxDim = Math.max(size.x, size.y, size.z) || 1;
     const dist = maxDim * 2.2;
     camera.position.set(dist, dist * 0.7, dist);
@@ -178,12 +166,10 @@ export default function STLViewer({
   }
 
   function addMarkerXZ(x: number, z: number, d: number) {
-    // Marcador circular plano (para indicar agujero)
     const r = Math.max(0.5, d / 2);
     const geo = new THREE.CircleGeometry(r, 32);
     const mat = new THREE.MeshBasicMaterial({ color: 0x10b981, transparent: true, opacity: 0.9, depthWrite: false });
     const mesh = new THREE.Mesh(geo, mat);
-    // Lo dibujamos cerca del plano superior (y=0.1) para que se vea encima
     mesh.position.set(x, 0.1, z);
     mesh.rotation.x = -Math.PI / 2;
     markersRef.current?.add(mesh);
@@ -196,10 +182,7 @@ export default function STLViewer({
     clearModel();
     markersRef.current?.clear?.();
 
-    if (!url) {
-      // sin STL aún: nada que cargar
-      return;
-    }
+    if (!url) return;
 
     const loader = new STLLoader();
     const col = new THREE.Color(modelColor);
@@ -208,7 +191,6 @@ export default function STLViewer({
       (geom) => {
         const mat = new THREE.MeshStandardMaterial({ color: col, metalness: 0, roughness: 0.55 });
         const mesh = new THREE.Mesh(geom, mat);
-        // centrado
         geom.computeBoundingBox();
         const bb = geom.boundingBox!;
         const center = bb.getCenter(new THREE.Vector3());
@@ -218,7 +200,6 @@ export default function STLViewer({
         sceneRef.current.add(mesh);
         fitCamera(mesh);
 
-        // Re-pintar marcadores existentes (si los hay)
         holes.forEach((h) => addMarkerXZ(h.x_mm, h.z_mm, h.d_mm));
       },
       undefined,
@@ -227,7 +208,7 @@ export default function STLViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url, modelColor]);
 
-  // ---------- repintar marcadores si cambian desde fuera ----------
+  // ---------- repintar marcadores si cambian ----------
   useEffect(() => {
     if (!markersRef.current) return;
     markersRef.current.clear?.();
@@ -249,9 +230,8 @@ export default function STLViewer({
 
       raycaster.current.setFromCamera(mouse.current, cameraRef.current);
 
-      // Si hay modelo, intentamos intersectarlo para obtener el punto de click
       const target = modelRef.current ? [modelRef.current] : [];
-      let pointWorld: THREE.Vector3 | null = null;
+      let pointWorld: any | null = null; // ← ¡CAMBIO CLAVE! (antes THREE.Vector3 | null)
 
       if (target.length) {
         const hits = raycaster.current.intersectObjects(target, true);
@@ -259,18 +239,12 @@ export default function STLViewer({
           pointWorld = hits[0].point.clone();
         }
       }
+      if (!pointWorld) return;
 
-      if (!pointWorld) {
-        // si no hay intersección con el modelo, no marcamos
-        return;
-      }
-
-      // Transformamos a espacio local del modelo y usamos X/Z como mm
       const local = modelRef.current.worldToLocal(pointWorld.clone());
       const x_mm = local.x;
       const z_mm = local.z;
 
-      // Añadimos marcador visual y devolvemos al padre
       addMarkerXZ(x_mm, z_mm, holeDiameter);
       onAddHole?.({ x_mm, z_mm, d_mm: holeDiameter });
     };
@@ -279,7 +253,7 @@ export default function STLViewer({
     return () => el.removeEventListener("click", onClick);
   }, [holesMode, holeDiameter, onAddHole]);
 
-  // ---------- UI/HUD (texto arriba-izquierda) ----------
+  // ---------- HUD ----------
   const hud = useMemo(() => {
     if (!statusText) return null;
     return (
