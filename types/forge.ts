@@ -24,42 +24,28 @@ export interface CableTrayPayload {
   thickness_mm: number;
   /** Ranuras/ventilación */
   ventilated: boolean;
-  /**
-   * Agujeros personalizados: cilindros que atraviesan en Y.
-   * Coordenadas en el plano XZ, respecto al centro de la pieza.
-   */
+  /** Agujeros personalizados (plano XZ, respecto al centro) */
   holes?: HoleSpec[];
 }
 
-/** Adaptador VESA */
+/** Adaptador VESA (placeholder por ahora) */
 export interface VesaAdapterPayload {
   model: "vesa_adapter";
-  /** Patrón VESA en mm (75, 100, 200…) */
   vesa_mm: number;
-  /** Espesor placa */
   thickness_mm: number;
-  /** Diámetro de agujero estándar VESA */
   hole_diameter_mm: number;
-  /** Holgura adicional perimetral */
   clearance_mm: number;
-  /** Agujeros personalizados opcionales */
   holes?: HoleSpec[];
 }
 
-/** Soporte de router/ONT */
+/** Soporte router (placeholder por ahora) */
 export interface RouterMountPayload {
   model: "router_mount";
-  /** Ancho del dispositivo (X) */
   router_width_mm: number;
-  /** Fondo del dispositivo (Z) */
   router_depth_mm: number;
-  /** Espesor material */
   thickness_mm: number;
-  /** Ranuras para bridas/velcro */
   strap_slots: boolean;
-  /** Ø de agujero de anclaje (si se usa) */
   hole_diameter_mm: number;
-  /** Agujeros personalizados opcionales */
   holes?: HoleSpec[];
 }
 
