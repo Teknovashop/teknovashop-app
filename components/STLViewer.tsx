@@ -2,98 +2,100 @@
 
 import React, { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
+import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
-/** Props del visor */
+/**
+ * Props del visor. Los parámetros de agujeros son para la UI interactiva:
+ * - holesMode: si true, el click añade un marcador
+ * - holeDiameter: diámetro a usar en el callback onAddHole
+ * - holes: lista actual (para pintar marcadores)
+ * - onAddHole: callback al hacer click (en coords locales del modelo: X/Z mm)
+ */
+type HoleSpec = { x_mm: number; z_mm: number; d_mm: number };
+
 type Props = {
-  /** URL del STL ya generado (si hay) */
   url?: string;
-  /** Alto del lienzo */
-  height?: number;
-  /** Fondo */
+  height: number;
   background?: string;
-  /** Color del modelo */
   modelColor?: string;
 
-  /** Modo agujeros: si está activo, clic en el plano coloca marcador y se llama a onAddHole */
   holesMode?: boolean;
-  /** Diámetro en mm para los nuevos agujeros */
   holeDiameter?: number;
-  /** Lista de agujeros actuales para dibujar marcadores */
-  holes?: { x_mm: number; z_mm: number; d_mm: number }[];
-  /** Callback al pinchar en el modelo/plano */
-  onAddHole?: (hole: { x_mm: number; z_mm: number; d_mm: number }) => void;
+  holes?: HoleSpec[];
+  onAddHole?: (h: HoleSpec) => void;
 
-  /** Texto de estado (p.e. medidas) que se pinta en esquina */
   statusText?: string;
 };
 
 export default function STLViewer({
   url,
-  height = 520,
+  height,
   background = "#ffffff",
   modelColor = "#3f444c",
+
   holesMode = false,
   holeDiameter = 5,
   holes = [],
   onAddHole,
+
   statusText,
 }: Props) {
-  const mountRef = useRef<HTMLDivElement | null>(null);
+  // Refs (relajamos tipos para evitar errores de build en CI)
+  const mountRef = useRef<any>(null);
   const rendererRef = useRef<any>(null);
-  const sceneRef = useRef<THREE.Scene | null>(null);
-  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-  const controlsRef = useRef<OrbitControls | null>(null);
-  const modelRef = useRef<THREE.Object3D | null>(null);
-  const markersRef = useRef<THREE.Group | null>(null);
-  const raycaster = useRef(new THREE.Raycaster());
-  const mouse = useRef(new THREE.Vector2());
+  const sceneRef = useRef<any>(null);
+  const cameraRef = useRef<any>(null);
+  const controlsRef = useRef<any>(null);
+  const modelRef = useRef<any>(null);      // Mesh/Group cargado (STL)
+  const markersRef = useRef<any>(null);    // Grupo con marcadores
+  const raycaster = useRef<any>(new THREE.Raycaster());
+  const mouse = useRef<any>(new THREE.Vector2());
 
-  // ---------- INIT ----------
+  // ---------- init ----------
   useEffect(() => {
-    const el = mountRef.current!;
+    const container = mountRef.current!;
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(background);
     sceneRef.current = scene;
 
-    const camera = new THREE.PerspectiveCamera(45, el.clientWidth / height, 0.1, 10000);
-    camera.position.set(400, 300, 400);
-    cameraRef.current = camera;
+    // Cámara
+    const cam = new THREE.PerspectiveCamera(45, container.clientWidth / height, 0.1, 20000);
+    cam.position.set(420, 320, 420);
+    cameraRef.current = cam;
 
+    // Renderer
     const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    renderer.setSize(el.clientWidth, height);
-    el.appendChild(renderer.domElement);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio ?? 1, 2));
+    renderer.setSize(container.clientWidth, height);
+    container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
     // Luces
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x9aa3af, 1.0));
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x9aa3af, 1.0);
     const dir = new THREE.DirectionalLight(0xffffff, 0.8);
     dir.position.set(300, 500, 400);
-    scene.add(dir);
+    scene.add(hemi, dir);
 
-    // Controles
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.06;
-    controlsRef.current = controls;
-
-    // Plano base (grid)
+    // Grid + ejes
     const grid = new THREE.GridHelper(3000, 60, 0xe5e7eb, 0xeff2f6);
     (grid.material as any).transparent = true;
     (grid.material as any).opacity = 0.9;
-    grid.position.y = 0;
-    scene.add(grid);
+    grid.position.y = -0.01;
+    const axes = new THREE.AxesHelper(140);
+    axes.position.set(0, 0, 0);
+    scene.add(grid, axes);
 
-    // Ejes mini
-    const axes = new THREE.AxesHelper(80);
-    axes.position.set(-550, 0.01, -550);
-    scene.add(axes);
+    // Marcadores (grupo)
+    const markers = new THREE.Group();
+    markersRef.current = markers;
+    scene.add(markers);
 
-    // Grupo marcadores
-    const g = new THREE.Group();
-    markersRef.current = g;
-    scene.add(g);
+    // OrbitControls
+    const controls = new OrbitControls(cam, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.06;
+    controlsRef.current = controls;
 
     // Resize
     const onResize = () => {
@@ -105,140 +107,219 @@ export default function STLViewer({
     };
     window.addEventListener("resize", onResize);
 
-    // Loop
     let raf = 0;
-    const tick = () => {
-      raf = requestAnimationFrame(tick);
-      controlsRef.current?.update();
-      renderer.render(scene, camera);
+    const loop = () => {
+      raf = requestAnimationFrame(loop);
+      controlsRef.current?.update?.();
+      rendererRef.current?.render?.(sceneRef.current, cameraRef.current);
     };
-    tick();
+    loop();
 
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", onResize);
-      controls.dispose();
-      scene.traverse((o) => {
-        if ((o as any).isMesh) {
-          (o as any).geometry?.dispose?.();
-          const mats = Array.isArray((o as any).material) ? (o as any).material : [(o as any).material];
+      try {
+        controlsRef.current?.dispose?.();
+        rendererRef.current?.dispose?.();
+      } catch {}
+      // Limpieza de geometrías/materiales
+      scene.traverse((o: any) => {
+        if (o.isMesh) {
+          o.geometry?.dispose?.();
+          const mats = Array.isArray(o.material) ? o.material : [o.material];
           mats.forEach((m: any) => m?.dispose?.());
         }
       });
-      renderer.dispose();
-      try { el.removeChild(renderer.domElement); } catch {}
-      sceneRef.current = null;
-      cameraRef.current = null;
+      try {
+        if (renderer.domElement?.parentNode) {
+          renderer.domElement.parentNode.removeChild(renderer.domElement);
+        }
+      } catch {}
       rendererRef.current = null;
+      cameraRef.current = null;
+      sceneRef.current = null;
       controlsRef.current = null;
       modelRef.current = null;
       markersRef.current = null;
     };
   }, [height, background]);
 
-  // ---------- LOAD STL ----------
+  // ---------- helpers ----------
+  function fitCamera(obj: any) {
+    const camera = cameraRef.current;
+    if (!camera || !obj) return;
+    const box = new THREE.Box3().setFromObject(obj);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    obj.position.sub(center); // centramos el modelo (0,0,0)
+    const maxDim = Math.max(size.x, size.y, size.z) || 1;
+    const dist = maxDim * 2.2;
+    camera.position.set(dist, dist * 0.7, dist);
+    camera.near = 0.1;
+    camera.far = dist * 10;
+    camera.lookAt(0, 0, 0);
+    camera.updateProjectionMatrix();
+  }
+
+  function clearModel() {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    if (modelRef.current) {
+      scene.remove(modelRef.current);
+      modelRef.current.traverse?.((o: any) => {
+        if (o.isMesh) {
+          o.geometry?.dispose?.();
+          const mats = Array.isArray(o.material) ? o.material : [o.material];
+          mats.forEach((m: any) => m?.dispose?.());
+        }
+      });
+      modelRef.current = null;
+    }
+  }
+
+  function addMarkerXZ(x: number, z: number, d: number) {
+    // Marcador circular plano (para indicar agujero)
+    const r = Math.max(0.5, d / 2);
+    const geo = new THREE.CircleGeometry(r, 32);
+    const mat = new THREE.MeshBasicMaterial({ color: 0x10b981, transparent: true, opacity: 0.9, depthWrite: false });
+    const mesh = new THREE.Mesh(geo, mat);
+    // Lo dibujamos cerca del plano superior (y=0.1) para que se vea encima
+    mesh.position.set(x, 0.1, z);
+    mesh.rotation.x = -Math.PI / 2;
+    markersRef.current?.add(mesh);
+  }
+
+  // ---------- carga STL ----------
   useEffect(() => {
-    if (!url || !sceneRef.current) return;
+    if (!sceneRef.current) return;
 
-    // cargamos STL sin loader externo: usando fetch + STL ASCII/Binary parser minimal de three
-    // Import dinámico del STLLoader para no romper el build si tree-shaking cambia rutas.
-    let disposed = false;
-    (async () => {
-      const { STLLoader } = await import("three/examples/jsm/loaders/STLLoader.js");
-      const loader = new STLLoader();
-      loader.load(
-        url,
-        (geom) => {
-          if (disposed || !sceneRef.current) return;
-          const mat = new THREE.MeshStandardMaterial({ color: new THREE.Color(modelColor) });
-          const mesh = new THREE.Mesh(geom, mat);
-          geom.computeBoundingBox();
-          const bb = geom.boundingBox!;
-          const center = bb.getCenter(new THREE.Vector3());
-          geom.applyMatrix4(new THREE.Matrix4().makeTranslation(-center.x, -center.y, -center.z));
+    clearModel();
+    markersRef.current?.clear?.();
 
-          // Limpia anterior
-          if (modelRef.current) sceneRef.current.remove(modelRef.current);
-          modelRef.current = mesh;
-          sceneRef.current.add(mesh);
+    if (!url) {
+      // sin STL aún: nada que cargar
+      return;
+    }
 
-          // Fit cámara
-          const size = bb.getSize(new THREE.Vector3());
-          const maxDim = Math.max(size.x, size.y, size.z) || 1;
-          const dist = maxDim * 2.2;
-          cameraRef.current?.position.set(dist, dist * 0.7, dist);
-          cameraRef.current!.near = 0.1;
-          cameraRef.current!.far = dist * 10;
-          cameraRef.current!.updateProjectionMatrix();
-        },
-        undefined,
-        (err) => console.error("STL load error", err)
-      );
-    })();
+    const loader = new STLLoader();
+    const col = new THREE.Color(modelColor);
+    loader.load(
+      url,
+      (geom) => {
+        const mat = new THREE.MeshStandardMaterial({ color: col, metalness: 0, roughness: 0.55 });
+        const mesh = new THREE.Mesh(geom, mat);
+        // centrado
+        geom.computeBoundingBox();
+        const bb = geom.boundingBox!;
+        const center = bb.getCenter(new THREE.Vector3());
+        geom.applyMatrix4(new THREE.Matrix4().makeTranslation(-center.x, -center.y, -center.z));
 
-    return () => { disposed = true; };
+        modelRef.current = mesh;
+        sceneRef.current.add(mesh);
+        fitCamera(mesh);
+
+        // Re-pintar marcadores existentes (si los hay)
+        holes.forEach((h) => addMarkerXZ(h.x_mm, h.z_mm, h.d_mm));
+      },
+      undefined,
+      (err) => console.error("STL load error", err)
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url, modelColor]);
 
-  // ---------- DRAW HOLE MARKERS ----------
+  // ---------- repintar marcadores si cambian desde fuera ----------
   useEffect(() => {
     if (!markersRef.current) return;
-    const group = markersRef.current;
-    group.clear();
-    const col = new THREE.Color(0x10b981); // verde
-    holes.forEach((h) => {
-      const r = Math.max(1.5, h.d_mm / 2);
-      const c = new THREE.Mesh(
-        new THREE.CylinderGeometry(r, r, 1.5, 24),
-        new THREE.MeshStandardMaterial({ color: col })
-      );
-      c.rotation.x = Math.PI / 2;
-      c.position.set(h.x_mm, 0.8, h.z_mm);
-      group.add(c);
-    });
+    markersRef.current.clear?.();
+    holes.forEach((h) => addMarkerXZ(h.x_mm, h.z_mm, h.d_mm));
   }, [holes]);
 
-  // ---------- CLICK TO ADD HOLES ----------
+  // ---------- picking para “agujeros” ----------
   useEffect(() => {
-    const el = mountRef.current;
+    const el = rendererRef.current?.domElement as HTMLCanvasElement | undefined;
     if (!el) return;
 
-    const onClick = (evt: MouseEvent) => {
+    const onClick = (ev: MouseEvent) => {
       if (!holesMode) return;
-      if (!cameraRef.current || !rendererRef.current || !sceneRef.current) return;
-      const rect = (rendererRef.current.domElement as HTMLCanvasElement).getBoundingClientRect();
-      mouse.current.x = ((evt.clientX - rect.left) / rect.width) * 2 - 1;
-      mouse.current.y = -((evt.clientY - rect.top) / rect.height) * 2 + 1;
+      if (!sceneRef.current || !cameraRef.current) return;
+
+      const rect = el.getBoundingClientRect();
+      mouse.current.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.current.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
 
       raycaster.current.setFromCamera(mouse.current, cameraRef.current);
 
-      // Intersecta plano XZ en y=0
-      const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-      const point = new THREE.Vector3();
-      raycaster.current.ray.intersectPlane(plane, point);
+      // Si hay modelo, intentamos intersectarlo para obtener el punto de click
+      const target = modelRef.current ? [modelRef.current] : [];
+      let pointWorld: THREE.Vector3 | null = null;
 
-      if (!isFinite(point.x) || !isFinite(point.z)) return;
+      if (target.length) {
+        const hits = raycaster.current.intersectObjects(target, true);
+        if (hits.length > 0) {
+          pointWorld = hits[0].point.clone();
+        }
+      }
 
-      onAddHole?.({ x_mm: point.x, z_mm: point.z, d_mm: holeDiameter });
+      if (!pointWorld) {
+        // si no hay intersección con el modelo, no marcamos
+        return;
+      }
+
+      // Transformamos a espacio local del modelo y usamos X/Z como mm
+      const local = modelRef.current.worldToLocal(pointWorld.clone());
+      const x_mm = local.x;
+      const z_mm = local.z;
+
+      // Añadimos marcador visual y devolvemos al padre
+      addMarkerXZ(x_mm, z_mm, holeDiameter);
+      onAddHole?.({ x_mm, z_mm, d_mm: holeDiameter });
     };
 
     el.addEventListener("click", onClick);
     return () => el.removeEventListener("click", onClick);
   }, [holesMode, holeDiameter, onAddHole]);
 
-  // Etiqueta de estado (esquina)
-  const overlay = useMemo(
-    () => (
-      <div className="pointer-events-none absolute bottom-2 right-3 rounded-md bg-white/80 px-2 py-1 text-[11px] text-gray-700 shadow-sm">
-        {statusText || ""}
+  // ---------- UI/HUD (texto arriba-izquierda) ----------
+  const hud = useMemo(() => {
+    if (!statusText) return null;
+    return (
+      <div className="pointer-events-none absolute left-3 top-2 z-10 rounded bg-white/80 px-2 py-1 text-[11px] text-gray-700 shadow">
+        {statusText}
       </div>
-    ),
-    [statusText]
+    );
+  }, [statusText]);
+
+  // ---------- botones de vista ----------
+  const viewBtns = (
+    <div className="absolute bottom-3 left-3 z-10 flex gap-2">
+      {[
+        { k: "Iso", fn: () => cameraRef.current?.position.set(420, 320, 420) },
+        { k: "Top", fn: () => cameraRef.current?.position.set(0, 600, 0) },
+        { k: "Front", fn: () => cameraRef.current?.position.set(600, 100, 0) },
+        { k: "Right", fn: () => cameraRef.current?.position.set(0, 100, 600) },
+        { k: "Reset", fn: () => fitCamera(modelRef.current) },
+      ].map((b) => (
+        <button
+          key={b.k}
+          onClick={b.fn}
+          className="rounded border border-gray-300 bg-white/90 px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50"
+          type="button"
+        >
+          {b.k}
+        </button>
+      ))}
+    </div>
   );
 
   return (
-    <div className="relative w-full rounded-xl border border-gray-200 bg-white">
-      <div ref={mountRef} style={{ height }} className="w-full rounded-xl" />
-      {overlay}
+    <div className="relative w-full">
+      {hud}
+      {viewBtns}
+      <div
+        ref={mountRef}
+        className="w-full overflow-hidden rounded-xl border border-gray-200 shadow-sm"
+        style={{ height }}
+      />
     </div>
   );
 }
