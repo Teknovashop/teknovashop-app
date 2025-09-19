@@ -10,10 +10,14 @@ export default function ModelSelector({
     { id: "cable_tray", label: "Cable Tray" },
     { id: "vesa_adapter", label: "VESA Adapter" },
     { id: "router_mount", label: "Router Mount" },
+    { id: "phone_stand", label: "Phone Stand" },
+    { id: "qr_plate", label: "QR Plate" },
+    { id: "enclosure_ip65", label: "Enclosure IP65" },
+    { id: "cable_clip", label: "Cable Clip" },
   ];
 
   return (
-    <div className="mb-3 flex gap-2">
+    <div className="mb-3 flex w-full flex-wrap gap-2">
       {items.map((it) => (
         <button
           key={it.id}
