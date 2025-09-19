@@ -24,8 +24,8 @@ export type ModelDef<State> = {
   autoMarkers?: (s: State) => { x_mm: number; z_mm: number; d_mm: number }[];
   // caja (L x H x W + thickness) que requiere el visor
   toBox: (s: State) => { length: number; height: number; width: number; thickness?: number };
-  // payload que espera el backend CAD
-  toPayload: (s: State & { holes: any[] }) => any;
+  // ✅ payload que espera el backend CAD (cada modelo decide qué campos manda)
+  toPayload: (s: State) => any;
 };
 
 // ——— Modelos
@@ -80,7 +80,7 @@ export type VesaPattern = 75 | 100 | 200;
 
 export type VesaAdapterState = {
   plateWidth: number;    // tamaño placa cuadrada
-  plateHeight: number;   // grosor útil en el visor (altura = thickness)
+  plateHeight: number;   // para visor (no usado en payload CAD)
   thickness: number;
   pattern: VesaPattern;  // 75, 100 o 200
   holeDiameter: number;  // diámetro de los agujeros del patrón
@@ -127,6 +127,7 @@ export const VesaAdapter: ModelDef<VesaAdapterState> = {
     thickness_mm: s.thickness,
     vesa_pattern_mm: s.pattern,
     vesa_hole_d_mm: s.holeDiameter,
+    // combina patrón auto con extras libres:
     holes: [...(VesaAdapter.autoMarkers!(s)), ...s.extraHoles],
   }),
 };
