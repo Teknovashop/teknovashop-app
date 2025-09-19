@@ -18,11 +18,15 @@ async function generateSTL(payload: any): Promise<GenerateResponse> {
       body: JSON.stringify(payload),
       cache: "no-store",
     });
-    if (!res.ok) return { status: "error", message: `HTTP ${res.status}` };
-    const data = await res.json().catch(() => ({}));
+    const text = await res.text();
+    let data: any = null;
+    try { data = JSON.parse(text); } catch {}
+    if (!res.ok) {
+      return { status: "error", message: data?.message || text || `HTTP ${res.status}` };
+    }
     const url = data?.stl_url || data?.url || data?.data?.stl_url || null;
     if (url) return { status: "ok", stl_url: url };
-    return { status: "error", message: "Respuesta inesperada del backend" };
+    return { status: "error", message: "Respuesta inesperada del backend (sin stl_url)" };
   } catch (e: any) {
     return { status: "error", message: e?.message || "Fallo de red" };
   }
@@ -59,7 +63,6 @@ export default function ForgeForm() {
   const [error, setError] = useState<string | null>(null);
 
   const update = (patch: Partial<CableTrayState>) => setCfg((s) => ({ ...s, ...patch }));
-
   const addMarker = (m: Marker) => setCfg((s) => ({ ...s, holes: [...s.holes, m] }));
   const clearMarkers = () => setCfg((s) => ({ ...s, holes: [] }));
 
@@ -74,8 +77,10 @@ export default function ForgeForm() {
     setBusy(true);
     setError(null);
     setStlUrl(null);
+
+    // 👈 FIX: el backend espera "model", no "model_id"
     const res = await generateSTL({
-      model_id: model,
+      model: model,                       // <-- antes model_id
       width_mm: cfg.width,
       height_mm: cfg.height,
       length_mm: cfg.length,
@@ -83,6 +88,7 @@ export default function ForgeForm() {
       ventilated: cfg.ventilated,
       holes: cfg.holes,
     });
+
     if (res.status === "ok") setStlUrl(res.stl_url); else setError(res.message);
     setBusy(false);
   }
@@ -96,20 +102,17 @@ export default function ForgeForm() {
 
   return (
     <div className="mx-auto grid max-w-[1600px] grid-cols-1 gap-6 px-4 py-6 lg:grid-cols-[1fr,380px]">
-      {/* Visor */}
       <section className="h-[calc(100svh-160px)] rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
         <STLViewer
           background="#ffffff"
           box={box}
           markers={cfg.holes}
-          holesMode={holesMode}   // requiere Shift/Alt + clic
+          holesMode={holesMode}
           addDiameter={holeDiameter}
           snapStep={snapStep}
           onAddMarker={addMarker}
         />
       </section>
-
-      {/* Panel */}
       <ControlsPanel
         modelLabel="Cable Tray"
         sliders={sliders}
