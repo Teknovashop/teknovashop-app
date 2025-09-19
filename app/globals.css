@@ -2,28 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Slider base limpio */
-.range {
-  @apply h-2 w-full cursor-pointer appearance-none rounded bg-gray-200;
-}
-.range::-webkit-slider-thumb {
-  @apply h-4 w-4 appearance-none rounded-full bg-gray-900;
-}
-.range::-moz-range-thumb {
-  @apply h-4 w-4 rounded-full border-0 bg-gray-900;
-}
-
-/* Tipografía y tono general */
-html, body {
-  @apply bg-[#f7f9fc] text-gray-900;
-}
-
-/* Cards suaves por defecto */
-.card {
-  @apply bg-white/70 backdrop-blur border border-gray-200 rounded-xl;
-}
-
-/* Botón fantasma */
-.btn-ghost {
-  @apply border border-gray-300 hover:bg-gray-50 rounded-lg px-3 py-2 text-sm;
-}
+/* Ajustes ligeros para la app */
+html, body { height: 100%; }
+body { background: #f8fafc; }
