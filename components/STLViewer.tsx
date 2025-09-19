@@ -1,20 +1,42 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+/**
+ * Visor 3D con previews específicos por modelo (no rompe compatibilidad):
+ * - Si recibe `shape`, pinta la geometría del modelo.
+ * - Si NO recibe `shape`, mantiene el placeholder (caja alámbrica).
+ * - Click para agujeros requiere Shift o Alt. `snapStep` opcional (redondeo).
+ */
+
+import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import type { Marker } from "./STLViewer"; // para autocompletado local si se usa en otros
 
-/** marcador (agujero) en mm sobre plano de la placa (X,Z) */
+/** marcador de agujero dibujado en el visor */
 export type Marker = { x_mm: number; z_mm: number; d_mm: number };
 
-type Box = { length: number; height: number; width: number; thickness?: number };
+type Shape =
+  | { kind: "plate"; L: number; W: number; T: number }
+  | { kind: "plate_chamfer"; L: number; W: number; T: number }
+  | { kind: "u_channel"; L: number; W: number; H: number; wall: number }
+  | { kind: "l_bracket"; W: number; D: number; flange: number; T: number }
+  | { kind: "phone_stand"; W: number; D: number; angleDeg: number; T: number }
+  | { kind: "box_hollow"; L: number; W: number; H: number; wall: number }
+  | { kind: "clip_c"; diameter: number; width: number; T: number }
+  | { kind: "unknown" };
 
 type Props = {
   height?: number;
   background?: string;
-  box?: Box;
+  /** url STL (opcional; no la usamos aún) */
+  url?: string;
+  /** bounding box fallback (L x H x W) en mm */
+  box?: { length: number; height: number; width: number; thickness?: number };
+  /** forma a renderizar (si se pasa, sustituye al placeholder) */
+  shape?: Shape;
+  /** marcadores (se dibujan como esferas) */
   markers?: Marker[];
-  /** modo agujeros activado; AÚN ASÍ exige Shift/Alt para colocar */
+  /** si true, Shift/Alt + click en el plano XZ añade marcador */
   holesMode?: boolean;
   addDiameter?: number;
   snapStep?: number;
@@ -24,7 +46,9 @@ type Props = {
 export default function STLViewer({
   height = 520,
   background = "#ffffff",
+  url,
   box,
+  shape,
   markers = [],
   holesMode = false,
   addDiameter = 5,
@@ -32,52 +56,42 @@ export default function STLViewer({
   onAddMarker,
 }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
-  const rendererRef = useRef<any>(null);
-  const sceneRef = useRef<any>(null);
-  const cameraRef = useRef<any>(null);
-  const controlsRef = useRef<any>(null);
-
-  const plateMeshRef = useRef<any>(null);
-  const frameKeyRef = useRef<string>("");
-  const pickingPlaneRef = useRef<any>(null);
-  const ghostRef = useRef<any>(null);
-  const markersGroupRef = useRef<any>(null);
-
-  const ray = useRef(new THREE.Raycaster());
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const controlsRef = useRef<OrbitControls | null>(null);
+  const modelRef = useRef<THREE.Object3D | null>(null);
+  const markersGroupRef = useRef<THREE.Group | null>(null);
+  const raycaster = useRef(new THREE.Raycaster());
   const mouse = useRef(new THREE.Vector2());
-  const modifierDown = useRef<boolean>(false); // SHIFT/ALT presionada
 
-  // ---------- init (una vez) ----------
+  // ---------- init ----------
   useEffect(() => {
     const root = mountRef.current!;
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(background);
     sceneRef.current = scene;
 
-    const camera = new THREE.PerspectiveCamera(45, root.clientWidth / height, 0.1, 50000);
-    camera.position.set(500, 360, 520);
+    const camera = new THREE.PerspectiveCamera(45, root.clientWidth / height, 0.1, 20000);
+    camera.position.set(600, 360, 520);
     cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    renderer.setSize(root.clientWidth, root.clientHeight || height);
-    renderer.shadowMap.enabled = true;
+    renderer.setSize(root.clientWidth, height);
     root.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    Object.assign(root.style, {
-      border: "1px solid #e5e7eb",
-      borderRadius: "12px",
-      overflow: "hidden",
-      background: "#fff",
-      position: "relative",
-    });
+    // marco
+    root.style.border = "1px solid #e5e7eb";
+    root.style.borderRadius = "12px";
+    root.style.overflow = "hidden";
+    root.style.background = "#fff";
 
     // luces
     const hemi = new THREE.HemisphereLight(0xffffff, 0xb0b4b9, 1.0);
-    const dir = new THREE.DirectionalLight(0xffffff, 0.9);
+    const dir = new THREE.DirectionalLight(0xffffff, 0.8);
     dir.position.set(600, 800, 300);
-    dir.castShadow = true;
     scene.add(hemi, dir);
 
     // grid + ejes
@@ -95,31 +109,14 @@ export default function STLViewer({
     controls.dampingFactor = 0.06;
     controlsRef.current = controls;
 
-    // marcadores (esferas de apoyo, opcional)
-    const markersGroup = new THREE.Group();
-    scene.add(markersGroup);
-    markersGroupRef.current = markersGroup;
-
-    // ghost ring para previsualizar agujero (visible solo con Shift/Alt)
-    const ghostGeo = new THREE.RingGeometry(1, 1.6, 48);
-    const ghostMat = new THREE.MeshBasicMaterial({ color: 0x2563eb, transparent: true, opacity: 0.75, side: THREE.DoubleSide });
-    const ghost = new THREE.Mesh(ghostGeo, ghostMat);
-    ghost.rotation.x = -Math.PI / 2;
-    ghost.visible = false;
-    scene.add(ghost);
-    ghostRef.current = ghost;
-
-    // resize
     const onResize = () => {
       const w = root.clientWidth;
-      const h = root.clientHeight || height;
-      camera.aspect = w / h;
+      camera.aspect = w / height;
       camera.updateProjectionMatrix();
-      renderer.setSize(w, h);
+      renderer.setSize(w, height);
     };
     window.addEventListener("resize", onResize);
 
-    // render loop
     let raf = 0;
     const loop = () => {
       raf = requestAnimationFrame(loop);
@@ -128,181 +125,219 @@ export default function STLViewer({
     };
     loop();
 
-    // helpers
-    const setMouseFromEvent = (ev: MouseEvent) => {
+    // markers group
+    const g = new THREE.Group();
+    scene.add(g);
+    markersGroupRef.current = g;
+
+    // click-to-add markers (intersección con plano XZ)
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0); // y=0
+    const clickHandler = (ev: MouseEvent) => {
+      if (!holesMode || !onAddMarker) return;
+      // Requiere tecla modificadora para no interferir con la cámara
+      if (!ev.shiftKey && !ev.altKey) return;
+
       const rect = renderer.domElement.getBoundingClientRect();
       mouse.current.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.current.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
-    };
+      raycaster.current.setFromCamera(mouse.current, camera);
+      const point = new THREE.Vector3();
+      raycaster.current.ray.intersectPlane(plane, point);
 
-    // cambiar cursor según modificador
-    const updateCursor = () => {
-      renderer.domElement.style.cursor = modifierDown.current && holesMode ? "crosshair" : "grab";
-    };
+      // snap opcional
+      const s = Math.max(0.1, snapStep);
+      const snap = (v: number) => Math.round(v / s) * s;
 
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Shift" || e.key === "Alt") {
-        modifierDown.current = true;
-        updateCursor();
-      }
+      onAddMarker({
+        x_mm: snap(point.x),
+        z_mm: snap(point.z),
+        d_mm: addDiameter,
+      });
     };
-    const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key === "Shift" || e.key === "Alt") {
-        modifierDown.current = false;
-        ghostRef.current && (ghostRef.current.visible = false);
-        updateCursor();
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("keyup", onKeyUp);
-
-    const onMove = (ev: MouseEvent) => {
-      if (!holesMode || !modifierDown.current || !pickingPlaneRef.current || !ghostRef.current) return;
-      setMouseFromEvent(ev);
-      ray.current.setFromCamera(mouse.current, camera);
-      const p = new THREE.Vector3();
-      if (ray.current.ray.intersectPlane(pickingPlaneRef.current, p)) {
-        const L = lastBox.current.length, W = lastBox.current.width;
-        const r = Math.max(0.1, addDiameter / 2);
-        const margin = r + 0.5;
-        const minX = -L / 2 + margin, maxX = L / 2 - margin;
-        const minZ = -W / 2 + margin, maxZ = W / 2 - margin;
-        let x = THREE.MathUtils.clamp(p.x, minX, maxX);
-        let z = THREE.MathUtils.clamp(p.z, minZ, maxZ);
-        if (snapStep && snapStep > 0) {
-          x = Math.round(x / snapStep) * snapStep;
-          z = Math.round(z / snapStep) * snapStep;
-        }
-        ghostRef.current.position.set(x, 0.001 + (lastBox.current.thickness ?? 0) / 2, z);
-        ghostRef.current.scale.setScalar(addDiameter / 2);
-        ghostRef.current.visible = true;
-      }
-    };
-    const onLeave = () => { ghostRef.current && (ghostRef.current.visible = false); };
-
-    const onClick = (ev: MouseEvent) => {
-      // Solo si: modo agujeros y (Shift o Alt) pulsada.
-      if (!holesMode || !modifierDown.current || !onAddMarker || !pickingPlaneRef.current) return;
-      setMouseFromEvent(ev);
-      ray.current.setFromCamera(mouse.current, camera);
-      const p = new THREE.Vector3();
-      if (ray.current.ray.intersectPlane(pickingPlaneRef.current, p)) {
-        const x = ghostRef.current?.position.x ?? p.x;
-        const z = ghostRef.current?.position.z ?? p.z;
-        onAddMarker({ x_mm: x, z_mm: z, d_mm: addDiameter });
-      }
-    };
-
-    renderer.domElement.addEventListener("mousemove", onMove);
-    renderer.domElement.addEventListener("mouseleave", onLeave);
-    renderer.domElement.addEventListener("click", onClick);
-    updateCursor();
+    renderer.domElement.addEventListener("click", clickHandler);
 
     return () => {
-      window.removeEventListener("resize", onResize);
+      renderer.domElement.removeEventListener("click", clickHandler);
       cancelAnimationFrame(raf);
-      renderer.domElement.removeEventListener("mousemove", onMove);
-      renderer.domElement.removeEventListener("mouseleave", onLeave);
-      renderer.domElement.removeEventListener("click", onClick);
-      window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("resize", onResize);
       controls.dispose();
       renderer.dispose();
       if (renderer.domElement.parentNode) renderer.domElement.parentNode.removeChild(renderer.domElement);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // solo una vez
+  }, [height, background, holesMode, addDiameter, onAddMarker, snapStep]);
 
-  // mantener box para ghost
-  const lastBox = useRef<Box>({ length: 0, height: 0, width: 0, thickness: 0 });
-  useEffect(() => { if (box) lastBox.current = { ...box }; }, [box?.length, box?.width, box?.height, box?.thickness]);
+  // ---------- helpers: crear geometrías por modelo ----------
+  function clearModel(scene: THREE.Scene) {
+    if (modelRef.current) {
+      scene.remove(modelRef.current);
+      modelRef.current.traverse?.((o: any) => {
+        o.geometry?.dispose?.();
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        mats.forEach((m: any) => m?.dispose?.());
+      });
+      modelRef.current = null;
+    }
+  }
 
-  // reconstruir placa + encuadre SOLO si cambian dimensiones (no al añadir agujeros)
+  function addMesh(scene: THREE.Scene, mesh: THREE.Object3D) {
+    scene.add(mesh);
+    modelRef.current = mesh;
+  }
+
+  // place base mesh on ground (y=0) centered
+  function placeY(mesh: THREE.Object3D, T: number) {
+    mesh.position.y = T / 2;
+  }
+
+  // ---------- preview específico ----------
   useEffect(() => {
     const scene = sceneRef.current;
-    if (!scene || !box) return;
+    if (!scene) return;
 
-    const L = box.length, W = box.width, H = box.height, T = box.thickness ?? 0;
+    clearModel(scene);
 
-    const shape = new THREE.Shape();
-    shape.moveTo(-L / 2, -W / 2);
-    shape.lineTo( L / 2, -W / 2);
-    shape.lineTo( L / 2,  W / 2);
-    shape.lineTo(-L / 2,  W / 2);
-    shape.lineTo(-L / 2, -W / 2);
+    // Si hay `shape`, renderizamos según tipo; fallback: caja alámbrica con `box`
+    if (shape) {
+      const mat = new THREE.MeshStandardMaterial({ color: 0xb0b6bf, roughness: 0.6, metalness: 0.05 });
 
-    (markers || []).forEach((mk) => {
-      const r = Math.max(0.1, mk.d_mm / 2);
-      const hole = new THREE.Path();
-      hole.absellipse(mk.x_mm, mk.z_mm, r, r, 0, Math.PI * 2, false, 0);
-      shape.holes.push(hole);
-    });
+      if (shape.kind === "plate") {
+        const g = new THREE.BoxGeometry(shape.L, shape.T, shape.W);
+        const m = new THREE.Mesh(g, mat);
+        placeY(m, shape.T);
+        addMesh(scene, m);
+        return;
+      }
 
-    const geom = new THREE.ExtrudeGeometry(shape, { depth: T > 0 ? T : 0.001, bevelEnabled: false, steps: 1 });
-    geom.rotateX(Math.PI / 2);
-    geom.translate(0, (T || 0) / 2, 0);
+      if (shape.kind === "plate_chamfer") {
+        // “falso chaflán”: base + tapa ligeramente menor
+        const base = new THREE.Mesh(new THREE.BoxGeometry(shape.L, shape.T * 0.7, shape.W), mat);
+        placeY(base, shape.T * 0.7);
+        const top = new THREE.Mesh(new THREE.BoxGeometry(shape.L * 0.94, shape.T * 0.3, shape.W * 0.94), mat);
+        top.position.y = shape.T * 0.7 + (shape.T * 0.3) / 2;
+        const grp = new THREE.Group();
+        grp.add(base, top);
+        addMesh(scene, grp);
+        return;
+      }
 
-    const material = new THREE.MeshStandardMaterial({ metalness: 0.1, roughness: 0.45, color: 0xf3f4f6 });
+      if (shape.kind === "u_channel") {
+        // base
+        const base = new THREE.Mesh(new THREE.BoxGeometry(shape.L, shape.wall, shape.W), mat);
+        placeY(base, shape.wall);
+        // paredes
+        const sideH = Math.max(0, shape.H - shape.wall);
+        const side1 = new THREE.Mesh(new THREE.BoxGeometry(shape.L, sideH, shape.wall), mat);
+        const side2 = new THREE.Mesh(new THREE.BoxGeometry(shape.L, sideH, shape.wall), mat);
+        side1.position.set(0, shape.wall + sideH / 2, shape.W / 2 - shape.wall / 2);
+        side2.position.set(0, shape.wall + sideH / 2, -shape.W / 2 + shape.wall / 2);
+        const grp = new THREE.Group();
+        grp.add(base, side1, side2);
+        addMesh(scene, grp);
+        return;
+      }
 
-    if (!plateMeshRef.current) {
-      plateMeshRef.current = new THREE.Mesh(geom, material);
-      plateMeshRef.current.castShadow = true;
-      plateMeshRef.current.receiveShadow = true;
-      scene.add(plateMeshRef.current);
-    } else {
-      plateMeshRef.current.geometry.dispose();
-      plateMeshRef.current.geometry = geom;
+      if (shape.kind === "l_bracket") {
+        const base = new THREE.Mesh(new THREE.BoxGeometry(shape.D, shape.T, shape.W), mat);
+        placeY(base, shape.T);
+        const flange = new THREE.Mesh(new THREE.BoxGeometry(shape.T, shape.flange, shape.W), mat);
+        flange.position.set(-shape.D / 2 + shape.T / 2, shape.T + shape.flange / 2, 0);
+        const grp = new THREE.Group();
+        grp.add(base, flange);
+        addMesh(scene, grp);
+        return;
+      }
+
+      if (shape.kind === "phone_stand") {
+        const base = new THREE.Mesh(new THREE.BoxGeometry(shape.D, shape.T, shape.W), mat);
+        placeY(base, shape.T);
+        const back = new THREE.Mesh(new THREE.BoxGeometry(shape.D * 0.9, shape.T, shape.W), mat);
+        // transfiere la placa trasera a un grupo y la rotamos sobre su arista
+        const pivot = new THREE.Group();
+        pivot.position.set(-shape.D / 2 + shape.T / 2, shape.T, 0);
+        back.position.set(shape.D * 0.45 - shape.T / 2, 0, 0);
+        back.rotateZ(THREE.MathUtils.degToRad(90));
+        pivot.add(back);
+        pivot.rotateZ(-THREE.MathUtils.degToRad(shape.angleDeg));
+        const grp = new THREE.Group();
+        grp.add(base, pivot);
+        addMesh(scene, grp);
+        return;
+      }
+
+      if (shape.kind === "box_hollow") {
+        // Representamos base + 4 paredes
+        const base = new THREE.Mesh(new THREE.BoxGeometry(shape.L, shape.wall, shape.W), mat);
+        placeY(base, shape.wall);
+        const wallH = Math.max(0, shape.H - shape.wall);
+        const wallX = new THREE.Mesh(new THREE.BoxGeometry(shape.wall, wallH, shape.W), mat);
+        const wallX2 = wallX.clone();
+        wallX.position.set(shape.L / 2 - shape.wall / 2, shape.wall + wallH / 2, 0);
+        wallX2.position.set(-shape.L / 2 + shape.wall / 2, shape.wall + wallH / 2, 0);
+        const wallZ = new THREE.Mesh(new THREE.BoxGeometry(shape.L - shape.wall * 2, wallH, shape.wall), mat);
+        const wallZ2 = wallZ.clone();
+        wallZ.position.set(0, shape.wall + wallH / 2, shape.W / 2 - shape.wall / 2);
+        wallZ2.position.set(0, shape.wall + wallH / 2, -shape.W / 2 + shape.wall / 2);
+        const grp = new THREE.Group();
+        grp.add(base, wallX, wallX2, wallZ, wallZ2);
+        addMesh(scene, grp);
+        return;
+      }
+
+      if (shape.kind === "clip_c") {
+        // aproximación: prisma con bisel lateral (placeholder mejor que caja)
+        const base = new THREE.Mesh(new THREE.BoxGeometry(Math.max(20, shape.diameter * 1.2), shape.T, shape.width), mat);
+        placeY(base, shape.T);
+        const wedge = new THREE.Mesh(new THREE.BoxGeometry(shape.diameter * 0.7, shape.T, shape.width * 0.6), mat);
+        wedge.position.set(base.geometry.parameters.width / 2 - wedge.geometry.parameters.width / 2, shape.T / 2, 0);
+        const grp = new THREE.Group();
+        grp.add(base, wedge);
+        addMesh(scene, grp);
+        return;
+      }
+
+      // si llega aquí, no reconocido
     }
 
-    pickingPlaneRef.current = new THREE.Plane(new THREE.Vector3(0, 1, 0), -(T || 0) / 2);
-
-    const newKey = `${L}|${W}|${H}|${T}`;
-    if (newKey !== frameKeyRef.current) {
-      frameKeyRef.current = newKey;
-      try {
-        const camera = cameraRef.current!;
-        const controls = controlsRef.current!;
-        const box3 = new THREE.Box3().setFromObject(plateMeshRef.current);
-        const size = new THREE.Vector3(); box3.getSize(size);
-        const center = new THREE.Vector3(); box3.getCenter(center);
-        controls.target.copy(center);
-        const maxDim = Math.max(size.x, size.y, size.z);
-        const fov = camera.fov * (Math.PI / 180);
-        let distance = Math.abs(maxDim / (2 * Math.tan(fov / 2))) * 1.6;
-        const dir = new THREE.Vector3(1, 0.8, 1).normalize();
-        camera.position.copy(center.clone().add(dir.multiplyScalar(distance)));
-        camera.near = 0.1; camera.far = distance * 20; camera.updateProjectionMatrix();
-      } catch {}
+    // Fallback: placeholder caja alámbrica
+    if (box) {
+      const { length: L, height: H, width: W } = box;
+      const g = new THREE.BoxGeometry(L, H, W);
+      const m = new THREE.MeshBasicMaterial({ color: 0x94a3b8, wireframe: true });
+      const mesh = new THREE.Mesh(g, m);
+      mesh.position.y = H / 2;
+      addMesh(scene, mesh);
     }
-  }, [box?.length, box?.width, box?.height, box?.thickness, markers]);
+  }, [shape, box]);
 
-  // esferas de apoyo (opcionales)
+  // ---------- dibujar marcadores ----------
   useEffect(() => {
     const group = markersGroupRef.current;
     if (!group) return;
+    // limpiar
     for (let i = group.children.length - 1; i >= 0; i--) {
-      const ch = group.children[i] as any;
+      const ch: any = group.children[i];
       ch.geometry?.dispose?.();
       ch.material?.dispose?.();
       group.remove(ch);
     }
-    const T = box?.thickness ?? 0;
+    // añadir
     const mat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.5 });
-    (markers || []).forEach((mk) => {
+    markers.forEach((mk) => {
       const r = Math.max(0.8, mk.d_mm / 2);
       const s = new THREE.Mesh(new THREE.SphereGeometry(r, 20, 20), mat);
-      s.position.set(mk.x_mm, 0.1 + T / 2, mk.z_mm);
+      s.position.set(mk.x_mm, 0.1, mk.z_mm);
       group.add(s);
     });
-  }, [markers, box?.thickness]);
+  }, [markers]);
 
   return (
     <div className="relative w-full" style={{ height }}>
+      {/* Barra superior del visor */}
       <div className="absolute left-0 right-0 top-0 z-10 flex items-center justify-between bg-white/80 backdrop-blur px-3 py-1 border-b border-gray-200">
-        <div className="text-xs text-gray-600">
-          Visor 3D · rueda: zoom · arrastra: rotar/pan · <strong>Shift/Alt + clic</strong>: agujero
+        <div className="text-xs text-gray-600">Visor 3D · rueda: zoom · arrastra: rotar/pan · <span className="font-medium">Shift/Alt + clic</span>: agujero</div>
+        <div className="flex gap-6 text-xs text-gray-500">
+          <span>L</span><span>H</span><span>W</span>
         </div>
-        <div className="flex gap-6 text-xs text-gray-500"><span>L</span><span>H</span><span>W</span></div>
       </div>
       <div ref={mountRef} className="w-full h-full" />
     </div>
