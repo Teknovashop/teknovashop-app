@@ -58,21 +58,55 @@ export default function ForgeForm() {
   const [stlUrl, setStlUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const update = (patch: Partial<CableTrayState>) =>
-    setCfg((s) => ({ ...s, ...patch }));
+  // agujeros runtime controls
+  const [holesMode, setHolesMode] = useState(true);
+  const [holeDiameter, setHoleDiameter] = useState(5);
+  const [snapStep, setSnapStep] = useState(1);
 
-  const addMarker = (m: Marker) => setCfg((s) => ({ ...s, holes: [...s.holes, m] }));
-  const clearMarkers = () => setCfg((s) => ({ ...s, holes: [] }));
+  // undo/redo stack
+  const [undoStack, setUndo] = useState<Marker[][]>([]);
+  const [redoStack, setRedo] = useState<Marker[][]>([]);
 
-  const box = useMemo(
-    () => ({
-      length: cfg.length,
-      height: cfg.height,
-      width: cfg.width,
-      thickness: cfg.thickness, // necesario para extrusión + agujeros en visor
-    }),
-    [cfg.length, cfg.height, cfg.width, cfg.thickness]
-  );
+  const pushUndo = (holes: Marker[]) => setUndo((u) => [...u, holes.map((h) => ({ ...h }))]);
+  const doUndo = () => {
+    setUndo((u) => {
+      if (!u.length) return u;
+      setRedo((r) => [...r, cfg.holes.map((h) => ({ ...h }))]);
+      const prev = u[u.length - 1];
+      setCfg((s) => ({ ...s, holes: prev }));
+      return u.slice(0, -1);
+    });
+  };
+  const doRedo = () => {
+    setRedo((r) => {
+      if (!r.length) return r;
+      pushUndo(cfg.holes);
+      const next = r[r.length - 1];
+      setCfg((s) => ({ ...s, holes: next }));
+      return r.slice(0, -1);
+    });
+  };
+
+  const update = (patch: Partial<CableTrayState>) => setCfg((s) => ({ ...s, ...patch }));
+
+  const addMarker = (m: Marker) => {
+    pushUndo(cfg.holes);
+    setRedo([]); // romper rama de redo
+    setCfg((s) => ({ ...s, holes: [...s.holes, m] }));
+  };
+  const clearMarkers = () => {
+    if (!cfg.holes.length) return;
+    pushUndo(cfg.holes);
+    setRedo([]);
+    setCfg((s) => ({ ...s, holes: [] }));
+  };
+
+  const box = useMemo(() => ({
+    length: cfg.length,
+    height: cfg.height,
+    width: cfg.width,
+    thickness: cfg.thickness,
+  }), [cfg.length, cfg.height, cfg.width, cfg.thickness]);
 
   async function onGenerate() {
     setBusy(true);
@@ -107,55 +141,46 @@ export default function ForgeForm() {
 
   return (
     <div className="relative h-[calc(100svh-140px)] w-full">
-      {/* Botonera flota */}
+      {/* Botonera flotante */}
       <div className="pointer-events-auto absolute left-4 top-4 z-30 flex gap-2">
-        <button
-          onClick={() => setDrawerOpen(true)}
-          className="rounded-xl bg-white/90 px-3 py-2 text-sm font-medium shadow ring-1 ring-gray-200 backdrop-blur hover:bg-white"
-        >
-          Controles
-        </button>
-        <button
-          onClick={clearMarkers}
-          className="rounded-xl bg-white/90 px-3 py-2 text-sm shadow ring-1 ring-gray-200 backdrop-blur hover:bg-white"
-        >
-          Borrar agujeros
-        </button>
-        {stlUrl && (
-          <a
-            href={stlUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-xl bg-white/90 px-3 py-2 text-sm shadow ring-1 ring-gray-200 backdrop-blur hover:bg-white"
-          >
-            Descargar STL
-          </a>
-        )}
+        <button onClick={() => setDrawerOpen(true)} className="rounded-xl bg-white/90 px-3 py-2 text-sm font-medium shadow ring-1 ring-gray-200 backdrop-blur hover:bg-white">Controles</button>
+        <button onClick={clearMarkers} className="rounded-xl bg-white/90 px-3 py-2 text-sm shadow ring-1 ring-gray-200 backdrop-blur hover:bg-white">Borrar agujeros</button>
+        {stlUrl && <a href={stlUrl} target="_blank" rel="noreferrer" className="rounded-xl bg-white/90 px-3 py-2 text-sm shadow ring-1 ring-gray-200 backdrop-blur hover:bg-white">Descargar STL</a>}
       </div>
 
-      {/* Visor a pantalla casi completa */}
+      {/* Visor */}
       <div className="absolute inset-0">
         <STLViewer
-          height={undefined}          // usa el alto del contenedor
           background="#ffffff"
           box={box}
           markers={cfg.holes}
-          holesMode={true}
-          addDiameter={5}
-          snapStep={1}
+          holesMode={holesMode}
+          addDiameter={holeDiameter}
+          snapStep={snapStep}
           onAddMarker={addMarker}
+          onUndo={doUndo}
+          onRedo={doRedo}
         />
       </div>
 
-      {/* Drawer de controles */}
+      {/* Drawer */}
       <ControlsDrawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
+        modelLabel="Cable Tray"
         sliders={sliders}
         onChange={(k, v) => update({ [k]: v } as any)}
         ventilated={cfg.ventilated}
         onToggleVentilated={(v) => update({ ventilated: v })}
+        holesEnabled={holesMode}
+        onToggleHoles={setHolesMode}
+        holeDiameter={holeDiameter}
+        onHoleDiameter={setHoleDiameter}
+        snapStep={snapStep}
+        onSnapStep={setSnapStep}
         onClearHoles={clearMarkers}
+        onUndo={doUndo}
+        onRedo={doRedo}
         onGenerate={onGenerate}
         busy={busy}
         stlUrl={stlUrl}
@@ -165,9 +190,7 @@ export default function ForgeForm() {
       {/* Toast */}
       {toast && (
         <div className="fixed bottom-5 right-5 z-50">
-          <div className="rounded-lg bg-gray-900 text-white px-4 py-2 text-sm shadow-lg">
-            {toast}
-          </div>
+          <div className="rounded-lg bg-gray-900 text-white px-4 py-2 text-sm shadow-lg">{toast}</div>
         </div>
       )}
     </div>
