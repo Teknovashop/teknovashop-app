@@ -18,10 +18,7 @@ async function generateSTL(payload: any): Promise<GenerateResponse> {
       body: JSON.stringify(payload),
       cache: "no-store",
     });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      return { status: "error", message: text || `HTTP ${res.status}` };
-    }
+    if (!res.ok) return { status: "error", message: `HTTP ${res.status}` };
     const data = await res.json().catch(() => ({}));
     const url = data?.stl_url || data?.url || data?.data?.stl_url || null;
     if (url) return { status: "ok", stl_url: url };
@@ -53,12 +50,10 @@ export default function ForgeForm() {
   const [model] = useState<ModelKind>("cable_tray");
   const [cfg, setCfg] = useState<CableTrayState>({ ...DEFAULTS });
 
-  // agujeros
   const [holesMode, setHolesMode] = useState(true);
   const [holeDiameter, setHoleDiameter] = useState(5);
   const [snapStep, setSnapStep] = useState(1);
 
-  // export
   const [busy, setBusy] = useState(false);
   const [stlUrl, setStlUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -101,20 +96,20 @@ export default function ForgeForm() {
 
   return (
     <div className="mx-auto grid max-w-[1600px] grid-cols-1 gap-6 px-4 py-6 lg:grid-cols-[1fr,380px]">
-      {/* Visor a la izquierda */}
+      {/* Visor */}
       <section className="h-[calc(100svh-160px)] rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
         <STLViewer
           background="#ffffff"
           box={box}
           markers={cfg.holes}
-          holesMode={holesMode}        // requiere Shift/Alt para colocar
+          holesMode={holesMode}   // requiere Shift/Alt + clic
           addDiameter={holeDiameter}
           snapStep={snapStep}
           onAddMarker={addMarker}
         />
       </section>
 
-      {/* Panel a la derecha */}
+      {/* Panel */}
       <ControlsPanel
         modelLabel="Cable Tray"
         sliders={sliders}
