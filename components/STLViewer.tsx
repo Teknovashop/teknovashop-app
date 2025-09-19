@@ -8,24 +8,13 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 export type Marker = { x_mm: number; z_mm: number; d_mm: number };
 
 type Props = {
-  /** Alto del canvas: si no lo pasas, usa la altura del contenedor */
   height?: number;
   background?: string;
-  /** url STL (no usada por ahora para el preview) */
   url?: string;
-  /**
-   * Bounding box en milímetros para el preview.
-   * Si 'thickness' está presente se renderiza
-   * una placa sólida (L x thickness x W) con sustracción de agujeros.
-   */
   box?: { length: number; height: number; width: number; thickness?: number };
-  /** marcadores (se dibujan y se sustraen si hay thickness) */
   markers?: Marker[];
-  /** si true, click en plano añade marcador */
   holesMode?: boolean;
-  /** diámetro para nuevos agujeros (mm) */
   addDiameter?: number;
-  /** paso de snap (mm), p.ej. 1, 0.5, 2… */
   snapStep?: number;
   onAddMarker?: (m: Marker) => void;
 };
@@ -54,8 +43,8 @@ export default function STLViewer({
   const raycaster = useRef(new THREE.Raycaster());
   const mouse = useRef(new THREE.Vector2());
 
-  // plano de picking alineado con la placa
-  const pickingPlaneRef = useRef<THREE.Plane | null>(null);
+  // plano de picking alineado con la placa (usa any para evitar conflictos de tipos en Vercel)
+  const pickingPlaneRef = useRef<any>(null);
 
   // ---------- init ----------
   useEffect(() => {
@@ -75,7 +64,6 @@ export default function STLViewer({
     root.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // marco visual del contenedor
     Object.assign(root.style, {
       border: "1px solid #e5e7eb",
       borderRadius: "12px",
@@ -142,7 +130,7 @@ export default function STLViewer({
       const L = box?.length ?? 0;
       const W = box?.width ?? 0;
       const r = Math.max(0.1, addDiameter / 2);
-      const margin = r + 0.5; // deja 0.5mm de “aire”
+      const margin = r + 0.5;
       const minX = -L / 2 + margin;
       const maxX =  L / 2 - margin;
       const minZ = -W / 2 + margin;
@@ -151,7 +139,6 @@ export default function STLViewer({
       let x = THREE.MathUtils.clamp(point.x, minX, maxX);
       let z = THREE.MathUtils.clamp(point.z, minZ, maxZ);
 
-      // snap (opcional)
       if (snapStep && snapStep > 0) {
         const s = snapStep;
         x = Math.round(x / s) * s;
@@ -208,7 +195,6 @@ export default function STLViewer({
 
     // (2) Placa sólida con agujeros (Shape + Extrude)
     if (thickness && thickness > 0) {
-      // Rectángulo en plano X–Y (L en X, W en Y)
       const shape = new THREE.Shape();
       shape.moveTo(-L / 2, -W / 2);
       shape.lineTo( L / 2, -W / 2);
@@ -216,7 +202,6 @@ export default function STLViewer({
       shape.lineTo(-L / 2,  W / 2);
       shape.lineTo(-L / 2, -W / 2);
 
-      // Agujeros circulares (x=z en plano)
       (markers || []).forEach((mk) => {
         const r = Math.max(0.1, mk.d_mm / 2);
         const hole = new THREE.Path();
@@ -224,7 +209,6 @@ export default function STLViewer({
         shape.holes.push(hole);
       });
 
-      // Extrusión: por defecto extruye en +Z → rotamos para que el espesor sea Y
       const geom = new THREE.ExtrudeGeometry(shape, {
         depth: thickness,
         bevelEnabled: false,
@@ -241,14 +225,12 @@ export default function STLViewer({
       mesh.receiveShadow = true;
       group.add(mesh);
 
-      // actualizar plano de picking: y = centro de placa
+      // plano de picking en el centro de la placa (y = thickness/2)
       pickingPlaneRef.current = new THREE.Plane(new THREE.Vector3(0, 1, 0), -thickness / 2);
     } else {
-      // si no hay placa, desactiva picking correcto (caerá al plano Y=0 por defecto)
       pickingPlaneRef.current = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     }
 
-    // añadir a escena y encuadrar
     scene.add(group);
     modelRef.current = group;
 
@@ -279,14 +261,12 @@ export default function STLViewer({
     const group = markersGroupRef.current;
     if (!group) return;
 
-    // limpiar
     for (let i = group.children.length - 1; i >= 0; i--) {
       const ch = group.children[i] as any;
       ch.geometry?.dispose?.();
       ch.material?.dispose?.();
       group.remove(ch);
     }
-    // añadir
     const mat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.5 });
     (markers || []).forEach((mk) => {
       const r = Math.max(0.8, mk.d_mm / 2);
@@ -298,7 +278,6 @@ export default function STLViewer({
 
   return (
     <div className="relative w-full" style={{ height }}>
-      {/* Barra superior del visor */}
       <div className="absolute left-0 right-0 top-0 z-10 flex items-center justify-between bg-white/80 backdrop-blur px-3 py-1 border-b border-gray-200">
         <div className="text-xs text-gray-600">Visor 3D · arrastra para rotar · rueda para zoom · Shift+drag pan</div>
         <div className="flex gap-6 text-xs text-gray-500">
