@@ -20,7 +20,9 @@ async function generateSTL(payload: any): Promise<GenerateResponse> {
     });
     const text = await res.text();
     let data: any = null;
-    try { data = JSON.parse(text); } catch {}
+    try {
+      data = JSON.parse(text);
+    } catch {}
     if (!res.ok) return { status: "error", message: data?.message || text || `HTTP ${res.status}` };
     const url = data?.stl_url || data?.url || data?.data?.stl_url || null;
     if (url) return { status: "ok", stl_url: url };
@@ -43,7 +45,7 @@ export default function ForgeForm() {
   }, []);
   const [state, setState] = useState<Record<ModelId, any>>(initialState);
 
-  // parámetros comunes para agujeros
+  // parámetros comunes para agujeros (UI)
   const [holeDiameter, setHoleDiameter] = useState(5);
   const [snapStep, setSnapStep] = useState(1);
 
@@ -57,7 +59,7 @@ export default function ForgeForm() {
   // caja del visor (fallback)
   const box = useMemo(() => def.toBox(cur), [def, cur]);
 
-  // shape por modelo (para previews reales). Si no está soportado, no pasa nada.
+  // shape por modelo (preview). Seguro y opcional.
   const shape = useMemo(() => {
     switch (model) {
       case "vesa_adapter":
@@ -65,7 +67,13 @@ export default function ForgeForm() {
       case "qr_plate":
         return { kind: "plate_chamfer", L: box.length, W: box.width, T: box.height } as const;
       case "cable_tray":
-        return { kind: "u_channel", L: box.length, W: box.width, H: box.height + (cur.height ?? box.height), wall: cur.thickness ?? box.thickness ?? 3 } as const;
+        return {
+          kind: "u_channel",
+          L: box.length,
+          W: box.width,
+          H: box.height + (cur.height ?? box.height),
+          wall: cur.thickness ?? box.thickness ?? 3,
+        } as const;
       case "router_mount":
         return { kind: "l_bracket", W: cur.width, D: cur.depth, flange: cur.flange, T: cur.thickness } as const;
       case "phone_stand":
@@ -84,7 +92,8 @@ export default function ForgeForm() {
     const auto = def.autoMarkers ? def.autoMarkers(cur) : [];
     const free: Marker[] =
       "extraHoles" in cur ? cur.extraHoles :
-      "holes" in cur ? cur.holes : [];
+      "holes" in cur ? cur.holes :
+      [];
     return [...auto, ...free];
   }, [def, cur]);
 
@@ -123,12 +132,32 @@ export default function ForgeForm() {
     setState((prev) => ({ ...prev, [model]: { ...prev[model], [key]: v } }));
   };
 
-  // generar STL
+  // generar STL (inyectamos holes y model garantizados)
   async function onGenerate() {
-    setBusy(true); setError(null); setStlUrl(null);
-    const payload = def.toPayload(cur);
+    setBusy(true);
+    setError(null);
+    setStlUrl(null);
+
+    // Payload base desde el registro del modelo
+    const base = def.toPayload(cur) || {};
+
+    // Agujeros libres: para VESA suelen ser "extraHoles"; en resto "holes"
+    const freeHoles: Marker[] =
+      "extraHoles" in cur ? (cur.extraHoles || []) :
+      "holes" in cur ? (cur.holes || []) :
+      [];
+
+    // Montamos payload final para backend
+    const payload = {
+      ...base,
+      model,              // nos aseguramos de enviar el modelo
+      holes: freeHoles,   // SIEMPRE mandamos holes (aunque sea [])
+    };
+
     const res = await generateSTL(payload);
-    if (res.status === "ok") setStlUrl(res.stl_url); else setError(res.message);
+    if (res.status === "ok") setStlUrl(res.stl_url);
+    else setError(res.message);
+
     setBusy(false);
   }
 
