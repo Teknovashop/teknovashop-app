@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
@@ -21,9 +21,12 @@ type Props = {
   box?: { length: number; height: number; width: number; thickness?: number };
   /** marcadores (se dibujan y se sustraen si hay thickness) */
   markers?: Marker[];
-  /** si true, click en plano XZ añade marcador */
+  /** si true, click en plano añade marcador */
   holesMode?: boolean;
+  /** diámetro para nuevos agujeros (mm) */
   addDiameter?: number;
+  /** paso de snap (mm), p.ej. 1, 0.5, 2… */
+  snapStep?: number;
   onAddMarker?: (m: Marker) => void;
 };
 
@@ -35,11 +38,12 @@ export default function STLViewer({
   markers = [],
   holesMode = false,
   addDiameter = 5,
+  snapStep = 1,
   onAddMarker,
 }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
 
-  // Tipos “deploy-safe” para evitar conflictos de d.ts de three en Vercel
+  // refs “deploy-safe”
   const rendererRef = useRef<any>(null);
   const sceneRef = useRef<any>(null);
   const cameraRef = useRef<any>(null);
@@ -49,6 +53,9 @@ export default function STLViewer({
 
   const raycaster = useRef(new THREE.Raycaster());
   const mouse = useRef(new THREE.Vector2());
+
+  // plano de picking alineado con la placa
+  const pickingPlaneRef = useRef<THREE.Plane | null>(null);
 
   // ---------- init ----------
   useEffect(() => {
@@ -120,18 +127,40 @@ export default function STLViewer({
     scene.add(g);
     markersGroupRef.current = g;
 
-    // click-to-add markers (intersección con plano XZ)
-    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0); // y=0
+    // handler de click (usar plano alineado a la placa)
     const clickHandler = (ev: MouseEvent) => {
-      if (!holesMode || !onAddMarker) return;
+      if (!holesMode || !onAddMarker || !pickingPlaneRef.current) return;
       const rect = renderer.domElement.getBoundingClientRect();
       mouse.current.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.current.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
       raycaster.current.setFromCamera(mouse.current, camera);
+
       const point = new THREE.Vector3();
-      raycaster.current.ray.intersectPlane(plane, point);
-      onAddMarker({ x_mm: point.x, z_mm: point.z, d_mm: addDiameter });
+      raycaster.current.ray.intersectPlane(pickingPlaneRef.current, point);
+
+      // clamp + snap al rectángulo de la placa
+      const L = box?.length ?? 0;
+      const W = box?.width ?? 0;
+      const r = Math.max(0.1, addDiameter / 2);
+      const margin = r + 0.5; // deja 0.5mm de “aire”
+      const minX = -L / 2 + margin;
+      const maxX =  L / 2 - margin;
+      const minZ = -W / 2 + margin;
+      const maxZ =  W / 2 - margin;
+
+      let x = THREE.MathUtils.clamp(point.x, minX, maxX);
+      let z = THREE.MathUtils.clamp(point.z, minZ, maxZ);
+
+      // snap (opcional)
+      if (snapStep && snapStep > 0) {
+        const s = snapStep;
+        x = Math.round(x / s) * s;
+        z = Math.round(z / s) * s;
+      }
+
+      onAddMarker({ x_mm: x, z_mm: z, d_mm: addDiameter });
     };
+
     renderer.domElement.style.cursor = holesMode ? "crosshair" : "grab";
     const enter = () => { renderer.domElement.style.cursor = holesMode ? "crosshair" : "grab"; };
     renderer.domElement.addEventListener("click", clickHandler);
@@ -146,7 +175,7 @@ export default function STLViewer({
       renderer.dispose();
       if (renderer.domElement.parentNode) renderer.domElement.parentNode.removeChild(renderer.domElement);
     };
-  }, [height, background, holesMode, addDiameter, onAddMarker]);
+  }, [height, background, holesMode, addDiameter, onAddMarker, box?.length, box?.width, snapStep]);
 
   // ---------- modelo sólido por extrusión + caja alámbrica ----------
   useEffect(() => {
@@ -179,7 +208,7 @@ export default function STLViewer({
 
     // (2) Placa sólida con agujeros (Shape + Extrude)
     if (thickness && thickness > 0) {
-      // Rectángulo en plano X–Y
+      // Rectángulo en plano X–Y (L en X, W en Y)
       const shape = new THREE.Shape();
       shape.moveTo(-L / 2, -W / 2);
       shape.lineTo( L / 2, -W / 2);
@@ -195,14 +224,14 @@ export default function STLViewer({
         shape.holes.push(hole);
       });
 
-      // Extrusión → rotamos para que el espesor sea Y y apoye en Y=0
+      // Extrusión: por defecto extruye en +Z → rotamos para que el espesor sea Y
       const geom = new THREE.ExtrudeGeometry(shape, {
         depth: thickness,
         bevelEnabled: false,
         steps: 1,
       });
-      geom.rotateX(Math.PI / 2);      // Z → Y
-      geom.translate(0, thickness / 2, 0);
+      geom.rotateX(Math.PI / 2);           // Z → Y
+      geom.translate(0, thickness / 2, 0); // apoyar la placa en Y=0
 
       const mesh = new THREE.Mesh(
         geom,
@@ -211,6 +240,12 @@ export default function STLViewer({
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       group.add(mesh);
+
+      // actualizar plano de picking: y = centro de placa
+      pickingPlaneRef.current = new THREE.Plane(new THREE.Vector3(0, 1, 0), -thickness / 2);
+    } else {
+      // si no hay placa, desactiva picking correcto (caerá al plano Y=0 por defecto)
+      pickingPlaneRef.current = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     }
 
     // añadir a escena y encuadrar
