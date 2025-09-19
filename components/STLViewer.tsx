@@ -7,7 +7,7 @@
  * - Click para agujeros requiere Shift o Alt. `snapStep` opcional (redondeo).
  */
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
@@ -55,12 +55,13 @@ export default function STLViewer({
   onAddMarker,
 }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
-  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-  const sceneRef = useRef<THREE.Scene | null>(null);
-  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-  const controlsRef = useRef<OrbitControls | null>(null);
-  const modelRef = useRef<THREE.Object3D | null>(null);
-  const markersGroupRef = useRef<THREE.Group | null>(null);
+  // Tipado laxo para evitar problemas de @types/three en Vercel
+  const rendererRef = useRef<any>(null);
+  const sceneRef = useRef<any>(null);
+  const cameraRef = useRef<any>(null);
+  const controlsRef = useRef<any>(null);
+  const modelRef = useRef<any>(null);
+  const markersGroupRef = useRef<any>(null);
   const raycaster = useRef(new THREE.Raycaster());
   const mouse = useRef(new THREE.Vector2());
 
@@ -190,7 +191,7 @@ export default function STLViewer({
 
   // ---------- preview específico ----------
   useEffect(() => {
-    const scene = sceneRef.current;
+    const scene = sceneRef.current as THREE.Scene | null;
     if (!scene) return;
 
     clearModel(scene);
@@ -284,10 +285,20 @@ export default function STLViewer({
 
       if (shape.kind === "clip_c") {
         // aproximación: prisma con bisel lateral (placeholder mejor que caja)
-        const base = new THREE.Mesh(new THREE.BoxGeometry(Math.max(20, shape.diameter * 1.2), shape.T, shape.width), mat);
+        const base = new THREE.Mesh(
+          new THREE.BoxGeometry(Math.max(20, shape.diameter * 1.2), shape.T, shape.width),
+          mat
+        );
         placeY(base, shape.T);
-        const wedge = new THREE.Mesh(new THREE.BoxGeometry(shape.diameter * 0.7, shape.T, shape.width * 0.6), mat);
-        wedge.position.set(base.geometry.parameters.width / 2 - wedge.geometry.parameters.width / 2, shape.T / 2, 0);
+        const wedge = new THREE.Mesh(
+          new THREE.BoxGeometry(shape.diameter * 0.7, shape.T, shape.width * 0.6),
+          mat
+        );
+        wedge.position.set(
+          (base as any).geometry.parameters.width / 2 - (wedge as any).geometry.parameters.width / 2,
+          shape.T / 2,
+          0
+        );
         const grp = new THREE.Group();
         grp.add(base, wedge);
         addMesh(scene, grp);
