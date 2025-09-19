@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import STLViewer, { type Marker } from "@/components/STLViewer";
+import ControlsDrawer from "@/components/ControlsDrawer";
 
 type ModelKind = "cable_tray" | "vesa_adapter" | "router_mount";
 
@@ -9,17 +10,7 @@ type GenerateOk = { status: "ok"; stl_url: string };
 type GenerateErr = { status: "error"; message: string };
 type GenerateResponse = GenerateOk | GenerateErr;
 
-type Payload = {
-  model_id: ModelKind;
-  width_mm: number;
-  height_mm: number;
-  length_mm: number;
-  thickness_mm: number;
-  ventilated?: boolean;
-  holes?: Marker[];
-};
-
-async function generateSTL(payload: Payload): Promise<GenerateResponse> {
+async function generateSTL(payload: any): Promise<GenerateResponse> {
   try {
     const res = await fetch("/api/forge/generate", {
       method: "POST",
@@ -32,8 +23,7 @@ async function generateSTL(payload: Payload): Promise<GenerateResponse> {
       return { status: "error", message: text || `HTTP ${res.status}` };
     }
     const data = await res.json().catch(() => ({}));
-    const url =
-      data?.stl_url || data?.url || data?.data?.stl_url || null;
+    const url = data?.stl_url || data?.url || data?.data?.stl_url || null;
     if (url) return { status: "ok", stl_url: url };
     return { status: "error", message: "Respuesta inesperada del backend" };
   } catch (e: any) {
@@ -60,6 +50,7 @@ const DEFAULTS: CableTrayState = {
 };
 
 export default function ForgeForm() {
+  const [drawerOpen, setDrawerOpen] = useState(true);
   const [model, setModel] = useState<ModelKind>("cable_tray");
   const [cfg, setCfg] = useState<CableTrayState>({ ...DEFAULTS });
   const [busy, setBusy] = useState(false);
@@ -70,10 +61,7 @@ export default function ForgeForm() {
   const update = (patch: Partial<CableTrayState>) =>
     setCfg((s) => ({ ...s, ...patch }));
 
-  const addMarker = (m: Marker) => {
-    setCfg((s) => ({ ...s, holes: [...s.holes, m] }));
-  };
-
+  const addMarker = (m: Marker) => setCfg((s) => ({ ...s, holes: [...s.holes, m] }));
   const clearMarkers = () => setCfg((s) => ({ ...s, holes: [] }));
 
   const box = useMemo(
@@ -110,113 +98,69 @@ export default function ForgeForm() {
     setTimeout(() => setToast(null), 1600);
   }
 
+  const sliders = [
+    { key: "width", label: "Ancho (mm)", min: 40, max: 200, step: 1, value: cfg.width },
+    { key: "height", label: "Alto (mm)", min: 15, max: 120, step: 1, value: cfg.height },
+    { key: "length", label: "Longitud (mm)", min: 80, max: 300, step: 1, value: cfg.length },
+    { key: "thickness", label: "Espesor (mm)", min: 2, max: 8, step: 0.5, value: cfg.thickness },
+  ];
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[420px,1fr] gap-6">
-      {/* PANEL IZQUIERDO */}
-      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-        {/* Tabs de módulos */}
-        <div className="mb-4 flex gap-2">
-          {[
-            { id: "cable_tray", label: "Cable Tray" },
-            { id: "vesa_adapter", label: "VESA (próximamente)", disabled: true },
-            { id: "router_mount", label: "Router (próx.)", disabled: true },
-          ].map((t) => (
-            <button
-              key={t.id}
-              disabled={!!t.disabled}
-              onClick={() => setModel(t.id as ModelKind)}
-              className={`rounded-xl px-3 py-1.5 text-sm font-medium transition
-                ${model === t.id ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}
-                ${t.disabled ? "opacity-50 cursor-not-allowed" : ""}`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Sliders */}
-        {[
-          { k: "width",  label: "Ancho (mm)",     min: 40,  max: 200, step: 1, value: cfg.width },
-          { k: "height", label: "Alto (mm)",      min: 15,  max: 120, step: 1, value: cfg.height },
-          { k: "length", label: "Longitud (mm)",  min: 80,  max: 300, step: 1, value: cfg.length },
-          { k: "thickness", label: "Espesor (mm)",min: 2,   max: 8,   step: 0.5, value: cfg.thickness },
-        ].map((f) => (
-          <div key={f.k} className="mb-4">
-            <div className="mb-1 flex items-center justify-between">
-              <label className="text-sm font-medium">{f.label}</label>
-              <span className="text-sm tabular-nums text-gray-600">{f.value}</span>
-            </div>
-            <input
-              type="range"
-              min={f.min}
-              max={f.max}
-              step={f.step}
-              value={f.value}
-              onChange={(e) => update({ [f.k]: Number(e.target.value) } as any)}
-              className="w-full"
-            />
-          </div>
-        ))}
-
-        {/* Opciones */}
-        <label className="inline-flex select-none items-center gap-2 text-sm mb-2">
-          <input
-            type="checkbox"
-            checked={cfg.ventilated}
-            onChange={(e) => update({ ventilated: e.target.checked })}
-          />
-          Con ranuras de ventilación
-        </label>
-
-        {/* Agujeros */}
-        <div className="mt-4 rounded-xl border border-gray-200 p-3">
-          <div className="flex items-center gap-3">
-            <label className="text-sm font-medium">Modo “agujeros” (click en el visor)</label>
-            <button
-              onClick={clearMarkers}
-              className="ml-auto rounded-lg border px-2 py-1 text-xs hover:bg-gray-50"
-            >
-              Borrar agujeros
-            </button>
-          </div>
-          <div className="mt-2 text-xs text-gray-600">
-            Los agujeros se añaden haciendo click sobre el plano. Diámetro fijo a 5&nbsp;mm en este MVP.
-          </div>
-          {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
-        </div>
-
-        <div className="mt-4 flex gap-2">
-          <button
-            onClick={onGenerate}
-            disabled={busy}
-            className="rounded-xl bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+    <div className="relative h-[calc(100svh-140px)] w-full">
+      {/* Botonera flota */}
+      <div className="pointer-events-auto absolute left-4 top-4 z-30 flex gap-2">
+        <button
+          onClick={() => setDrawerOpen(true)}
+          className="rounded-xl bg-white/90 px-3 py-2 text-sm font-medium shadow ring-1 ring-gray-200 backdrop-blur hover:bg-white"
+        >
+          Controles
+        </button>
+        <button
+          onClick={clearMarkers}
+          className="rounded-xl bg-white/90 px-3 py-2 text-sm shadow ring-1 ring-gray-200 backdrop-blur hover:bg-white"
+        >
+          Borrar agujeros
+        </button>
+        {stlUrl && (
+          <a
+            href={stlUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-xl bg-white/90 px-3 py-2 text-sm shadow ring-1 ring-gray-200 backdrop-blur hover:bg-white"
           >
-            {busy ? "Generando..." : "Generar STL"}
-          </button>
-          {stlUrl && (
-            <a
-              href={stlUrl}
-              className="rounded-xl border px-4 py-2 text-sm"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Descargar STL
-            </a>
-          )}
-        </div>
-      </section>
+            Descargar STL
+          </a>
+        )}
+      </div>
 
-      {/* PANEL DERECHO (visor grande) */}
-      <section className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm h-[calc(100svh-160px)]">
+      {/* Visor a pantalla casi completa */}
+      <div className="absolute inset-0">
         <STLViewer
+          height={undefined}          // usa el alto del contenedor
           background="#ffffff"
           box={box}
           markers={cfg.holes}
           holesMode={true}
           addDiameter={5}
+          snapStep={1}
           onAddMarker={addMarker}
         />
-      </section>
+      </div>
+
+      {/* Drawer de controles */}
+      <ControlsDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        sliders={sliders}
+        onChange={(k, v) => update({ [k]: v } as any)}
+        ventilated={cfg.ventilated}
+        onToggleVentilated={(v) => update({ ventilated: v })}
+        onClearHoles={clearMarkers}
+        onGenerate={onGenerate}
+        busy={busy}
+        stlUrl={stlUrl}
+        error={error}
+      />
 
       {/* Toast */}
       {toast && (
