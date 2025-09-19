@@ -10,7 +10,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import type { Marker } from "./STLViewer"; // para autocompletado local si se usa en otros
 
 /** marcador de agujero dibujado en el visor */
 export type Marker = { x_mm: number; z_mm: number; d_mm: number };
@@ -294,7 +293,6 @@ export default function STLViewer({
         addMesh(scene, grp);
         return;
       }
-
       // si llega aquí, no reconocido
     }
 
@@ -334,9 +332,13 @@ export default function STLViewer({
     <div className="relative w-full" style={{ height }}>
       {/* Barra superior del visor */}
       <div className="absolute left-0 right-0 top-0 z-10 flex items-center justify-between bg-white/80 backdrop-blur px-3 py-1 border-b border-gray-200">
-        <div className="text-xs text-gray-600">Visor 3D · rueda: zoom · arrastra: rotar/pan · <span className="font-medium">Shift/Alt + clic</span>: agujero</div>
+        <div className="text-xs text-gray-600">
+          Visor 3D · rueda: zoom · arrastra: rotar/pan · <span className="font-medium">Shift/Alt + clic</span>: agujero
+        </div>
         <div className="flex gap-6 text-xs text-gray-500">
-          <span>L</span><span>H</span><span>W</span>
+          <span>L</span>
+          <span>H</span>
+          <span>W</span>
         </div>
       </div>
       <div ref={mountRef} className="w-full h-full" />
