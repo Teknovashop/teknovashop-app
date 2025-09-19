@@ -3,7 +3,6 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { CSG } from "three-csg-ts";
 
 /** marcador de agujero dibujado en el visor */
 export type Marker = { x_mm: number; z_mm: number; d_mm: number };
@@ -146,7 +145,7 @@ export default function STLViewer({
     };
   }, [height, background, holesMode, addDiameter, onAddMarker]);
 
-  // ---------- modelo sólido con CSG + caja alámbrica ----------
+  // ---------- modelo sólido por extrusión + caja alámbrica ----------
   useEffect(() => {
     const scene = sceneRef.current;
     if (!scene || !box) return;
@@ -175,91 +174,6 @@ export default function STLViewer({
       group.add(wire);
     }
 
-    // (2) Placa sólida con sustracción de agujeros (si hay thickness)
+    // (2) Placa sólida con agujeros (sin CSG externo, usando Shape + Extrude)
     if (thickness && thickness > 0) {
-      const base = new THREE.BoxGeometry(L, thickness, W);
-      base.translate(0, thickness / 2, 0);
-      const baseMesh = new THREE.Mesh(base);
-
-      let csg = CSG.fromMesh(baseMesh);
-      (markers || []).forEach((mk) => {
-        const radius = Math.max(0.1, mk.d_mm / 2);
-        const cyl = new THREE.CylinderGeometry(radius, radius, thickness * 1.25, 36);
-        cyl.translate(mk.x_mm, thickness / 2, mk.z_mm);
-        const holeMesh = new THREE.Mesh(cyl);
-        const holeCSG = CSG.fromMesh(holeMesh);
-        csg = csg.subtract(holeCSG);
-        cyl.dispose();
-      });
-
-      const mesh = CSG.toMesh(
-        csg,
-        baseMesh.matrix,
-        new THREE.MeshStandardMaterial({ metalness: 0.1, roughness: 0.45, color: 0xf3f4f6 })
-      );
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      group.add(mesh);
-    }
-
-    // añadir a escena y encuadrar
-    scene.add(group);
-    modelRef.current = group;
-
-    try {
-      const camera = cameraRef.current!;
-      const controls = controlsRef.current!;
-      const box3 = new THREE.Box3().setFromObject(group);
-      const size = new THREE.Vector3();
-      box3.getSize(size);
-      const center = new THREE.Vector3();
-      box3.getCenter(center);
-
-      controls.target.copy(center);
-      const maxDim = Math.max(size.x, size.y, size.z);
-      const fov = camera.fov * (Math.PI / 180);
-      let distance = Math.abs(maxDim / (2 * Math.tan(fov / 2)));
-      distance *= 1.6;
-      const dir = new THREE.Vector3(1, 0.8, 1).normalize();
-      camera.position.copy(center.clone().add(dir.multiplyScalar(distance)));
-      camera.near = 0.1;
-      camera.far = distance * 20;
-      camera.updateProjectionMatrix();
-    } catch {}
-  }, [box, markers]);
-
-  // ---------- marcadores visibles (esferas) ----------
-  useEffect(() => {
-    const group = markersGroupRef.current;
-    if (!group) return;
-
-    // limpiar
-    for (let i = group.children.length - 1; i >= 0; i--) {
-      const ch = group.children[i] as any;
-      ch.geometry?.dispose?.();
-      ch.material?.dispose?.();
-      group.remove(ch);
-    }
-    // añadir
-    const mat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.5 });
-    (markers || []).forEach((mk) => {
-      const r = Math.max(0.8, mk.d_mm / 2);
-      const s = new THREE.Mesh(new THREE.SphereGeometry(r, 20, 20), mat);
-      s.position.set(mk.x_mm, 0.1 + (box?.thickness ? box.thickness / 2 : 0), mk.z_mm);
-      group.add(s);
-    });
-  }, [markers, box?.thickness]);
-
-  return (
-    <div className="relative w-full" style={{ height }}>
-      {/* Barra superior del visor */}
-      <div className="absolute left-0 right-0 top-0 z-10 flex items-center justify-between bg-white/80 backdrop-blur px-3 py-1 border-b border-gray-200">
-        <div className="text-xs text-gray-600">Visor 3D · arrastra para rotar · rueda para zoom · Shift+drag pan</div>
-        <div className="flex gap-6 text-xs text-gray-500">
-          <span>L</span><span>H</span><span>W</span>
-        </div>
-      </div>
-      <div ref={mountRef} className="w-full h-full" />
-    </div>
-  );
-}
+      // Definimos el rectángulo en el plano X–Y (ancho=W en
