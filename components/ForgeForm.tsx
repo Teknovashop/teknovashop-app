@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import STLViewer, { type Marker } from "@/components/STLViewer";
-import ControlsDrawer from "@/components/ControlsDrawer";
+import ControlsPanel from "@/components/ControlsPanel";
 
 type ModelKind = "cable_tray" | "vesa_adapter" | "router_mount";
 
@@ -50,56 +50,23 @@ const DEFAULTS: CableTrayState = {
 };
 
 export default function ForgeForm() {
-  const [drawerOpen, setDrawerOpen] = useState(true);
-  const [model, setModel] = useState<ModelKind>("cable_tray");
+  const [model] = useState<ModelKind>("cable_tray");
   const [cfg, setCfg] = useState<CableTrayState>({ ...DEFAULTS });
-  const [busy, setBusy] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
-  const [stlUrl, setStlUrl] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
-  // agujeros runtime controls
+  // agujeros
   const [holesMode, setHolesMode] = useState(true);
   const [holeDiameter, setHoleDiameter] = useState(5);
   const [snapStep, setSnapStep] = useState(1);
 
-  // undo/redo stack
-  const [undoStack, setUndo] = useState<Marker[][]>([]);
-  const [redoStack, setRedo] = useState<Marker[][]>([]);
-
-  const pushUndo = (holes: Marker[]) => setUndo((u) => [...u, holes.map((h) => ({ ...h }))]);
-  const doUndo = () => {
-    setUndo((u) => {
-      if (!u.length) return u;
-      setRedo((r) => [...r, cfg.holes.map((h) => ({ ...h }))]);
-      const prev = u[u.length - 1];
-      setCfg((s) => ({ ...s, holes: prev }));
-      return u.slice(0, -1);
-    });
-  };
-  const doRedo = () => {
-    setRedo((r) => {
-      if (!r.length) return r;
-      pushUndo(cfg.holes);
-      const next = r[r.length - 1];
-      setCfg((s) => ({ ...s, holes: next }));
-      return r.slice(0, -1);
-    });
-  };
+  // export
+  const [busy, setBusy] = useState(false);
+  const [stlUrl, setStlUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const update = (patch: Partial<CableTrayState>) => setCfg((s) => ({ ...s, ...patch }));
 
-  const addMarker = (m: Marker) => {
-    pushUndo(cfg.holes);
-    setRedo([]); // romper rama de redo
-    setCfg((s) => ({ ...s, holes: [...s.holes, m] }));
-  };
-  const clearMarkers = () => {
-    if (!cfg.holes.length) return;
-    pushUndo(cfg.holes);
-    setRedo([]);
-    setCfg((s) => ({ ...s, holes: [] }));
-  };
+  const addMarker = (m: Marker) => setCfg((s) => ({ ...s, holes: [...s.holes, m] }));
+  const clearMarkers = () => setCfg((s) => ({ ...s, holes: [] }));
 
   const box = useMemo(() => ({
     length: cfg.length,
@@ -121,15 +88,8 @@ export default function ForgeForm() {
       ventilated: cfg.ventilated,
       holes: cfg.holes,
     });
-    if (res.status === "ok") {
-      setStlUrl(res.stl_url);
-      setToast("STL listo ✅");
-    } else {
-      setError(res.message);
-      setToast("Error al generar");
-    }
+    if (res.status === "ok") setStlUrl(res.stl_url); else setError(res.message);
     setBusy(false);
-    setTimeout(() => setToast(null), 1600);
   }
 
   const sliders = [
@@ -140,33 +100,22 @@ export default function ForgeForm() {
   ];
 
   return (
-    <div className="relative h-[calc(100svh-140px)] w-full">
-      {/* Botonera flotante */}
-      <div className="pointer-events-auto absolute left-4 top-4 z-30 flex gap-2">
-        <button onClick={() => setDrawerOpen(true)} className="rounded-xl bg-white/90 px-3 py-2 text-sm font-medium shadow ring-1 ring-gray-200 backdrop-blur hover:bg-white">Controles</button>
-        <button onClick={clearMarkers} className="rounded-xl bg-white/90 px-3 py-2 text-sm shadow ring-1 ring-gray-200 backdrop-blur hover:bg-white">Borrar agujeros</button>
-        {stlUrl && <a href={stlUrl} target="_blank" rel="noreferrer" className="rounded-xl bg-white/90 px-3 py-2 text-sm shadow ring-1 ring-gray-200 backdrop-blur hover:bg-white">Descargar STL</a>}
-      </div>
-
-      {/* Visor */}
-      <div className="absolute inset-0">
+    <div className="mx-auto grid max-w-[1600px] grid-cols-1 gap-6 px-4 py-6 lg:grid-cols-[1fr,380px]">
+      {/* Visor a la izquierda */}
+      <section className="h-[calc(100svh-160px)] rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
         <STLViewer
           background="#ffffff"
           box={box}
           markers={cfg.holes}
-          holesMode={holesMode}
+          holesMode={holesMode}        // requiere Shift/Alt para colocar
           addDiameter={holeDiameter}
           snapStep={snapStep}
           onAddMarker={addMarker}
-          onUndo={doUndo}
-          onRedo={doRedo}
         />
-      </div>
+      </section>
 
-      {/* Drawer */}
-      <ControlsDrawer
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
+      {/* Panel a la derecha */}
+      <ControlsPanel
         modelLabel="Cable Tray"
         sliders={sliders}
         onChange={(k, v) => update({ [k]: v } as any)}
@@ -179,20 +128,11 @@ export default function ForgeForm() {
         snapStep={snapStep}
         onSnapStep={setSnapStep}
         onClearHoles={clearMarkers}
-        onUndo={doUndo}
-        onRedo={doRedo}
         onGenerate={onGenerate}
         busy={busy}
         stlUrl={stlUrl}
         error={error}
       />
-
-      {/* Toast */}
-      {toast && (
-        <div className="fixed bottom-5 right-5 z-50">
-          <div className="rounded-lg bg-gray-900 text-white px-4 py-2 text-sm shadow-lg">{toast}</div>
-        </div>
-      )}
     </div>
   );
 }
