@@ -1,9 +1,45 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import STLViewer from "@/components/STLViewer";
-import { generateSTL } from "@/lib/api";
-import type { GenerateResponse, HoleSpec, ModelKind } from "@/types/forge";
+import STLViewer, { type Marker } from "@/components/STLViewer";
+
+type ModelKind = "cable_tray" | "vesa_adapter" | "router_mount";
+
+type GenerateOk = { status: "ok"; stl_url: string };
+type GenerateErr = { status: "error"; message: string };
+type GenerateResponse = GenerateOk | GenerateErr;
+
+type Payload = {
+  model_id: ModelKind;
+  width_mm: number;
+  height_mm: number;
+  length_mm: number;
+  thickness_mm: number;
+  ventilated?: boolean;
+  holes?: Marker[];
+};
+
+async function generateSTL(payload: Payload): Promise<GenerateResponse> {
+  try {
+    const res = await fetch("/api/forge/generate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      return { status: "error", message: text || `HTTP ${res.status}` };
+    }
+    const data = await res.json().catch(() => ({}));
+    const url =
+      data?.stl_url || data?.url || data?.data?.stl_url || null;
+    if (url) return { status: "ok", stl_url: url };
+    return { status: "error", message: "Respuesta inesperada del backend" };
+  } catch (e: any) {
+    return { status: "error", message: e?.message || "Fallo de red" };
+  }
+}
 
 type CableTrayState = {
   width: number;
@@ -11,7 +47,7 @@ type CableTrayState = {
   length: number;
   thickness: number;
   ventilated: boolean;
-  holes: HoleSpec[];
+  holes: Marker[];
 };
 
 const DEFAULTS: CableTrayState = {
@@ -28,27 +64,32 @@ export default function ForgeForm() {
   const [cfg, setCfg] = useState<CableTrayState>({ ...DEFAULTS });
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const [resp, setResp] = useState<GenerateResponse | null>(null);
-  const stlUrl = (resp && resp.status === "ok" && resp.stl_url) || null;
+  const [stlUrl, setStlUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const update = (patch: Partial<CableTrayState>) =>
     setCfg((s) => ({ ...s, ...patch }));
 
-  const addMarker = (m: { x_mm: number; z_mm: number; d_mm: number }) => {
+  const addMarker = (m: Marker) => {
     setCfg((s) => ({ ...s, holes: [...s.holes, m] }));
   };
 
   const clearMarkers = () => setCfg((s) => ({ ...s, holes: [] }));
 
-  const box = useMemo(() => ({
-    length: cfg.length,
-    height: cfg.height,
-    width: cfg.width,
-    thickness: cfg.thickness, // <-- necesario para CSG en el visor
-  }), [cfg.length, cfg.height, cfg.width, cfg.thickness]);
+  const box = useMemo(
+    () => ({
+      length: cfg.length,
+      height: cfg.height,
+      width: cfg.width,
+      thickness: cfg.thickness, // necesario para extrusión + agujeros en visor
+    }),
+    [cfg.length, cfg.height, cfg.width, cfg.thickness]
+  );
 
   async function onGenerate() {
     setBusy(true);
+    setError(null);
+    setStlUrl(null);
     const res = await generateSTL({
       model_id: model,
       width_mm: cfg.width,
@@ -57,9 +98,14 @@ export default function ForgeForm() {
       thickness_mm: cfg.thickness,
       ventilated: cfg.ventilated,
       holes: cfg.holes,
-    } as any);
-    setResp(res);
-    setToast(res.status === "ok" ? "STL listo ✅" : (res as any).message || "Error");
+    });
+    if (res.status === "ok") {
+      setStlUrl(res.stl_url);
+      setToast("STL listo ✅");
+    } else {
+      setError(res.message);
+      setToast("Error al generar");
+    }
     setBusy(false);
     setTimeout(() => setToast(null), 1600);
   }
@@ -68,7 +114,7 @@ export default function ForgeForm() {
     <div className="grid grid-cols-1 lg:grid-cols-[420px,1fr] gap-6">
       {/* PANEL IZQUIERDO */}
       <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-        {/* Tabs */}
+        {/* Tabs de módulos */}
         <div className="mb-4 flex gap-2">
           {[
             { id: "cable_tray", label: "Cable Tray" },
@@ -88,7 +134,7 @@ export default function ForgeForm() {
           ))}
         </div>
 
-        {/* Controles */}
+        {/* Sliders */}
         {[
           { k: "width",  label: "Ancho (mm)",     min: 40,  max: 200, step: 1, value: cfg.width },
           { k: "height", label: "Alto (mm)",      min: 15,  max: 120, step: 1, value: cfg.height },
@@ -112,6 +158,7 @@ export default function ForgeForm() {
           </div>
         ))}
 
+        {/* Opciones */}
         <label className="inline-flex select-none items-center gap-2 text-sm mb-2">
           <input
             type="checkbox"
@@ -133,29 +180,9 @@ export default function ForgeForm() {
             </button>
           </div>
           <div className="mt-2 text-xs text-gray-600">
-            Usa el slider de diámetro y haz click en el visor para añadir agujeros.
+            Los agujeros se añaden haciendo click sobre el plano. Diámetro fijo a 5&nbsp;mm en este MVP.
           </div>
-          <div className="mt-2 flex items-center gap-3">
-            <span className="text-xs text-gray-600">Diámetro (mm)</span>
-            <input
-              type="range"
-              min={2}
-              max={12}
-              step={0.5}
-              value={5}
-              onChange={() => {}}
-              readOnly
-              className="w-full"
-            />
-          </div>
-          <details className="mt-2">
-            <summary className="cursor-pointer text-xs text-gray-500">Ver respuesta JSON</summary>
-            <textarea
-              readOnly
-              value={JSON.stringify(resp, null, 2)}
-              className="mt-2 h-40 w-full rounded-xl border p-2 font-mono text-xs"
-            />
-          </details>
+          {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
         </div>
 
         <div className="mt-4 flex gap-2">
@@ -179,11 +206,9 @@ export default function ForgeForm() {
         </div>
       </section>
 
-      {/* PANEL DERECHO (VISOR A PANTALLA COMPLETA DENTRO DEL PANEL) */}
+      {/* PANEL DERECHO (visor grande) */}
       <section className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm h-[calc(100svh-160px)]">
         <STLViewer
-          /* auto-height via container */
-          url={null as any}
           background="#ffffff"
           box={box}
           markers={cfg.holes}
