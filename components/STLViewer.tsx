@@ -2,12 +2,6 @@
 
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
-import type {
-  WebGLRenderer,
-  Scene,
-  PerspectiveCamera,
-  Group,
-} from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 /** marcador de agujero dibujado en el visor */
@@ -44,12 +38,15 @@ export default function STLViewer({
   onAddMarker,
 }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
-  const rendererRef = useRef<WebGLRenderer | null>(null);
-  const sceneRef = useRef<Scene | null>(null);
-  const cameraRef = useRef<PerspectiveCamera | null>(null);
-  const controlsRef = useRef<OrbitControls | null>(null);
-  const modelRef = useRef<THREE.Object3D | null>(null);
-  const markersGroupRef = useRef<Group | null>(null);
+
+  // Tipos “deploy-safe” para evitar conflictos de d.ts de three en Vercel
+  const rendererRef = useRef<any>(null);
+  const sceneRef = useRef<any>(null);
+  const cameraRef = useRef<any>(null);
+  const controlsRef = useRef<any>(null);
+  const modelRef = useRef<any>(null);
+  const markersGroupRef = useRef<any>(null);
+
   const raycaster = useRef(new THREE.Raycaster());
   const mouse = useRef(new THREE.Vector2());
 
@@ -198,14 +195,14 @@ export default function STLViewer({
         shape.holes.push(hole);
       });
 
-      // Extrusión: por defecto extruye en +Z → rotamos para que el espesor sea Y
+      // Extrusión → rotamos para que el espesor sea Y y apoye en Y=0
       const geom = new THREE.ExtrudeGeometry(shape, {
         depth: thickness,
         bevelEnabled: false,
         steps: 1,
       });
       geom.rotateX(Math.PI / 2);      // Z → Y
-      geom.translate(0, thickness / 2, 0); // apoyar en Y=0
+      geom.translate(0, thickness / 2, 0);
 
       const mesh = new THREE.Mesh(
         geom,
