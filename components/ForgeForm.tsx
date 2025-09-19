@@ -20,9 +20,7 @@ async function generateSTL(payload: any): Promise<GenerateResponse> {
     });
     const text = await res.text();
     let data: any = null;
-    try {
-      data = JSON.parse(text);
-    } catch {}
+    try { data = JSON.parse(text); } catch {}
     if (!res.ok) return { status: "error", message: data?.message || text || `HTTP ${res.status}` };
     const url = data?.stl_url || data?.url || data?.data?.stl_url || null;
     if (url) return { status: "ok", stl_url: url };
@@ -35,7 +33,7 @@ async function generateSTL(payload: any): Promise<GenerateResponse> {
 export default function ForgeForm() {
   const [model, setModel] = useState<ModelId>("cable_tray");
 
-  // Estado por modelo en un diccionario (se inicializa a partir del registry)
+  // Estado por modelo en un diccionario (evita tocar el componente al añadir nuevos modelos)
   const initialState = useMemo(() => {
     const m: Record<ModelId, any> = {} as any;
     (Object.keys(MODELS) as ModelId[]).forEach((id) => {
@@ -45,7 +43,7 @@ export default function ForgeForm() {
   }, []);
   const [state, setState] = useState<Record<ModelId, any>>(initialState);
 
-  // Parámetros comunes para agujeros libres
+  // agujeros libres (parámetros generales del visor)
   const [holeDiameter, setHoleDiameter] = useState(5);
   const [snapStep, setSnapStep] = useState(1);
 
@@ -56,10 +54,10 @@ export default function ForgeForm() {
   const def = MODELS[model];
   const cur = state[model];
 
-  // Caja del visor por modelo
+  // caja del visor por modelo
   const box = useMemo(() => def.toBox(cur), [def, cur]);
 
-  // Marcadores visibles (auto + libres si hay)
+  // marcadores visibles en el visor (auto + libres si existen)
   const markers: Marker[] = useMemo(() => {
     const auto = def.autoMarkers ? def.autoMarkers(cur) : [];
     const free: Marker[] =
@@ -68,7 +66,7 @@ export default function ForgeForm() {
     return [...auto, ...free];
   }, [def, cur]);
 
-  // Añadir marcador libre
+  // añadir/borrar marcadores libres según propiedad disponible
   const onAddMarker = (m: Marker) => {
     if (!def.allowFreeHoles) return;
     setState((prev) => {
@@ -81,7 +79,6 @@ export default function ForgeForm() {
     });
   };
 
-  // Borrar marcadores libres del modelo activo
   const clearMarkers = () => {
     setState((prev) => {
       const next = { ...prev };
@@ -93,7 +90,7 @@ export default function ForgeForm() {
     });
   };
 
-  // Sliders dinámicos
+  // sliders dinámicos
   const sliders = useMemo(() => {
     return def.sliders.map((s) => ({
       ...s,
@@ -105,21 +102,17 @@ export default function ForgeForm() {
     setState((prev) => ({ ...prev, [model]: { ...prev[model], [key]: v } }));
   };
 
-  // Generación STL
   async function onGenerate() {
-    setBusy(true);
-    setError(null);
-    setStlUrl(null);
+    setBusy(true); setError(null); setStlUrl(null);
     const payload = def.toPayload(cur);
     const res = await generateSTL(payload);
-    if (res.status === "ok") setStlUrl(res.stl_url);
-    else setError(res.message);
+    if (res.status === "ok") setStlUrl(res.stl_url); else setError(res.message);
     setBusy(false);
   }
 
   const allowFree = def.allowFreeHoles;
 
-  // Compatibilidad con ControlsPanel: ventilated solo aplica a cable_tray
+  // ventilated solo aplica a cable_tray (mantiene compatibilidad con tu ControlsPanel)
   const ventilated = "ventilated" in cur ? !!cur.ventilated : true;
   const toggleVentilated = (v: boolean) => {
     if (!("ventilated" in cur)) return;
@@ -132,7 +125,7 @@ export default function ForgeForm() {
       <section className="h-[calc(100svh-160px)] rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
         <ModelSelector value={model} onChange={setModel} />
         <STLViewer
-          key={model}
+          key={model}                 // fuerza remount al cambiar de modelo (evita mezclar agujeros)
           background="#ffffff"
           box={box}
           markers={markers}
@@ -143,7 +136,7 @@ export default function ForgeForm() {
         />
       </section>
 
-      {/* Panel derecho */}
+      {/* Panel */}
       <ControlsPanel
         modelLabel={def.label}
         sliders={sliders}
