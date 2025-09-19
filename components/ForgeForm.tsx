@@ -17,7 +17,7 @@ import {
 } from "@/models/registry";
 
 type GenerateOk = { status: "ok"; stl_url: string };
-type GenerateErr = { status: "error", message: string };
+type GenerateErr = { status: "error"; message: string };
 type GenerateResponse = GenerateOk | GenerateErr;
 
 async function generateSTL(payload: any): Promise<GenerateResponse> {
@@ -44,11 +44,11 @@ export default function ForgeForm() {
   const [model, setModel] = useState<ModelId>("cable_tray");
 
   // estado por modelo (se conserva al cambiar de tab)
-  const [cable, setCable] = useState<CableTrayState>({ ...CableTray.defaults });
-  const [vesa,  setVesa]  = useState<VesaAdapterState>({ ...VesaAdapter.defaults });
-  const [router,setRouter]= useState<RouterMountState>({ ...RouterMount.defaults });
+  const [cable, setCable]  = useState<CableTrayState>({ ...CableTray.defaults });
+  const [vesa, setVesa]    = useState<VesaAdapterState>({ ...VesaAdapter.defaults });
+  const [router, setRouter]= useState<RouterMountState>({ ...RouterMount.defaults });
 
-  // agujeros libres (solo cuando allowFreeHoles=true)
+  // agujeros libres
   const [holesMode, setHolesMode] = useState(true);
   const [holeDiameter, setHoleDiameter] = useState(5);
   const [snapStep, setSnapStep] = useState(1);
@@ -57,17 +57,21 @@ export default function ForgeForm() {
   const [stlUrl, setStlUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // util
   const def = MODELS[model];
 
+  // ✅ FIX: usa funciones del modelo concreto para evitar el error de tipos
   const box = useMemo(() => {
     switch (model) {
-      case "cable_tray": return def.toBox(cable);
-      case "vesa_adapter": return def.toBox(vesa);
-      case "router_mount": return def.toBox(router);
+      case "cable_tray":
+        return CableTray.toBox(cable);
+      case "vesa_adapter":
+        return VesaAdapter.toBox(vesa);
+      case "router_mount":
+        return RouterMount.toBox(router);
+      default:
+        return { length: 100, height: 3, width: 60, thickness: 3 };
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model, cable, vesa, router, cable.width, cable.height, cable.length, cable.thickness, vesa.plateWidth, vesa.thickness, router.width, router.depth, router.thickness]);
+  }, [model, cable, vesa, router]);
 
   const markers: Marker[] = useMemo(() => {
     if (model === "vesa_adapter") {
@@ -94,36 +98,33 @@ export default function ForgeForm() {
 
   // sliders dinámicos
   const sliders = useMemo(() => {
-    const base = def.sliders.map((s) => {
+    return def.sliders.map((s) => {
       const value =
         model === "cable_tray"   ? (cable as any)[s.key] :
         model === "vesa_adapter" ? (vesa as any)[s.key]  :
                                    (router as any)[s.key];
       return { ...s, value };
     });
-    // Para VESA añadimos un selector de patrón 75/100/200 en el panel (abajo)
-    return base;
-  }, [def, model, cable, vesa, router]);
+  }, [def.sliders, model, cable, vesa, router]);
 
   const updateSlider = (key: string, v: number) => {
-    if (model === "cable_tray")  setCable((s) => ({ ...s, [key]: v } as any));
-    if (model === "vesa_adapter")setVesa((s) => ({ ...s, [key]: v } as any));
-    if (model === "router_mount")setRouter((s) => ({ ...s, [key]: v } as any));
+    if (model === "cable_tray")   setCable((s) => ({ ...s, [key]: v } as any));
+    if (model === "vesa_adapter") setVesa((s)  => ({ ...s, [key]: v } as any));
+    if (model === "router_mount") setRouter((s)=> ({ ...s, [key]: v } as any));
   };
 
   async function onGenerate() {
     setBusy(true); setError(null); setStlUrl(null);
     let payload: any;
-    if (model === "cable_tray")  payload = CableTray.toPayload({ ...cable });
-    if (model === "vesa_adapter")payload = VesaAdapter.toPayload({ ...vesa });
-    if (model === "router_mount")payload = RouterMount.toPayload({ ...router });
+    if (model === "cable_tray")   payload = CableTray.toPayload({ ...cable });
+    if (model === "vesa_adapter") payload = VesaAdapter.toPayload({ ...vesa });
+    if (model === "router_mount") payload = RouterMount.toPayload({ ...router });
 
     const res = await generateSTL(payload);
     if (res.status === "ok") setStlUrl(res.stl_url); else setError(res.message);
     setBusy(false);
   }
 
-  // ¿permitimos colocar agujeros libres?
   const allowFree = def.allowFreeHoles;
 
   return (
@@ -135,22 +136,22 @@ export default function ForgeForm() {
           background="#ffffff"
           box={box}
           markers={markers}
-          holesMode={allowFree && true}          // Shift/Alt + clic
+          holesMode={allowFree && true}
           addDiameter={holeDiameter}
           snapStep={snapStep}
           onAddMarker={onAddMarker}
         />
       </section>
 
-      {/* Panel dinámico */}
+      {/* Panel */}
       <ControlsPanel
-        modelLabel={MODELS[model].label}
+        modelLabel={def.label}
         sliders={sliders}
         onChange={updateSlider}
         ventilated={model === "cable_tray" ? cable.ventilated : true}
         onToggleVentilated={(v) => model === "cable_tray" && setCable((s) => ({ ...s, ventilated: v }))}
         holesEnabled={allowFree && true}
-        onToggleHoles={() => { /* el visor ya exige Shift/Alt; mantenemos habilitado si allowFree */ }}
+        onToggleHoles={() => { /* Shift/Alt ya requerido; mantenemos activo si allowFree */ }}
         holeDiameter={holeDiameter}
         onHoleDiameter={setHoleDiameter}
         snapStep={snapStep}
@@ -162,7 +163,7 @@ export default function ForgeForm() {
         error={error}
       />
 
-      {/* Controles extra específicos (debajo en mobile) */}
+      {/* Extra específico VESA (selector patrón) */}
       {model === "vesa_adapter" && (
         <div className="lg:col-span-2 -mt-4 px-4">
           <div className="rounded-lg border bg-white p-3 text-sm">
