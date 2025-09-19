@@ -2,6 +2,12 @@
 
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
+import type {
+  WebGLRenderer,
+  Scene,
+  PerspectiveCamera,
+  Group,
+} from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 /** marcador de agujero dibujado en el visor */
@@ -38,12 +44,12 @@ export default function STLViewer({
   onAddMarker,
 }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
-  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-  const sceneRef = useRef<THREE.Scene | null>(null);
-  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const rendererRef = useRef<WebGLRenderer | null>(null);
+  const sceneRef = useRef<Scene | null>(null);
+  const cameraRef = useRef<PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const modelRef = useRef<THREE.Object3D | null>(null);
-  const markersGroupRef = useRef<THREE.Group | null>(null);
+  const markersGroupRef = useRef<Group | null>(null);
   const raycaster = useRef(new THREE.Raycaster());
   const mouse = useRef(new THREE.Vector2());
 
@@ -174,9 +180,9 @@ export default function STLViewer({
       group.add(wire);
     }
 
-    // (2) Placa sólida con agujeros (sin CSG externo, usando Shape + Extrude)
+    // (2) Placa sólida con agujeros (Shape + Extrude)
     if (thickness && thickness > 0) {
-      // Definimos el rectángulo en el plano X–Y (ancho=W en Y, largo=L en X)
+      // Rectángulo en plano X–Y
       const shape = new THREE.Shape();
       shape.moveTo(-L / 2, -W / 2);
       shape.lineTo( L / 2, -W / 2);
@@ -184,7 +190,7 @@ export default function STLViewer({
       shape.lineTo(-L / 2,  W / 2);
       shape.lineTo(-L / 2, -W / 2);
 
-      // Agujeros: círculos en las posiciones (x_mm, z_mm)
+      // Agujeros circulares (x=z en plano)
       (markers || []).forEach((mk) => {
         const r = Math.max(0.1, mk.d_mm / 2);
         const hole = new THREE.Path();
@@ -198,9 +204,8 @@ export default function STLViewer({
         bevelEnabled: false,
         steps: 1,
       });
-      // Queremos que el espesor sea en Y y que apoye en Y=0
-      geom.rotateX(Math.PI / 2); // Z → Y
-      geom.translate(0, thickness / 2, 0);
+      geom.rotateX(Math.PI / 2);      // Z → Y
+      geom.translate(0, thickness / 2, 0); // apoyar en Y=0
 
       const mesh = new THREE.Mesh(
         geom,
