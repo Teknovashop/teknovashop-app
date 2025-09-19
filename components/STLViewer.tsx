@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Visor 3D con previews específicos por modelo (no rompe compatibilidad):
+ * Visor 3D con previews específicos por modelo:
  * - Si recibe `shape`, pinta la geometría del modelo.
  * - Si NO recibe `shape`, mantiene el placeholder (caja alámbrica).
  * - Click para agujeros requiere Shift o Alt. `snapStep` opcional (redondeo).
@@ -27,8 +27,7 @@ type Shape =
 type Props = {
   height?: number;
   background?: string;
-  /** url STL (opcional; no la usamos aún) */
-  url?: string;
+  url?: string; // opcional
   /** bounding box fallback (L x H x W) en mm */
   box?: { length: number; height: number; width: number; thickness?: number };
   /** forma a renderizar (si se pasa, sustituye al placeholder) */
@@ -82,7 +81,7 @@ export default function STLViewer({
     root.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // marco
+    // marco visual
     root.style.border = "1px solid #e5e7eb";
     root.style.borderRadius = "12px";
     root.style.overflow = "hidden";
@@ -148,7 +147,7 @@ export default function STLViewer({
       const s = Math.max(0.1, snapStep);
       const snap = (v: number) => Math.round(v / s) * s;
 
-      onAddMarker({
+      onAddMarker?.({
         x_mm: snap(point.x),
         z_mm: snap(point.z),
         d_mm: addDiameter,
@@ -167,7 +166,7 @@ export default function STLViewer({
   }, [height, background, holesMode, addDiameter, onAddMarker, snapStep]);
 
   // ---------- helpers: crear geometrías por modelo ----------
-  function clearModel(scene: THREE.Scene) {
+  function clearModel(scene: any) {
     if (modelRef.current) {
       scene.remove(modelRef.current);
       modelRef.current.traverse?.((o: any) => {
@@ -179,19 +178,19 @@ export default function STLViewer({
     }
   }
 
-  function addMesh(scene: THREE.Scene, mesh: THREE.Object3D) {
+  function addMesh(scene: any, mesh: any) {
     scene.add(mesh);
     modelRef.current = mesh;
   }
 
   // place base mesh on ground (y=0) centered
-  function placeY(mesh: THREE.Object3D, T: number) {
+  function placeY(mesh: any, T: number) {
     mesh.position.y = T / 2;
   }
 
   // ---------- preview específico ----------
   useEffect(() => {
-    const scene = sceneRef.current as THREE.Scene | null;
+    const scene = sceneRef.current as any;
     if (!scene) return;
 
     clearModel(scene);
@@ -251,7 +250,7 @@ export default function STLViewer({
         const base = new THREE.Mesh(new THREE.BoxGeometry(shape.D, shape.T, shape.W), mat);
         placeY(base, shape.T);
         const back = new THREE.Mesh(new THREE.BoxGeometry(shape.D * 0.9, shape.T, shape.W), mat);
-        // transfiere la placa trasera a un grupo y la rotamos sobre su arista
+        // rotamos sobre arista
         const pivot = new THREE.Group();
         pivot.position.set(-shape.D / 2 + shape.T / 2, shape.T, 0);
         back.position.set(shape.D * 0.45 - shape.T / 2, 0, 0);
@@ -265,7 +264,7 @@ export default function STLViewer({
       }
 
       if (shape.kind === "box_hollow") {
-        // Representamos base + 4 paredes
+        // base + 4 paredes
         const base = new THREE.Mesh(new THREE.BoxGeometry(shape.L, shape.wall, shape.W), mat);
         placeY(base, shape.wall);
         const wallH = Math.max(0, shape.H - shape.wall);
@@ -284,7 +283,7 @@ export default function STLViewer({
       }
 
       if (shape.kind === "clip_c") {
-        // aproximación: prisma con bisel lateral (placeholder mejor que caja)
+        // aproximación: prisma con bisel lateral
         const base = new THREE.Mesh(
           new THREE.BoxGeometry(Math.max(20, shape.diameter * 1.2), shape.T, shape.width),
           mat
@@ -320,7 +319,7 @@ export default function STLViewer({
 
   // ---------- dibujar marcadores ----------
   useEffect(() => {
-    const group = markersGroupRef.current;
+    const group = markersGroupRef.current as any;
     if (!group) return;
     // limpiar
     for (let i = group.children.length - 1; i >= 0; i--) {
