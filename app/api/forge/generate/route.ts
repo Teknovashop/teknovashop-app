@@ -8,6 +8,7 @@ export const revalidate = 0;
 // Server-only (no expongas el backend CAD al cliente)
 const BACKEND_URL = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "";
 const GENERATE_PATH = process.env.BACKEND_GENERATE_PATH || "/generate";
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 
 export async function POST(req: Request) {
   if (!BACKEND_URL) {
@@ -17,7 +18,7 @@ export async function POST(req: Request) {
     );
   }
 
-  // 1) payload desde el cliente
+  // payload
   let incoming: any = {};
   try {
     incoming = await req.json();
@@ -28,7 +29,7 @@ export async function POST(req: Request) {
     );
   }
 
-  // 2) Normaliza por si el front antiguo envía model_id
+  // Normaliza por si aún llega model_id
   const payload = { ...incoming };
   if (!payload.model && payload.model_id) {
     payload.model = payload.model_id;
@@ -36,7 +37,6 @@ export async function POST(req: Request) {
   }
 
   try {
-    // 3) Llama al backend CAD
     const url = `${BACKEND_URL}${GENERATE_PATH}`;
     const r = await fetch(url, {
       method: "POST",
@@ -45,31 +45,32 @@ export async function POST(req: Request) {
       cache: "no-store",
     });
 
-    // 4) Lee texto y trata de parsear JSON (para poder propagar mensajes de error)
     const text = await r.text();
     let data: any = null;
-    try {
-      data = JSON.parse(text);
-    } catch {
-      // si no es JSON, dejamos text para el mensaje
-    }
+    try { data = JSON.parse(text); } catch {}
 
     if (!r.ok) {
-      const message =
-        data?.message ||
-        data?.detail ||
-        text ||
-        `Backend error HTTP ${r.status}`;
+      const message = data?.message || data?.detail || text || `Backend error HTTP ${r.status}`;
       return NextResponse.json({ status: "error", message }, { status: 500 });
     }
 
-    // 5) Normaliza salida: esperamos una URL firmada
-    const stl_url = data?.stl_url || data?.url || data?.data?.stl_url || null;
+    let stl_url: string | null = data?.stl_url || data?.url || data?.data?.stl_url || null;
     if (!stl_url) {
       return NextResponse.json(
         { status: "error", message: "El backend no devolvió 'stl_url'." },
         { status: 500 }
       );
+    }
+
+    // 👇 FIX: si el backend devolvió una ruta relativa de Storage, la completamos
+    if (stl_url.startsWith("/object/")) {
+      if (!SUPABASE_URL) {
+        return NextResponse.json(
+          { status: "error", message: "SUPABASE_URL no configurada para reescribir la URL firmada" },
+          { status: 500 }
+        );
+      }
+      stl_url = `${SUPABASE_URL.replace(/\/$/, "")}/storage/v1${stl_url}`;
     }
 
     return NextResponse.json({ status: "ok", stl_url }, { status: 200 });
