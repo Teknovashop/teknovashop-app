@@ -33,7 +33,7 @@ async function generateSTL(payload: any): Promise<GenerateResponse> {
 export default function ForgeForm() {
   const [model, setModel] = useState<ModelId>("cable_tray");
 
-  // Estado por modelo en un diccionario (evita tocar el componente al añadir nuevos modelos)
+  // Estado por modelo en un diccionario (desde registry.defaults)
   const initialState = useMemo(() => {
     const m: Record<ModelId, any> = {} as any;
     (Object.keys(MODELS) as ModelId[]).forEach((id) => {
@@ -43,7 +43,7 @@ export default function ForgeForm() {
   }, []);
   const [state, setState] = useState<Record<ModelId, any>>(initialState);
 
-  // agujeros libres (parámetros generales del visor)
+  // parámetros comunes para agujeros
   const [holeDiameter, setHoleDiameter] = useState(5);
   const [snapStep, setSnapStep] = useState(1);
 
@@ -54,10 +54,32 @@ export default function ForgeForm() {
   const def = MODELS[model];
   const cur = state[model];
 
-  // caja del visor por modelo
+  // caja del visor (fallback)
   const box = useMemo(() => def.toBox(cur), [def, cur]);
 
-  // marcadores visibles en el visor (auto + libres si existen)
+  // shape por modelo (para previews reales). Si no está soportado, no pasa nada.
+  const shape = useMemo(() => {
+    switch (model) {
+      case "vesa_adapter":
+        return { kind: "plate", L: box.length, W: box.width, T: box.height } as const;
+      case "qr_plate":
+        return { kind: "plate_chamfer", L: box.length, W: box.width, T: box.height } as const;
+      case "cable_tray":
+        return { kind: "u_channel", L: box.length, W: box.width, H: box.height + (cur.height ?? box.height), wall: cur.thickness ?? box.thickness ?? 3 } as const;
+      case "router_mount":
+        return { kind: "l_bracket", W: cur.width, D: cur.depth, flange: cur.flange, T: cur.thickness } as const;
+      case "phone_stand":
+        return { kind: "phone_stand", W: cur.width, D: cur.support_depth, angleDeg: cur.angle_deg, T: cur.thickness } as const;
+      case "enclosure_ip65":
+        return { kind: "box_hollow", L: cur.length, W: cur.width, H: cur.height, wall: cur.wall } as const;
+      case "cable_clip":
+        return { kind: "clip_c", diameter: cur.diameter, width: cur.width, T: cur.thickness } as const;
+      default:
+        return { kind: "unknown" } as const;
+    }
+  }, [model, cur, box]);
+
+  // marcadores visibles (auto + libres)
   const markers: Marker[] = useMemo(() => {
     const auto = def.autoMarkers ? def.autoMarkers(cur) : [];
     const free: Marker[] =
@@ -66,7 +88,7 @@ export default function ForgeForm() {
     return [...auto, ...free];
   }, [def, cur]);
 
-  // añadir/borrar marcadores libres según propiedad disponible
+  // añadir / borrar marcadores libres
   const onAddMarker = (m: Marker) => {
     if (!def.allowFreeHoles) return;
     setState((prev) => {
@@ -78,7 +100,6 @@ export default function ForgeForm() {
       return next;
     });
   };
-
   const clearMarkers = () => {
     setState((prev) => {
       const next = { ...prev };
@@ -102,6 +123,7 @@ export default function ForgeForm() {
     setState((prev) => ({ ...prev, [model]: { ...prev[model], [key]: v } }));
   };
 
+  // generar STL
   async function onGenerate() {
     setBusy(true); setError(null); setStlUrl(null);
     const payload = def.toPayload(cur);
@@ -111,8 +133,6 @@ export default function ForgeForm() {
   }
 
   const allowFree = def.allowFreeHoles;
-
-  // ventilated solo aplica a cable_tray (mantiene compatibilidad con tu ControlsPanel)
   const ventilated = "ventilated" in cur ? !!cur.ventilated : true;
   const toggleVentilated = (v: boolean) => {
     if (!("ventilated" in cur)) return;
@@ -125,9 +145,10 @@ export default function ForgeForm() {
       <section className="h-[calc(100svh-160px)] rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
         <ModelSelector value={model} onChange={setModel} />
         <STLViewer
-          key={model}                 // fuerza remount al cambiar de modelo (evita mezclar agujeros)
+          key={model}
           background="#ffffff"
           box={box}
+          shape={shape as any}
           markers={markers}
           holesMode={allowFree}
           addDiameter={holeDiameter}
