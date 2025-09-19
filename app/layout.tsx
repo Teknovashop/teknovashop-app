@@ -5,6 +5,8 @@ export const metadata = {
     "Generador paramétrico de piezas 3D listo para producción. Crea, visualiza y descarga STL en segundos.",
 };
 
+import "./globals.css"; // <-- IMPORTANTE
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es">
@@ -32,7 +34,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <a href="/" style={{ textDecoration: "none", color: "inherit" }}>
               <strong style={{ letterSpacing: 0.3 }}>Teknovashop Forge</strong>
             </a>
-
             <nav style={{ display: "flex", gap: 16 }}>
               <a
                 href="/forge"
@@ -57,9 +58,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </nav>
           </div>
         </header>
-
         <main>{children}</main>
-
         <footer
           style={{
             borderTop: "1px solid #e5e7eb",
