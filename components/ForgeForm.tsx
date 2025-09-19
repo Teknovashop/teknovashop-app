@@ -44,14 +44,13 @@ export default function ForgeForm() {
     length: cfg.length,
     height: cfg.height,
     width: cfg.width,
-  }), [cfg.length, cfg.height, cfg.width]);
+    thickness: cfg.thickness, // <-- necesario para CSG en el visor
+  }), [cfg.length, cfg.height, cfg.width, cfg.thickness]);
 
   async function onGenerate() {
     setBusy(true);
-    setToast("Generando STL…");
-    setResp(null);
     const res = await generateSTL({
-      model: "cable_tray",
+      model_id: model,
       width_mm: cfg.width,
       height_mm: cfg.height,
       length_mm: cfg.length,
@@ -89,16 +88,16 @@ export default function ForgeForm() {
           ))}
         </div>
 
-        {/* Sliders */}
+        {/* Controles */}
         {[
-          { k: "width", label: "Ancho (mm)", min: 30, max: 200, step: 1, value: cfg.width },
-          { k: "height", label: "Alto (mm)", min: 10, max: 100, step: 1, value: cfg.height },
-          { k: "length", label: "Longitud (mm)", min: 60, max: 800, step: 1, value: cfg.length },
-          { k: "thickness", label: "Espesor (mm)", min: 2, max: 10, step: 1, value: cfg.thickness },
+          { k: "width",  label: "Ancho (mm)",     min: 40,  max: 200, step: 1, value: cfg.width },
+          { k: "height", label: "Alto (mm)",      min: 15,  max: 120, step: 1, value: cfg.height },
+          { k: "length", label: "Longitud (mm)",  min: 80,  max: 300, step: 1, value: cfg.length },
+          { k: "thickness", label: "Espesor (mm)",min: 2,   max: 8,   step: 0.5, value: cfg.thickness },
         ].map((f) => (
-          <div key={f.k} className="mb-3">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-medium text-gray-700">{f.label}</label>
+          <div key={f.k} className="mb-4">
+            <div className="mb-1 flex items-center justify-between">
+              <label className="text-sm font-medium">{f.label}</label>
               <span className="text-sm tabular-nums text-gray-600">{f.value}</span>
             </div>
             <input
@@ -129,55 +128,61 @@ export default function ForgeForm() {
             <button
               onClick={clearMarkers}
               className="ml-auto rounded-lg border px-2 py-1 text-xs hover:bg-gray-50"
-              type="button"
             >
               Borrar agujeros
             </button>
           </div>
-
           <div className="mt-2 text-xs text-gray-600">
-            {cfg.holes.length === 0
-              ? "No hay agujeros todavía."
-              : `${cfg.holes.length} agujero(s). Se envían con la generación.`}
+            Usa el slider de diámetro y haz click en el visor para añadir agujeros.
           </div>
+          <div className="mt-2 flex items-center gap-3">
+            <span className="text-xs text-gray-600">Diámetro (mm)</span>
+            <input
+              type="range"
+              min={2}
+              max={12}
+              step={0.5}
+              value={5}
+              onChange={() => {}}
+              readOnly
+              className="w-full"
+            />
+          </div>
+          <details className="mt-2">
+            <summary className="cursor-pointer text-xs text-gray-500">Ver respuesta JSON</summary>
+            <textarea
+              readOnly
+              value={JSON.stringify(resp, null, 2)}
+              className="mt-2 h-40 w-full rounded-xl border p-2 font-mono text-xs"
+            />
+          </details>
         </div>
 
-        {/* Acciones */}
-        <div className="mt-5 flex items-center gap-3">
+        <div className="mt-4 flex gap-2">
           <button
             onClick={onGenerate}
             disabled={busy}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-4 py-2 text-white hover:bg-black disabled:opacity-60"
+            className="rounded-xl bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
           >
-            {busy ? "Generando…" : "Generar STL"}
+            {busy ? "Generando..." : "Generar STL"}
           </button>
-
-          <a
-            href={stlUrl ?? "#"}
-            target="_blank"
-            rel="noreferrer"
-            className={`rounded-xl border px-3 py-2 text-sm ${
-              stlUrl ? "hover:bg-gray-50" : "pointer-events-none opacity-50"
-            }`}
-          >
-            Descargar STL
-          </a>
+          {stlUrl && (
+            <a
+              href={stlUrl}
+              className="rounded-xl border px-4 py-2 text-sm"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Descargar STL
+            </a>
+          )}
         </div>
-
-        <details className="mt-3">
-          <summary className="cursor-pointer text-sm text-gray-700">Ver respuesta JSON</summary>
-          <textarea
-            readOnly
-            value={JSON.stringify(resp ?? {}, null, 2)}
-            className="mt-2 h-40 w-full rounded-xl border p-2 font-mono text-xs"
-          />
-        </details>
       </section>
 
-      {/* PANEL DERECHO (VISOR ENMARCAD0) */}
-      <section className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
+      {/* PANEL DERECHO (VISOR A PANTALLA COMPLETA DENTRO DEL PANEL) */}
+      <section className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm h-[calc(100svh-160px)]">
         <STLViewer
-          height={560}
+          /* auto-height via container */
           url={null as any}
           background="#ffffff"
           box={box}
