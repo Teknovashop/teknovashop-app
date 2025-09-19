@@ -7,7 +7,6 @@ import ModelSelector from "@/components/ModelSelector";
 import {
   MODELS,
   type ModelId,
-  type AnyState,
   CableTray,
   VesaAdapter,
   RouterMount,
@@ -44,12 +43,11 @@ export default function ForgeForm() {
   const [model, setModel] = useState<ModelId>("cable_tray");
 
   // estado por modelo (se conserva al cambiar de tab)
-  const [cable, setCable]  = useState<CableTrayState>({ ...CableTray.defaults });
-  const [vesa, setVesa]    = useState<VesaAdapterState>({ ...VesaAdapter.defaults });
-  const [router, setRouter]= useState<RouterMountState>({ ...RouterMount.defaults });
+  const [cable, setCable]   = useState<CableTrayState>({ ...CableTray.defaults });
+  const [vesa, setVesa]     = useState<VesaAdapterState>({ ...VesaAdapter.defaults });
+  const [router, setRouter] = useState<RouterMountState>({ ...RouterMount.defaults });
 
-  // agujeros libres
-  const [holesMode, setHolesMode] = useState(true);
+  // ajustes de agujeros libres (válidos para cualquier modelo que lo permita)
   const [holeDiameter, setHoleDiameter] = useState(5);
   const [snapStep, setSnapStep] = useState(1);
 
@@ -59,7 +57,7 @@ export default function ForgeForm() {
 
   const def = MODELS[model];
 
-  // ✅ FIX: usa funciones del modelo concreto para evitar el error de tipos
+  // caja del visor por modelo
   const box = useMemo(() => {
     switch (model) {
       case "cable_tray":
@@ -73,6 +71,7 @@ export default function ForgeForm() {
     }
   }, [model, cable, vesa, router]);
 
+  // marcadores visibles en el visor
   const markers: Marker[] = useMemo(() => {
     if (model === "vesa_adapter") {
       const auto = VesaAdapter.autoMarkers!(vesa);
@@ -83,6 +82,7 @@ export default function ForgeForm() {
     return [];
   }, [model, cable.holes, router.holes, vesa.extraHoles, vesa.pattern, vesa.holeDiameter]);
 
+  // añadir/borrar marcadores libres según modelo activo
   const onAddMarker = (m: Marker) => {
     if (!def.allowFreeHoles) return;
     if (model === "vesa_adapter") setVesa((s) => ({ ...s, extraHoles: [...s.extraHoles, m] }));
@@ -92,11 +92,11 @@ export default function ForgeForm() {
 
   const clearMarkers = () => {
     if (model === "vesa_adapter") setVesa((s) => ({ ...s, extraHoles: [] }));
-    if (model === "cable_tray")  setCable((s) => ({ ...s, holes: [] }));
-    if (model === "router_mount")setRouter((s) => ({ ...s, holes: [] }));
+    if (model === "cable_tray")   setCable((s) => ({ ...s, holes: [] }));
+    if (model === "router_mount") setRouter((s) => ({ ...s, holes: [] }));
   };
 
-  // sliders dinámicos
+  // sliders dinámicos (valores actuales por modelo)
   const sliders = useMemo(() => {
     return def.sliders.map((s) => {
       const value =
@@ -114,14 +114,19 @@ export default function ForgeForm() {
   };
 
   async function onGenerate() {
-    setBusy(true); setError(null); setStlUrl(null);
+    setBusy(true);
+    setError(null);
+    setStlUrl(null);
+
     let payload: any;
     if (model === "cable_tray")   payload = CableTray.toPayload({ ...cable });
     if (model === "vesa_adapter") payload = VesaAdapter.toPayload({ ...vesa });
     if (model === "router_mount") payload = RouterMount.toPayload({ ...router });
 
     const res = await generateSTL(payload);
-    if (res.status === "ok") setStlUrl(res.stl_url); else setError(res.message);
+    if (res.status === "ok") setStlUrl(res.stl_url);
+    else setError(res.message);
+
     setBusy(false);
   }
 
@@ -133,10 +138,11 @@ export default function ForgeForm() {
       <section className="h-[calc(100svh-160px)] rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
         <ModelSelector value={model} onChange={setModel} />
         <STLViewer
+          key={model}                 {/* 👈 fuerza remount al cambiar de modelo (fix de agujeros mezclados) */}
           background="#ffffff"
           box={box}
           markers={markers}
-          holesMode={allowFree && true}
+          holesMode={allowFree}       /* Shift/Alt + clic ya lo exige el STLViewer */
           addDiameter={holeDiameter}
           snapStep={snapStep}
           onAddMarker={onAddMarker}
@@ -150,8 +156,8 @@ export default function ForgeForm() {
         onChange={updateSlider}
         ventilated={model === "cable_tray" ? cable.ventilated : true}
         onToggleVentilated={(v) => model === "cable_tray" && setCable((s) => ({ ...s, ventilated: v }))}
-        holesEnabled={allowFree && true}
-        onToggleHoles={() => { /* Shift/Alt ya requerido; mantenemos activo si allowFree */ }}
+        holesEnabled={allowFree}
+        onToggleHoles={() => { /* el visor ya requiere Shift/Alt; mantenemos activo si allowFree */ }}
         holeDiameter={holeDiameter}
         onHoleDiameter={setHoleDiameter}
         snapStep={snapStep}
