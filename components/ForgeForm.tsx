@@ -3,11 +3,21 @@
 import { useMemo, useState } from "react";
 import STLViewer, { type Marker } from "@/components/STLViewer";
 import ControlsPanel from "@/components/ControlsPanel";
-
-type ModelKind = "cable_tray" | "vesa_adapter" | "router_mount";
+import ModelSelector from "@/components/ModelSelector";
+import {
+  MODELS,
+  type ModelId,
+  type AnyState,
+  CableTray,
+  VesaAdapter,
+  RouterMount,
+  type CableTrayState,
+  type VesaAdapterState,
+  type RouterMountState,
+} from "@/models/registry";
 
 type GenerateOk = { status: "ok"; stl_url: string };
-type GenerateErr = { status: "error"; message: string };
+type GenerateErr = { status: "error", message: string };
 type GenerateResponse = GenerateOk | GenerateErr;
 
 async function generateSTL(payload: any): Promise<GenerateResponse> {
@@ -21,39 +31,24 @@ async function generateSTL(payload: any): Promise<GenerateResponse> {
     const text = await res.text();
     let data: any = null;
     try { data = JSON.parse(text); } catch {}
-    if (!res.ok) {
-      return { status: "error", message: data?.message || text || `HTTP ${res.status}` };
-    }
+    if (!res.ok) return { status: "error", message: data?.message || text || `HTTP ${res.status}` };
     const url = data?.stl_url || data?.url || data?.data?.stl_url || null;
     if (url) return { status: "ok", stl_url: url };
-    return { status: "error", message: "Respuesta inesperada del backend (sin stl_url)" };
+    return { status: "error", message: "Backend no devolvió stl_url" };
   } catch (e: any) {
     return { status: "error", message: e?.message || "Fallo de red" };
   }
 }
 
-type CableTrayState = {
-  width: number;
-  height: number;
-  length: number;
-  thickness: number;
-  ventilated: boolean;
-  holes: Marker[];
-};
-
-const DEFAULTS: CableTrayState = {
-  width: 60,
-  height: 25,
-  length: 180,
-  thickness: 3,
-  ventilated: true,
-  holes: [],
-};
-
 export default function ForgeForm() {
-  const [model] = useState<ModelKind>("cable_tray");
-  const [cfg, setCfg] = useState<CableTrayState>({ ...DEFAULTS });
+  const [model, setModel] = useState<ModelId>("cable_tray");
 
+  // estado por modelo (se conserva al cambiar de tab)
+  const [cable, setCable] = useState<CableTrayState>({ ...CableTray.defaults });
+  const [vesa,  setVesa]  = useState<VesaAdapterState>({ ...VesaAdapter.defaults });
+  const [router,setRouter]= useState<RouterMountState>({ ...RouterMount.defaults });
+
+  // agujeros libres (solo cuando allowFreeHoles=true)
   const [holesMode, setHolesMode] = useState(true);
   const [holeDiameter, setHoleDiameter] = useState(5);
   const [snapStep, setSnapStep] = useState(1);
@@ -62,65 +57,100 @@ export default function ForgeForm() {
   const [stlUrl, setStlUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const update = (patch: Partial<CableTrayState>) => setCfg((s) => ({ ...s, ...patch }));
-  const addMarker = (m: Marker) => setCfg((s) => ({ ...s, holes: [...s.holes, m] }));
-  const clearMarkers = () => setCfg((s) => ({ ...s, holes: [] }));
+  // util
+  const def = MODELS[model];
 
-  const box = useMemo(() => ({
-    length: cfg.length,
-    height: cfg.height,
-    width: cfg.width,
-    thickness: cfg.thickness,
-  }), [cfg.length, cfg.height, cfg.width, cfg.thickness]);
+  const box = useMemo(() => {
+    switch (model) {
+      case "cable_tray": return def.toBox(cable);
+      case "vesa_adapter": return def.toBox(vesa);
+      case "router_mount": return def.toBox(router);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [model, cable, vesa, router, cable.width, cable.height, cable.length, cable.thickness, vesa.plateWidth, vesa.thickness, router.width, router.depth, router.thickness]);
+
+  const markers: Marker[] = useMemo(() => {
+    if (model === "vesa_adapter") {
+      const auto = VesaAdapter.autoMarkers!(vesa);
+      return [...auto, ...vesa.extraHoles];
+    }
+    if (model === "cable_tray") return cable.holes;
+    if (model === "router_mount") return router.holes;
+    return [];
+  }, [model, cable.holes, router.holes, vesa.extraHoles, vesa.pattern, vesa.holeDiameter]);
+
+  const onAddMarker = (m: Marker) => {
+    if (!def.allowFreeHoles) return;
+    if (model === "vesa_adapter") setVesa((s) => ({ ...s, extraHoles: [...s.extraHoles, m] }));
+    if (model === "cable_tray")  setCable((s) => ({ ...s, holes: [...s.holes, m] }));
+    if (model === "router_mount")setRouter((s) => ({ ...s, holes: [...s.holes, m] }));
+  };
+
+  const clearMarkers = () => {
+    if (model === "vesa_adapter") setVesa((s) => ({ ...s, extraHoles: [] }));
+    if (model === "cable_tray")  setCable((s) => ({ ...s, holes: [] }));
+    if (model === "router_mount")setRouter((s) => ({ ...s, holes: [] }));
+  };
+
+  // sliders dinámicos
+  const sliders = useMemo(() => {
+    const base = def.sliders.map((s) => {
+      const value =
+        model === "cable_tray"   ? (cable as any)[s.key] :
+        model === "vesa_adapter" ? (vesa as any)[s.key]  :
+                                   (router as any)[s.key];
+      return { ...s, value };
+    });
+    // Para VESA añadimos un selector de patrón 75/100/200 en el panel (abajo)
+    return base;
+  }, [def, model, cable, vesa, router]);
+
+  const updateSlider = (key: string, v: number) => {
+    if (model === "cable_tray")  setCable((s) => ({ ...s, [key]: v } as any));
+    if (model === "vesa_adapter")setVesa((s) => ({ ...s, [key]: v } as any));
+    if (model === "router_mount")setRouter((s) => ({ ...s, [key]: v } as any));
+  };
 
   async function onGenerate() {
-    setBusy(true);
-    setError(null);
-    setStlUrl(null);
+    setBusy(true); setError(null); setStlUrl(null);
+    let payload: any;
+    if (model === "cable_tray")  payload = CableTray.toPayload({ ...cable });
+    if (model === "vesa_adapter")payload = VesaAdapter.toPayload({ ...vesa });
+    if (model === "router_mount")payload = RouterMount.toPayload({ ...router });
 
-    // 👈 FIX: el backend espera "model", no "model_id"
-    const res = await generateSTL({
-      model: model,                       // <-- antes model_id
-      width_mm: cfg.width,
-      height_mm: cfg.height,
-      length_mm: cfg.length,
-      thickness_mm: cfg.thickness,
-      ventilated: cfg.ventilated,
-      holes: cfg.holes,
-    });
-
+    const res = await generateSTL(payload);
     if (res.status === "ok") setStlUrl(res.stl_url); else setError(res.message);
     setBusy(false);
   }
 
-  const sliders = [
-    { key: "width", label: "Ancho (mm)", min: 40, max: 200, step: 1, value: cfg.width },
-    { key: "height", label: "Alto (mm)", min: 15, max: 120, step: 1, value: cfg.height },
-    { key: "length", label: "Longitud (mm)", min: 80, max: 300, step: 1, value: cfg.length },
-    { key: "thickness", label: "Espesor (mm)", min: 2, max: 8, step: 0.5, value: cfg.thickness },
-  ];
+  // ¿permitimos colocar agujeros libres?
+  const allowFree = def.allowFreeHoles;
 
   return (
     <div className="mx-auto grid max-w-[1600px] grid-cols-1 gap-6 px-4 py-6 lg:grid-cols-[1fr,380px]">
+      {/* Visor */}
       <section className="h-[calc(100svh-160px)] rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
+        <ModelSelector value={model} onChange={setModel} />
         <STLViewer
           background="#ffffff"
           box={box}
-          markers={cfg.holes}
-          holesMode={holesMode}
+          markers={markers}
+          holesMode={allowFree && true}          // Shift/Alt + clic
           addDiameter={holeDiameter}
           snapStep={snapStep}
-          onAddMarker={addMarker}
+          onAddMarker={onAddMarker}
         />
       </section>
+
+      {/* Panel dinámico */}
       <ControlsPanel
-        modelLabel="Cable Tray"
+        modelLabel={MODELS[model].label}
         sliders={sliders}
-        onChange={(k, v) => update({ [k]: v } as any)}
-        ventilated={cfg.ventilated}
-        onToggleVentilated={(v) => update({ ventilated: v })}
-        holesEnabled={holesMode}
-        onToggleHoles={setHolesMode}
+        onChange={updateSlider}
+        ventilated={model === "cable_tray" ? cable.ventilated : true}
+        onToggleVentilated={(v) => model === "cable_tray" && setCable((s) => ({ ...s, ventilated: v }))}
+        holesEnabled={allowFree && true}
+        onToggleHoles={() => { /* el visor ya exige Shift/Alt; mantenemos habilitado si allowFree */ }}
         holeDiameter={holeDiameter}
         onHoleDiameter={setHoleDiameter}
         snapStep={snapStep}
@@ -131,6 +161,27 @@ export default function ForgeForm() {
         stlUrl={stlUrl}
         error={error}
       />
+
+      {/* Controles extra específicos (debajo en mobile) */}
+      {model === "vesa_adapter" && (
+        <div className="lg:col-span-2 -mt-4 px-4">
+          <div className="rounded-lg border bg-white p-3 text-sm">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="font-medium">Patrón VESA</span>
+              {[75, 100, 200].map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setVesa((s) => ({ ...s, pattern: p as 75 | 100 | 200 }))}
+                  className={`rounded-md border px-2 py-1 ${vesa.pattern === p ? "bg-black text-white border-black" : "bg-white"}`}
+                >
+                  {p} × {p}
+                </button>
+              ))}
+              <span className="text-gray-500">Los 4 agujeros del patrón se generan automáticamente.</span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
