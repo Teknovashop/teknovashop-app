@@ -1,23 +1,28 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { CSG } from "three-csg-ts";
 
 /** marcador de agujero dibujado en el visor */
 export type Marker = { x_mm: number; z_mm: number; d_mm: number };
 
-type Mode = "preview" | "stl";
 type Props = {
+  /** Alto del canvas: si no lo pasas, usa la altura del contenedor */
   height?: number;
   background?: string;
-  /** url STL (opcional; por ahora el preview es paramétrico simple) */
+  /** url STL (no usada por ahora para el preview) */
   url?: string;
-  /** bounding box del preview para pintar la caja vacía (L x H x W) en mm */
-  box?: { length: number; height: number; width: number };
-  /** marcadores (se dibujan como esferas) */
+  /**
+   * Bounding box en milímetros para el preview.
+   * Si 'thickness' está presente se renderiza
+   * una placa sólida (L x thickness x W) con sustracción de agujeros.
+   */
+  box?: { length: number; height: number; width: number; thickness?: number };
+  /** marcadores (se dibujan y se sustraen si hay thickness) */
   markers?: Marker[];
-  /** si true, al hacer click en el plano XZ añade marcador → llama onAddMarker */
+  /** si true, click en plano XZ añade marcador */
   holesMode?: boolean;
   addDiameter?: number;
   onAddMarker?: (m: Marker) => void;
@@ -34,12 +39,12 @@ export default function STLViewer({
   onAddMarker,
 }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
-  const rendererRef = useRef<any>(null);
-  const sceneRef = useRef<any>(null);
-  const cameraRef = useRef<any>(null);
-  const controlsRef = useRef<any>(null);
-  const modelRef = useRef<any>(null);
-  const markersGroupRef = useRef<any>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const controlsRef = useRef<OrbitControls | null>(null);
+  const modelRef = useRef<THREE.Object3D | null>(null);
+  const markersGroupRef = useRef<THREE.Group | null>(null);
   const raycaster = useRef(new THREE.Raycaster());
   const mouse = useRef(new THREE.Vector2());
 
@@ -50,26 +55,30 @@ export default function STLViewer({
     scene.background = new THREE.Color(background);
     sceneRef.current = scene;
 
-    const camera = new THREE.PerspectiveCamera(45, root.clientWidth / height, 0.1, 20000);
+    const camera = new THREE.PerspectiveCamera(45, root.clientWidth / height, 0.1, 50000);
     camera.position.set(500, 360, 520);
     cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    renderer.setSize(root.clientWidth, height);
+    renderer.setSize(root.clientWidth, root.clientHeight || height);
+    renderer.shadowMap.enabled = true;
     root.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // marco
-    root.style.border = "1px solid #e5e7eb";
-    root.style.borderRadius = "12px";
-    root.style.overflow = "hidden";
-    root.style.background = "#fff";
+    // marco visual del contenedor
+    Object.assign(root.style, {
+      border: "1px solid #e5e7eb",
+      borderRadius: "12px",
+      overflow: "hidden",
+      background: "#fff",
+    });
 
     // luces
     const hemi = new THREE.HemisphereLight(0xffffff, 0xb0b4b9, 1.0);
-    const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+    const dir = new THREE.DirectionalLight(0xffffff, 0.9);
     dir.position.set(600, 800, 300);
+    dir.castShadow = true;
     scene.add(hemi, dir);
 
     // grid + ejes
@@ -89,9 +98,10 @@ export default function STLViewer({
 
     const onResize = () => {
       const w = root.clientWidth;
-      camera.aspect = w / height;
+      const h = root.clientHeight || height;
+      camera.aspect = w / h;
       camera.updateProjectionMatrix();
-      renderer.setSize(w, height);
+      renderer.setSize(w, h);
     };
     window.addEventListener("resize", onResize);
 
@@ -103,7 +113,7 @@ export default function STLViewer({
     };
     loop();
 
-    // markers group
+    // grupo para marcadores
     const g = new THREE.Group();
     scene.add(g);
     markersGroupRef.current = g;
@@ -118,13 +128,16 @@ export default function STLViewer({
       raycaster.current.setFromCamera(mouse.current, camera);
       const point = new THREE.Vector3();
       raycaster.current.ray.intersectPlane(plane, point);
-      // convertimos al sistema del modelo (suponemos centrado en origen)
       onAddMarker({ x_mm: point.x, z_mm: point.z, d_mm: addDiameter });
     };
+    renderer.domElement.style.cursor = holesMode ? "crosshair" : "grab";
+    const enter = () => { renderer.domElement.style.cursor = holesMode ? "crosshair" : "grab"; };
     renderer.domElement.addEventListener("click", clickHandler);
+    renderer.domElement.addEventListener("mouseenter", enter);
 
     return () => {
       renderer.domElement.removeEventListener("click", clickHandler);
+      renderer.domElement.removeEventListener("mouseenter", enter);
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", onResize);
       controls.dispose();
@@ -133,11 +146,12 @@ export default function STLViewer({
     };
   }, [height, background, holesMode, addDiameter, onAddMarker]);
 
-  // ---------- preview paramétrico: caja alámbrica ----------
+  // ---------- modelo sólido con CSG + caja alámbrica ----------
   useEffect(() => {
-    const scene = sceneRef.current as any;
+    const scene = sceneRef.current;
     if (!scene || !box) return;
 
+    // limpiar modelo anterior
     if (modelRef.current) {
       scene.remove(modelRef.current);
       modelRef.current.traverse?.((o: any) => {
@@ -148,35 +162,93 @@ export default function STLViewer({
       modelRef.current = null;
     }
 
-    const { length: L, height: H, width: W } = box;
-    const g = new THREE.BoxGeometry(L, H, W);
-    const m = new THREE.MeshBasicMaterial({ color: 0x94a3b8, wireframe: true });
-    const mesh = new THREE.Mesh(g, m);
-    mesh.position.y = H / 2;
-    scene.add(mesh);
-    modelRef.current = mesh;
-  }, [box]);
+    const { length: L, height: H, width: W, thickness } = box;
+    const group = new THREE.Group();
 
-  // ---------- dibujar marcadores ----------
+    // (1) Caja alámbrica (si H > 0)
+    if (H > 0) {
+      const wire = new THREE.LineSegments(
+        new THREE.WireframeGeometry(new THREE.BoxGeometry(L, H, W)),
+        new THREE.LineBasicMaterial({ color: 0x94a3b8 })
+      );
+      wire.position.y = H / 2;
+      group.add(wire);
+    }
+
+    // (2) Placa sólida con sustracción de agujeros (si hay thickness)
+    if (thickness && thickness > 0) {
+      const base = new THREE.BoxGeometry(L, thickness, W);
+      base.translate(0, thickness / 2, 0);
+      const baseMesh = new THREE.Mesh(base);
+
+      let csg = CSG.fromMesh(baseMesh);
+      (markers || []).forEach((mk) => {
+        const radius = Math.max(0.1, mk.d_mm / 2);
+        const cyl = new THREE.CylinderGeometry(radius, radius, thickness * 1.25, 36);
+        cyl.translate(mk.x_mm, thickness / 2, mk.z_mm);
+        const holeMesh = new THREE.Mesh(cyl);
+        const holeCSG = CSG.fromMesh(holeMesh);
+        csg = csg.subtract(holeCSG);
+        cyl.dispose();
+      });
+
+      const mesh = CSG.toMesh(
+        csg,
+        baseMesh.matrix,
+        new THREE.MeshStandardMaterial({ metalness: 0.1, roughness: 0.45, color: 0xf3f4f6 })
+      );
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      group.add(mesh);
+    }
+
+    // añadir a escena y encuadrar
+    scene.add(group);
+    modelRef.current = group;
+
+    try {
+      const camera = cameraRef.current!;
+      const controls = controlsRef.current!;
+      const box3 = new THREE.Box3().setFromObject(group);
+      const size = new THREE.Vector3();
+      box3.getSize(size);
+      const center = new THREE.Vector3();
+      box3.getCenter(center);
+
+      controls.target.copy(center);
+      const maxDim = Math.max(size.x, size.y, size.z);
+      const fov = camera.fov * (Math.PI / 180);
+      let distance = Math.abs(maxDim / (2 * Math.tan(fov / 2)));
+      distance *= 1.6;
+      const dir = new THREE.Vector3(1, 0.8, 1).normalize();
+      camera.position.copy(center.clone().add(dir.multiplyScalar(distance)));
+      camera.near = 0.1;
+      camera.far = distance * 20;
+      camera.updateProjectionMatrix();
+    } catch {}
+  }, [box, markers]);
+
+  // ---------- marcadores visibles (esferas) ----------
   useEffect(() => {
-    const group = markersGroupRef.current as any;
+    const group = markersGroupRef.current;
     if (!group) return;
+
     // limpiar
     for (let i = group.children.length - 1; i >= 0; i--) {
-      const ch = group.children[i];
+      const ch = group.children[i] as any;
       ch.geometry?.dispose?.();
       ch.material?.dispose?.();
       group.remove(ch);
     }
     // añadir
     const mat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.5 });
-    markers.forEach((mk) => {
+    (markers || []).forEach((mk) => {
       const r = Math.max(0.8, mk.d_mm / 2);
       const s = new THREE.Mesh(new THREE.SphereGeometry(r, 20, 20), mat);
-      s.position.set(mk.x_mm, 0.1, mk.z_mm);
+      s.position.set(mk.x_mm, 0.1 + (box?.thickness ? box.thickness / 2 : 0), mk.z_mm);
       group.add(s);
     });
-  }, [markers]);
+  }, [markers, box?.thickness]);
 
   return (
     <div className="relative w-full" style={{ height }}>
