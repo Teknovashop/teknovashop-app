@@ -1,5 +1,21 @@
 "use client";
 
+import * as THREE from "three";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+
+// 👇 añade este import SOLO de tipos
+import type {
+  Mesh,
+  Group,
+  Scene,
+  PerspectiveCamera,
+  WebGLRenderer,
+  Raycaster as ThreeRaycaster,
+  Vector2 as ThreeVector2,
+  Object3D,
+} from "three";
+
+
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
