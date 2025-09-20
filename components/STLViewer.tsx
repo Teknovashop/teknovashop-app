@@ -4,17 +4,6 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { useEffect, useRef } from "react";
 
-// ✅ importa SOLO tipos desde three (soluciona errores en Vercel)
-import type {
-  Mesh,
-  Group,
-  Scene,
-  PerspectiveCamera,
-  WebGLRenderer,
-  Raycaster as ThreeRaycaster,
-  Vector2 as ThreeVector2,
-} from "three";
-
 /** Marcador de agujero que viaja al backend */
 export type Marker = {
   x_mm: number;
@@ -55,16 +44,16 @@ export default function STLViewer({
   snapStep,
   onAddMarker,
 }: Props) {
-  // refs tipadas (sin usar THREE.<Tipo> en las anotaciones)
+  // Usamos 'any' para evitar conflictos de tipos con diferentes versiones de three en Vercel
   const mountRef = useRef<HTMLDivElement | null>(null);
-  const rendererRef = useRef<WebGLRenderer | null>(null);
-  const sceneRef = useRef<Scene | null>(null);
-  const cameraRef = useRef<PerspectiveCamera | null>(null);
-  const controlsRef = useRef<OrbitControls | null>(null);
-  const modelRef = useRef<Mesh | Group | null>(null);
-  const markersGroupRef = useRef<Group | null>(null);
-  const raycaster = useRef<ThreeRaycaster>(new THREE.Raycaster());
-  const mouse = useRef<ThreeVector2>(new THREE.Vector2());
+  const rendererRef = useRef<any>(null);
+  const sceneRef = useRef<any>(null);
+  const cameraRef = useRef<any>(null);
+  const controlsRef = useRef<any>(null);
+  const modelRef = useRef<any>(null);
+  const markersGroupRef = useRef<any>(null);
+  const raycaster = useRef<any>(new THREE.Raycaster());
+  const mouse = useRef<any>(new THREE.Vector2());
 
   // ---------- init ----------
   useEffect(() => {
@@ -187,7 +176,6 @@ export default function STLViewer({
   useEffect(() => {
     const renderer = rendererRef.current!;
     const camera = cameraRef.current!;
-    const scene = sceneRef.current!;
 
     const handlePointerDown = (ev: PointerEvent) => {
       if (!holesMode) return;
@@ -201,8 +189,8 @@ export default function STLViewer({
       raycaster.current.setFromCamera(mouse.current, camera);
 
       // 1) intentar intersectar con el modelo (cara real)
-      let pickedPoint: THREE.Vector3 | null = null;
-      let pickedNormal: THREE.Vector3 | null = null;
+      let pickedPoint: any = null;
+      let pickedNormal: any = null;
 
       if (modelRef.current) {
         const hits = raycaster.current.intersectObject(modelRef.current, true);
