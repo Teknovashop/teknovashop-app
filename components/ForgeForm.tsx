@@ -33,7 +33,7 @@ async function generateSTL(payload: any): Promise<GenerateResponse> {
 export default function ForgeForm() {
   const [model, setModel] = useState<ModelId>("cable_tray");
 
-  // Estado por modelo en un diccionario (desde registry.defaults)
+  // Estado por modelo desde defaults del registry
   const initialState = useMemo(() => {
     const m: Record<ModelId, any> = {} as any;
     (Object.keys(MODELS) as ModelId[]).forEach((id) => {
@@ -43,7 +43,7 @@ export default function ForgeForm() {
   }, []);
   const [state, setState] = useState<Record<ModelId, any>>(initialState);
 
-  // parámetros comunes UI
+  // parámetros comunes para agujeros
   const [holeDiameter, setHoleDiameter] = useState(5);
   const [snapStep, setSnapStep] = useState(1);
 
@@ -63,27 +63,39 @@ export default function ForgeForm() {
     const free: Marker[] =
       "extraHoles" in cur ? cur.extraHoles :
       "holes" in cur ? cur.holes : [];
+    // preferimos que free pise a auto si coinciden
     return [...auto, ...free];
   }, [def, cur]);
 
-  // añadir / borrar marcadores libres
+  // añadir / borrar marcadores libres (con normal + y_mm)
   const onAddMarker = (m: Marker) => {
     if (!def.allowFreeHoles) return;
     setState((prev) => {
       const next = { ...prev };
       const s = { ...next[model] };
-      if ("extraHoles" in s) s.extraHoles = [...(s.extraHoles || []), m];
-      else if ("holes" in s) s.holes = [...(s.holes || []), m];
+      const hole: Marker = {
+        x_mm: m.x_mm,
+        y_mm: m.y_mm ?? 0,
+        z_mm: m.z_mm,
+        d_mm: m.d_mm ?? holeDiameter,
+        nx: m.nx, ny: m.ny, nz: m.nz,
+        axis: m.axis ?? "auto",
+      };
+      if ("extraHoles" in s) s.extraHoles = [...(s.extraHoles || []), hole];
+      else if ("holes" in s) s.holes = [...(s.holes || []), hole];
       next[model] = s;
       return next;
     });
   };
+
   const clearMarkers = () => {
     setState((prev) => {
-      const s = { ...prev[model] };
+      const next = { ...prev };
+      const s = { ...next[model] };
       if ("extraHoles" in s) s.extraHoles = [];
       if ("holes" in s) s.holes = [];
-      return { ...prev, [model]: s };
+      next[model] = s;
+      return next;
     });
   };
 
@@ -99,17 +111,11 @@ export default function ForgeForm() {
     setState((prev) => ({ ...prev, [model]: { ...prev[model], [key]: v } }));
   };
 
-  // generar STL (inyectamos holes y model garantizados)
+  // generar STL (viaja la estructura de agujeros tal cual)
   async function onGenerate() {
     setBusy(true); setError(null); setStlUrl(null);
-
-    const base = def.toPayload(cur) || {};
-    const freeHoles: Marker[] =
-      "extraHoles" in cur ? (cur.extraHoles || []) :
-      "holes" in cur ? (cur.holes || []) : [];
-
-    const payload = { ...base, model, holes: freeHoles };
-
+    const payload = def.toPayload(state[model]);
+    // no filtramos: payload.{holes|extraHoles} incluyen {x,y,z,d, nx,ny,nz, axis}
     const res = await generateSTL(payload);
     if (res.status === "ok") setStlUrl(res.stl_url); else setError(res.message);
     setBusy(false);
