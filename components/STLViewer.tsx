@@ -2,8 +2,9 @@
 
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { useEffect, useRef } from "react";
 
-// 👇 añade este import SOLO de tipos
+// ✅ importa SOLO tipos desde three (soluciona errores en Vercel)
 import type {
   Mesh,
   Group,
@@ -12,21 +13,15 @@ import type {
   WebGLRenderer,
   Raycaster as ThreeRaycaster,
   Vector2 as ThreeVector2,
-  Object3D,
 } from "three";
-
-
-import { useEffect, useRef } from "react";
-import * as THREE from "three";
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 /** Marcador de agujero que viaja al backend */
 export type Marker = {
   x_mm: number;
-  y_mm?: number; // nuevo: altura exacta del pick
+  y_mm?: number; // altura exacta del pick
   z_mm: number;
   d_mm: number;
-  // nuevo: normal de la cara para orientar el taladro
+  // normal de la cara para orientar el taladro
   nx?: number;
   ny?: number;
   nz?: number;
@@ -35,9 +30,9 @@ export type Marker = {
 };
 
 type Box = {
-  length: number;  // L (X)
-  height: number;  // H (Y)
-  width: number;   // W (Z)
+  length: number; // L (X)
+  height: number; // H (Y)
+  width: number;  // W (Z)
   thickness?: number;
 };
 
@@ -60,16 +55,16 @@ export default function STLViewer({
   snapStep,
   onAddMarker,
 }: Props) {
-  // usar any para evitar problemas de tipos con diferentes releases de three
+  // refs tipadas (sin usar THREE.<Tipo> en las anotaciones)
   const mountRef = useRef<HTMLDivElement | null>(null);
-  const rendererRef = useRef<any>(null);
-  const sceneRef = useRef<any>(null);
-  const cameraRef = useRef<any>(null);
-  const controlsRef = useRef<any>(null);
-  const modelRef = useRef<THREE.Mesh | THREE.Group | null>(null);
-  const markersGroupRef = useRef<THREE.Group | null>(null);
-  const raycaster = useRef(new THREE.Raycaster());
-  const mouse = useRef(new THREE.Vector2());
+  const rendererRef = useRef<WebGLRenderer | null>(null);
+  const sceneRef = useRef<Scene | null>(null);
+  const cameraRef = useRef<PerspectiveCamera | null>(null);
+  const controlsRef = useRef<OrbitControls | null>(null);
+  const modelRef = useRef<Mesh | Group | null>(null);
+  const markersGroupRef = useRef<Group | null>(null);
+  const raycaster = useRef<ThreeRaycaster>(new THREE.Raycaster());
+  const mouse = useRef<ThreeVector2>(new THREE.Vector2());
 
   // ---------- init ----------
   useEffect(() => {
@@ -84,7 +79,12 @@ export default function STLViewer({
     mount.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    const camera = new THREE.PerspectiveCamera(45, mount.clientWidth / mount.clientHeight, 0.1, 10000);
+    const camera = new THREE.PerspectiveCamera(
+      45,
+      mount.clientWidth / mount.clientHeight,
+      0.1,
+      10000
+    );
     camera.position.set(300, 200, 300);
     cameraRef.current = camera;
 
@@ -144,7 +144,7 @@ export default function STLViewer({
       (modelRef.current as any).geometry?.dispose?.();
     }
 
-    // Caja “proxy” cerrada (L x H x W), para poder pinchar caras laterales y tapa/base.
+    // Caja proxy cerrada (L x H x W), centrada en origen (Y = altura/2)
     const geom = new THREE.BoxGeometry(box.length, box.height, box.width);
     const mat = new THREE.MeshStandardMaterial({
       color: 0xaaaaaa,
@@ -154,7 +154,6 @@ export default function STLViewer({
       side: THREE.DoubleSide,
     });
     const mesh = new THREE.Mesh(geom, mat);
-    // centrado en origen (nuestra convención: origen en el centro)
     mesh.position.set(0, box.height / 2, 0);
     scene.add(mesh);
     modelRef.current = mesh;
@@ -172,7 +171,11 @@ export default function STLViewer({
     // esferas negras en cada marker (en coordenadas de escena = mm)
     for (const m of markers) {
       const sph = new THREE.Mesh(
-        new THREE.SphereGeometry(Math.max(1.2, Math.min(3, (m.d_mm ?? addDiameter) * 0.18)), 16, 16),
+        new THREE.SphereGeometry(
+          Math.max(1.2, Math.min(3, (m.d_mm ?? addDiameter) * 0.18)),
+          16,
+          16
+        ),
         new THREE.MeshStandardMaterial({ color: 0x111111 })
       );
       sph.position.set(m.x_mm, m.y_mm ?? 0, m.z_mm);
@@ -182,14 +185,13 @@ export default function STLViewer({
 
   // ---------- picking por cara ----------
   useEffect(() => {
-    const mount = mountRef.current!;
     const renderer = rendererRef.current!;
     const camera = cameraRef.current!;
     const scene = sceneRef.current!;
 
     const handlePointerDown = (ev: PointerEvent) => {
       if (!holesMode) return;
-      // Solo con Shift o Alt (mantiene control de cámara si no los pulsas)
+      // Solo con Shift o Alt (mantén control de cámara si no los pulsas)
       if (!(ev.shiftKey || ev.altKey)) return;
 
       const rect = (renderer.domElement as HTMLCanvasElement).getBoundingClientRect();
@@ -250,6 +252,9 @@ export default function STLViewer({
   }, [holesMode, addDiameter, snapStep, onAddMarker]);
 
   return (
-    <div ref={mountRef} className="h-full w-full rounded-xl border border-gray-200 bg-white" />
+    <div
+      ref={mountRef}
+      className="h-full w-full rounded-xl border border-gray-200 bg-white"
+    />
   );
 }
