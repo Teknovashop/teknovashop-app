@@ -20,9 +20,7 @@ async function generateSTL(payload: any): Promise<GenerateResponse> {
     });
     const text = await res.text();
     let data: any = null;
-    try {
-      data = JSON.parse(text);
-    } catch {}
+    try { data = JSON.parse(text); } catch {}
     if (!res.ok) return { status: "error", message: data?.message || text || `HTTP ${res.status}` };
     const url = data?.stl_url || data?.url || data?.data?.stl_url || null;
     if (url) return { status: "ok", stl_url: url };
@@ -64,8 +62,7 @@ export default function ForgeForm() {
     const auto = def.autoMarkers ? def.autoMarkers(cur) : [];
     const free: Marker[] =
       "extraHoles" in cur ? cur.extraHoles :
-      "holes" in cur ? cur.holes :
-      [];
+      "holes" in cur ? cur.holes : [];
     return [...auto, ...free];
   }, [def, cur]);
 
@@ -83,12 +80,10 @@ export default function ForgeForm() {
   };
   const clearMarkers = () => {
     setState((prev) => {
-      const next = { ...prev };
-      const s = { ...next[model] };
+      const s = { ...prev[model] };
       if ("extraHoles" in s) s.extraHoles = [];
       if ("holes" in s) s.holes = [];
-      next[model] = s;
-      return next;
+      return { ...prev, [model]: s };
     });
   };
 
@@ -106,26 +101,17 @@ export default function ForgeForm() {
 
   // generar STL (inyectamos holes y model garantizados)
   async function onGenerate() {
-    setBusy(true);
-    setError(null);
-    setStlUrl(null);
+    setBusy(true); setError(null); setStlUrl(null);
 
     const base = def.toPayload(cur) || {};
     const freeHoles: Marker[] =
       "extraHoles" in cur ? (cur.extraHoles || []) :
-      "holes" in cur ? (cur.holes || []) :
-      [];
+      "holes" in cur ? (cur.holes || []) : [];
 
-    const payload = {
-      ...base,
-      model,            // asegura el modelo
-      holes: freeHoles, // siempre enviamos holes ([])
-    };
+    const payload = { ...base, model, holes: freeHoles };
 
     const res = await generateSTL(payload);
-    if (res.status === "ok") setStlUrl(res.stl_url);
-    else setError(res.message);
-
+    if (res.status === "ok") setStlUrl(res.stl_url); else setError(res.message);
     setBusy(false);
   }
 
