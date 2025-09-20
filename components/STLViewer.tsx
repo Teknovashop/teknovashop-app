@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
@@ -46,7 +46,18 @@ export default function STLViewer({
   const mouse = useRef(new THREE.Vector2());
   const pickingPlaneRef = useRef<any>(null); // THREE.Plane
 
-  // ---------- init ----------
+  // Refs para props dinámicas (evita re-montar el visor)
+  const holesModeRef = useRef(holesMode);
+  const addDiameterRef = useRef(addDiameter);
+  const snapStepRef = useRef(snapStep);
+  const onAddMarkerRef = useRef(onAddMarker);
+
+  useEffect(() => { holesModeRef.current = holesMode; }, [holesMode]);
+  useEffect(() => { addDiameterRef.current = addDiameter; }, [addDiameter]);
+  useEffect(() => { snapStepRef.current = snapStep; }, [snapStep]);
+  useEffect(() => { onAddMarkerRef.current = onAddMarker; }, [onAddMarker]);
+
+  // ---------- init (una sola vez) ----------
   useEffect(() => {
     const root = mountRef.current!;
     const scene = new THREE.Scene();
@@ -117,9 +128,11 @@ export default function STLViewer({
     // plano y=0 para picking
     pickingPlaneRef.current = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 
-    // click: sólo si holesMode y (shift o alt) ↓
+    // click: sólo si holesMode y (shift o alt)
     const clickHandler = (ev: MouseEvent) => {
-      if (!holesMode || !onAddMarker) return;
+      const addMarker = onAddMarkerRef.current;
+      if (!addMarker) return;
+      if (!holesModeRef.current) return;
       if (!(ev.shiftKey || ev.altKey)) return; // <- evita conflicto con orbitar/pan
 
       const rect = renderer.domElement.getBoundingClientRect();
@@ -131,9 +144,11 @@ export default function STLViewer({
       raycaster.current.ray.intersectPlane(pickingPlaneRef.current, point);
 
       // snap en X/Z
+      const snapStep = snapStepRef.current ?? 1;
+      const addDiameter = addDiameterRef.current ?? 5;
       const snap = (v: number) => (snapStep > 0 ? Math.round(v / snapStep) * snapStep : v);
 
-      onAddMarker({ x_mm: snap(point.x), z_mm: snap(point.z), d_mm: addDiameter });
+      addMarker({ x_mm: snap(point.x), z_mm: snap(point.z), d_mm: addDiameter });
     };
     renderer.domElement.addEventListener("click", clickHandler);
 
@@ -145,7 +160,8 @@ export default function STLViewer({
       renderer.dispose();
       if (renderer.domElement.parentNode) renderer.domElement.parentNode.removeChild(renderer.domElement);
     };
-  }, [height, background, holesMode, addDiameter, snapStep, onAddMarker]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // ← init una vez
 
   // ---------- preview paramétrico: caja alámbrica ----------
   useEffect(() => {
@@ -197,8 +213,12 @@ export default function STLViewer({
     <div className="relative w-full" style={{ height }}>
       {/* Barra superior del visor */}
       <div className="absolute left-0 right-0 top-0 z-10 flex items-center justify-between bg-white/80 backdrop-blur px-3 py-1 border-b border-gray-200">
-        <div className="text-xs text-gray-600">Visor 3D · rueda: zoom · arrastra: rotar/pan · <b>Shift/Alt + clic</b>: agujero</div>
-        <div className="flex gap-6 text-[10px] text-gray-500"><span>L</span><span>H</span><span>W</span></div>
+        <div className="text-xs text-gray-600">
+          Visor 3D · rueda: zoom · arrastra: rotar/pan · <b>Shift/Alt + clic</b>: agujero
+        </div>
+        <div className="flex gap-6 text-[10px] text-gray-500">
+          <span>L</span><span>H</span><span>W</span>
+        </div>
       </div>
       <div ref={mountRef} className="w-full h-full" />
     </div>
