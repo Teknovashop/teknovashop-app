@@ -44,7 +44,7 @@ export default function STLViewer({
   snapStep,
   onAddMarker,
 }: Props) {
-  // Usamos 'any' para evitar conflictos de tipos con diferentes versiones de three en Vercel
+  // Usamos 'any' en refs para evitar conflictos de tipos con diferentes versiones de three en Vercel
   const mountRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<any>(null);
   const sceneRef = useRef<any>(null);
@@ -83,8 +83,8 @@ export default function STLViewer({
 
     // grid/axes
     const grid = new THREE.GridHelper(2000, 40, 0xcccccc, 0xeaeaea);
-    (grid.material as THREE.Material).opacity = 0.9;
-    (grid.material as THREE.Material as any).transparent = true;
+    (grid.material as any).opacity = 0.9;
+    (grid.material as any).transparent = true;
     scene.add(grid);
 
     const axes = new THREE.AxesHelper(120);
