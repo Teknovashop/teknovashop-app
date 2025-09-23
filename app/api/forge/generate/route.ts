@@ -6,9 +6,48 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 // Server-only (no expongas el backend CAD al cliente)
-const BACKEND_URL = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "";
+const BACKEND_URL =
+  process.env.BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "";
 const GENERATE_PATH = process.env.BACKEND_GENERATE_PATH || "/generate";
-const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const SUPABASE_URL =
+  process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+
+/**
+ * Normaliza cualquier URL firmada que venga del backend para que siempre
+ * sea una URL absoluta válida de Supabase Storage:
+ * - Si llega relativa: /object/sign/...  ->  https://.../storage/v1/object/sign/...
+ * - Si llega absoluta pero sin /storage/v1: https://xxx.supabase.co/object/sign/... -> añade /storage/v1
+ */
+function normalizeSignedUrl(inputUrl: string, baseSupabaseUrl: string): string {
+  const base = baseSupabaseUrl.replace(/\/$/, "");
+
+  // Caso 1: ruta relativa devuelta por el backend
+  if (inputUrl.startsWith("/object/sign/")) {
+    return `${base}/storage/v1${inputUrl}`;
+  }
+
+  // Caso 2: URL absoluta (intentar parsear)
+  try {
+    const u = new URL(inputUrl);
+
+    // Solo tocamos URLs de Supabase
+    if (u.hostname.includes(".supabase.co")) {
+      // Muchas implementaciones devuelven /object/sign/... sin /storage/v1
+      if (u.pathname.startsWith("/object/sign/")) {
+        return `${u.origin}/storage/v1${u.pathname}${u.search}`;
+      }
+      // Si por algún motivo viene sin /storage/v1 pero con solo /object/..., también lo arreglamos
+      if (u.pathname.startsWith("/object/") && !u.pathname.startsWith("/storage/v1/object/")) {
+        return `${u.origin}/storage/v1${u.pathname}${u.search}`;
+      }
+    }
+  } catch {
+    // Si no es una URL válida, no hacemos nada y devolvemos tal cual;
+    // el caller decidirá si es aceptable o no.
+  }
+
+  return inputUrl;
+}
 
 export async function POST(req: Request) {
   if (!BACKEND_URL) {
@@ -47,14 +86,21 @@ export async function POST(req: Request) {
 
     const text = await r.text();
     let data: any = null;
-    try { data = JSON.parse(text); } catch {}
+    try {
+      data = JSON.parse(text);
+    } catch {
+      // si no es JSON pero r.ok es false, abajo retornamos el texto crudo
+    }
 
     if (!r.ok) {
       const message = data?.message || data?.detail || text || `Backend error HTTP ${r.status}`;
       return NextResponse.json({ status: "error", message }, { status: 500 });
     }
 
-    let stl_url: string | null = data?.stl_url || data?.url || data?.data?.stl_url || null;
+    // El backend nos puede devolver { stl_url } o { url } o { data: { stl_url } }
+    let stl_url: string | null =
+      data?.stl_url || data?.url || data?.data?.stl_url || null;
+
     if (!stl_url) {
       return NextResponse.json(
         { status: "error", message: "El backend no devolvió 'stl_url'." },
@@ -62,16 +108,14 @@ export async function POST(req: Request) {
       );
     }
 
-    // 👇 FIX: si el backend devolvió una ruta relativa de Storage, la completamos
-    if (stl_url.startsWith("/object/")) {
-      if (!SUPABASE_URL) {
-        return NextResponse.json(
-          { status: "error", message: "SUPABASE_URL no configurada para reescribir la URL firmada" },
-          { status: 500 }
-        );
-      }
-      stl_url = `${SUPABASE_URL.replace(/\/$/, "")}/storage/v1${stl_url}`;
+    // Normalización robusta para Supabase Storage
+    if (!SUPABASE_URL) {
+      // Si no tenemos SUPABASE_URL solo podemos devolver la que vino
+      // (pero normalmente sí lo tenemos configurado).
+      return NextResponse.json({ status: "ok", stl_url }, { status: 200 });
     }
+
+    stl_url = normalizeSignedUrl(stl_url, SUPABASE_URL);
 
     return NextResponse.json({ status: "ok", stl_url }, { status: 200 });
   } catch (e: any) {
