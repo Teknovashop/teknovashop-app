@@ -5,12 +5,12 @@ import { useEffect, useRef, useState, useMemo } from "react";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 
-/** <-- Export que necesita ForgeForm.tsx */
+/** Retro-compatible: acepta ambas variantes de marcador */
 export type Marker = {
-  x_mm: number;
-  y_mm: number;
-  z_mm: number;
-  d_mm: number;
+  // Variante antigua (p.ej., models/registry)
+  x?: number; y?: number; z?: number; d?: number;
+  // Variante nueva con mm explícitos
+  x_mm?: number; y_mm?: number; z_mm?: number; d_mm?: number;
   side?: "left" | "right" | "top" | "bottom";
 };
 
@@ -18,7 +18,7 @@ type STLViewerProps = {
   stlUrl?: string;                  // URL firmada o blob
   width?: number;
   height?: number;
-  markers?: Marker[];               // <-- opcional: retro-compat
+  markers?: Marker[];               // opcional
   onMeasure?(mm: number): void;     // callback distancia medida
 };
 
@@ -72,7 +72,7 @@ export default function STLViewer({
     state.scene.add(hemi, dir);
 
     // Grid en mm (plano Y=0)
-    state.grid = new THREE.GridHelper(1000, 100);
+    state.grid = new THREE.GridHelper(1000, 100); // 1000mm, divisiones cada 10mm
     (state.grid.material as THREE.Material).opacity = 0.35;
     (state.grid.material as THREE.Material).transparent = true;
     state.grid.rotation.x = Math.PI / 2;
@@ -129,7 +129,7 @@ export default function STLViewer({
         tempPts.push(hits[0].point.clone());
         if (tempPts.length === 2) {
           const [a, b] = tempPts;
-          const mm = a.distanceTo(b);
+          const mm = a.distanceTo(b); // unidades = mm
           setDistanceMM(mm);
           onMeasure?.(mm);
           // línea temporal
@@ -215,7 +215,7 @@ export default function STLViewer({
     );
   }, [stlUrl]);
 
-  // Pintar marcadores (si vienen)
+  // Pintar marcadores (si vienen) – tolerante a ambas variantes
   useEffect(() => {
     if (!state.renderer) return;
     // limpiar anteriores
@@ -223,11 +223,16 @@ export default function STLViewer({
     if (!markers?.length) return;
 
     for (const m of markers) {
-      const r = Math.max(0.6, Math.min(2.5, m.d_mm / 6)); // radio visual
+      const x = (m.x_mm ?? m.x ?? 0);
+      const y = (m.y_mm ?? m.y ?? 0);
+      const z = (m.z_mm ?? m.z ?? 0);
+      const d = (m.d_mm ?? m.d ?? 4);
+      const r = Math.max(0.6, Math.min(2.5, d / 6)); // radio visual
+
       const geo = new THREE.SphereGeometry(r, 16, 16);
       const mat = new THREE.MeshStandardMaterial({ opacity: 0.9, transparent: true });
       const sphere = new THREE.Mesh(geo, mat);
-      sphere.position.set(m.x_mm, m.y_mm, m.z_mm);
+      sphere.position.set(x, y, z);
       state.markerGroup.add(sphere);
     }
   }, [markers]);
