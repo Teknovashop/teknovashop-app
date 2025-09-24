@@ -3,6 +3,14 @@
 
 import { useEffect, useRef, useState, useMemo } from "react";
 import * as THREE from "three";
+import type {
+  WebGLRenderer,
+  Mesh,
+  GridHelper,
+  AxesHelper,
+  PerspectiveCamera,
+  Scene,
+} from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 
 /** Retro-compatible: acepta ambas variantes de marcador + normales y eje */
@@ -23,7 +31,7 @@ type STLViewerProps = {
   width?: number;
   height?: number;
 
-  // === nuevas props opcionales, para compat con ForgeForm ===
+  // props opcionales para compat con ForgeForm
   background?: string;              // e.g. "#ffffff"
   box?: { length: number; height: number; width: number; thickness?: number };
   holesMode?: boolean;              // si true: click añade marcador
@@ -34,6 +42,19 @@ type STLViewerProps = {
   // ya existentes
   markers?: Marker[];
   onMeasure?(mm: number): void;
+};
+
+type ViewerState = {
+  renderer: WebGLRenderer | null;
+  scene: Scene;
+  camera: PerspectiveCamera;
+  model: Mesh | null;
+  markerGroup: THREE.Group;
+  helpersGroup: THREE.Group;
+  raycaster: THREE.Raycaster;
+  pointer: THREE.Vector2;
+  grid: GridHelper | null;
+  axes: AxesHelper | null;
 };
 
 export default function STLViewer({
@@ -52,18 +73,18 @@ export default function STLViewer({
   const mountRef = useRef<HTMLDivElement | null>(null);
   const [distanceMM, setDistanceMM] = useState<number | null>(null);
 
-  const state = useMemo(
+  const state = useMemo<ViewerState>(
     () => ({
-      renderer: null as THREE.WebGLRenderer | null,
+      renderer: null,
       scene: new THREE.Scene(),
       camera: new THREE.PerspectiveCamera(45, width / height, 0.1, 5000),
-      model: null as THREE.Mesh | null,
+      model: null,
       markerGroup: new THREE.Group(),
       helpersGroup: new THREE.Group(),
       raycaster: new THREE.Raycaster(),
       pointer: new THREE.Vector2(),
-      grid: null as THREE.GridHelper | null,
-      axes: null as THREE.AxesHelper | null,
+      grid: null,
+      axes: null,
     }),
     [width, height]
   );
@@ -161,14 +182,13 @@ export default function STLViewer({
       const hit = hits[0];
 
       if (holesMode) {
-        // punto en el espacio del MESH (local) en mm
-        const localPoint = hit.object.worldToLocal(hit.point.clone());
+        // punto en el espacio local del mesh (mm)
+        const localPoint = (hit.object as THREE.Mesh).worldToLocal(hit.point.clone());
         const normalWorld = hit.face?.normal
-          ? hit.face.normal.clone().transformDirection(hit.object.normalMatrix).normalize()
+          ? hit.face.normal.clone().transformDirection((hit.object as THREE.Mesh).normalMatrix).normalize()
           : new THREE.Vector3(0, 1, 0);
-        // opcional: normal en espacio del modelo (aprox igual en este caso)
-        const nx = normalWorld.x, ny = normalWorld.y, nz = normalWorld.z;
 
+        const nx = normalWorld.x, ny = normalWorld.y, nz = normalWorld.z;
         // eje sugerido según componente dominante
         const abs = { x: Math.abs(nx), y: Math.abs(ny), z: Math.abs(nz) };
         let axis: "x" | "y" | "z" = "x";
@@ -231,7 +251,7 @@ export default function STLViewer({
       renderer.dispose();
       if (mountRef.current) mountRef.current.removeChild(renderer.domElement);
     };
-  }, [height, width, background, holesMode, addDiameter, snapStep, onAddMarker]); // deps que afectan interacción o fondo
+  }, [height, width, background, holesMode, addDiameter, snapStep, onAddMarker]);
 
   // Carga/recarga STL
   useEffect(() => {
@@ -284,12 +304,12 @@ export default function STLViewer({
     state.helpersGroup.clear();
     if (!box) return;
 
-    const { length, height, width } = box;
-    const geo = new THREE.EdgesGeometry(new THREE.BoxGeometry(length, height, width));
+    const { length, height: h, width: w } = box;
+    const geo = new THREE.EdgesGeometry(new THREE.BoxGeometry(length, h, w));
     const mat = new THREE.LineBasicMaterial({ opacity: 0.5, transparent: true });
     const wire = new THREE.LineSegments(geo, mat);
     // situamos la caja con base en Z=0 (igual que centrado del modelo)
-    wire.position.set(0, 0, height / 2);
+    wire.position.set(0, 0, h / 2);
     state.helpersGroup.add(wire);
 
     return () => {
