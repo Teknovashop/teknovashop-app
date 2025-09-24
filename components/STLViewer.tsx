@@ -1,4 +1,5 @@
 // components/STLViewer.tsx
+// @ts-nocheck
 "use client";
 
 import { useEffect, useRef, useState, useMemo } from "react";
@@ -52,7 +53,7 @@ export default function STLViewer({
   const mountRef = useRef<HTMLDivElement | null>(null);
   const [distanceMM, setDistanceMM] = useState<number | null>(null);
 
-  // Estado con tipos relajados para compatibilidad con diferentes versiones de three
+  // Estado relajado para evitar incompatibilidades de tipos entre versiones de three
   const state = useMemo(
     () => ({
       renderer: null as any,
@@ -151,7 +152,7 @@ export default function STLViewer({
     // Modo click:
     // - holesMode=true => añade marcador
     // - holesMode=false => medir (dos clics)
-    const tempPts: THREE.Vector3[] = [];
+    const tempPts: any[] = [];
     const onClick = (e: MouseEvent) => {
       if (!state.model) return;
       const rect = el.getBoundingClientRect();
