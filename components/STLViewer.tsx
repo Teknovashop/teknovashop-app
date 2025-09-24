@@ -3,14 +3,6 @@
 
 import { useEffect, useRef, useState, useMemo } from "react";
 import * as THREE from "three";
-import type {
-  WebGLRenderer,
-  Mesh,
-  GridHelper,
-  AxesHelper,
-  PerspectiveCamera,
-  Scene,
-} from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 
 /** Retro-compatible: acepta ambas variantes de marcador + normales y eje */
@@ -44,19 +36,6 @@ type STLViewerProps = {
   onMeasure?(mm: number): void;
 };
 
-type ViewerState = {
-  renderer: WebGLRenderer | null;
-  scene: Scene;
-  camera: PerspectiveCamera;
-  model: Mesh | null;
-  markerGroup: THREE.Group;
-  helpersGroup: THREE.Group;
-  raycaster: THREE.Raycaster;
-  pointer: THREE.Vector2;
-  grid: GridHelper | null;
-  axes: AxesHelper | null;
-};
-
 export default function STLViewer({
   stlUrl,
   width = 800,
@@ -73,18 +52,19 @@ export default function STLViewer({
   const mountRef = useRef<HTMLDivElement | null>(null);
   const [distanceMM, setDistanceMM] = useState<number | null>(null);
 
-  const state = useMemo<ViewerState>(
+  // Estado con tipos relajados para compatibilidad con diferentes versiones de three
+  const state = useMemo(
     () => ({
-      renderer: null,
+      renderer: null as any,
       scene: new THREE.Scene(),
       camera: new THREE.PerspectiveCamera(45, width / height, 0.1, 5000),
-      model: null,
+      model: null as any,
       markerGroup: new THREE.Group(),
       helpersGroup: new THREE.Group(),
       raycaster: new THREE.Raycaster(),
       pointer: new THREE.Vector2(),
-      grid: null,
-      axes: null,
+      grid: null as any,
+      axes: null as any,
     }),
     [width, height]
   );
@@ -100,7 +80,7 @@ export default function STLViewer({
 
     // Renderer
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setPixelRatio(typeof window !== "undefined" ? window.devicePixelRatio : 1);
     renderer.setSize(width, height);
     mountRef.current.appendChild(renderer.domElement);
     state.renderer = renderer;
@@ -121,8 +101,8 @@ export default function STLViewer({
 
     // Grid en mm (plano Y=0)
     state.grid = new THREE.GridHelper(1000, 100); // 1000mm, divisiones cada 10mm
-    (state.grid.material as THREE.Material).opacity = 0.35;
-    (state.grid.material as THREE.Material).transparent = true;
+    (state.grid.material as any).opacity = 0.35;
+    (state.grid.material as any).transparent = true;
     state.grid.rotation.x = Math.PI / 2;
     state.scene.add(state.grid);
 
@@ -139,7 +119,7 @@ export default function STLViewer({
     // Controles ligeros (drag/zoom)
     let isDragging = false;
     let last = { x: 0, y: 0 };
-    const el = renderer.domElement;
+    const el = renderer.domElement as HTMLElement;
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
@@ -163,8 +143,10 @@ export default function STLViewer({
 
     el.addEventListener("wheel", onWheel, { passive: false });
     el.addEventListener("mousedown", onDown);
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    if (typeof window !== "undefined") {
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    }
 
     // Modo click:
     // - holesMode=true => añade marcador
@@ -183,9 +165,9 @@ export default function STLViewer({
 
       if (holesMode) {
         // punto en el espacio local del mesh (mm)
-        const localPoint = (hit.object as THREE.Mesh).worldToLocal(hit.point.clone());
+        const localPoint = (hit.object as any).worldToLocal(hit.point.clone());
         const normalWorld = hit.face?.normal
-          ? hit.face.normal.clone().transformDirection((hit.object as THREE.Mesh).normalMatrix).normalize()
+          ? hit.face.normal.clone().transformDirection((hit.object as any).normalMatrix).normalize()
           : new THREE.Vector3(0, 1, 0);
 
         const nx = normalWorld.x, ny = normalWorld.y, nz = normalWorld.z;
@@ -245,8 +227,10 @@ export default function STLViewer({
       cancelAnimationFrame(raf);
       el.removeEventListener("wheel", onWheel);
       el.removeEventListener("mousedown", onDown);
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
+      if (typeof window !== "undefined") {
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+      }
       el.removeEventListener("click", onClick);
       renderer.dispose();
       if (mountRef.current) mountRef.current.removeChild(renderer.domElement);
