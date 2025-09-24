@@ -5,12 +5,16 @@ import { useEffect, useRef, useState, useMemo } from "react";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 
-/** Retro-compatible: acepta ambas variantes de marcador */
+/** Retro-compatible: acepta ambas variantes de marcador + normales y eje */
 export type Marker = {
   // Variante antigua (p.ej., models/registry)
   x?: number; y?: number; z?: number; d?: number;
   // Variante nueva con mm explícitos
   x_mm?: number; y_mm?: number; z_mm?: number; d_mm?: number;
+  // Normales (opcionales) y eje sugerido
+  nx?: number; ny?: number; nz?: number;
+  axis?: "auto" | "x" | "y" | "z";
+  // Cara opcional
   side?: "left" | "right" | "top" | "bottom";
 };
 
@@ -234,6 +238,18 @@ export default function STLViewer({
       const sphere = new THREE.Mesh(geo, mat);
       sphere.position.set(x, y, z);
       state.markerGroup.add(sphere);
+
+      // Si trae normales, podemos (opcional) dibujar una pequeña "flecha"
+      if (typeof m.nx === "number" && typeof m.ny === "number" && typeof m.nz === "number") {
+        const dir = new THREE.Vector3(m.nx, m.ny, m.nz).normalize().multiplyScalar(10);
+        const arrGeo = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(x, y, z),
+          new THREE.Vector3(x, y, z).add(dir),
+        ]);
+        const arrMat = new THREE.LineBasicMaterial({ transparent: true });
+        const line = new THREE.Line(arrGeo, arrMat);
+        state.markerGroup.add(line);
+      }
     }
   }, [markers]);
 
