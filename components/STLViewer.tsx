@@ -20,10 +20,10 @@ type STLViewerProps = {
   height?: number;
   background?: string;
   box?: { length: number; height: number; width: number; thickness?: number };
-  holesMode?: boolean;
-  addDiameter?: number;
-  snapStep?: number;
-  onAddMarker?(m: Marker): void;
+  holesMode?: boolean;               // si true, habilita “modo agujeros”
+  addDiameter?: number;              // diámetro por defecto al añadir
+  snapStep?: number;                 // rejilla de snap (mm). 0/undefined = libre
+  onAddMarker?(m: Marker): void;     // callback al añadir agujero
   markers?: Marker[];
   onMeasure?(mm: number): void;
 };
@@ -74,7 +74,7 @@ export default function STLViewer({
 
     state.scene.background = background ? new THREE.Color(background) : new THREE.Color(0xf6f7fb);
 
-    // === Y ES ARRIBA (default three.js) ===
+    // Y arriba
     state.camera.position.set(220, 140, 220);
     state.camera.up.set(0, 1, 0);
     state.camera.lookAt(0, 0, 0);
@@ -86,7 +86,7 @@ export default function STLViewer({
     dir.position.set(200, 220, 160);
     state.scene.add(hemi, dir);
 
-    // GRID en XZ (Y es up) → SIN rotarlo
+    // Grid en XZ (suelo)
     state.grid = new THREE.GridHelper(1000, 100);
     (state.grid.material as any).opacity = 0.45;
     (state.grid.material as any).transparent = true;
@@ -99,6 +99,7 @@ export default function STLViewer({
     state.helpersGroup.name = "helpers";
     state.scene.add(state.markerGroup, state.helpersGroup);
 
+    // Controles ligeros
     let isDragging = false;
     let last = { x: 0, y: 0 };
     const el = renderer.domElement as HTMLElement;
@@ -107,7 +108,13 @@ export default function STLViewer({
       e.preventDefault();
       state.camera.position.multiplyScalar(Math.sign(e.deltaY) > 0 ? 1.1 : 0.9);
     };
-    const onDown = (e: MouseEvent) => { isDragging = true; last = { x: e.clientX, y: e.clientY }; };
+    const onDown = (e: MouseEvent) => {
+      // Si vamos a poner agujero con modificador, NO activamos drag
+      const usingModifier = e.shiftKey || e.altKey;
+      if (holesMode && usingModifier) return;
+      isDragging = true;
+      last = { x: e.clientX, y: e.clientY };
+    };
     const onMove = (e: MouseEvent) => {
       if (!isDragging) return;
       const dx = e.clientX - last.x;
@@ -130,15 +137,21 @@ export default function STLViewer({
     const onClick = (e: MouseEvent) => {
       const target = state.model || state.hitTarget;
       if (!target) return;
+
       const rect = el.getBoundingClientRect();
       state.pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       state.pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
       state.raycaster.setFromCamera(state.pointer, state.camera);
       const hits = state.raycaster.intersectObject(target, true);
       if (!hits.length) return;
-      const hit = hits[0];
 
+      const usingModifier = e.shiftKey || e.altKey;
+
+      // --- MODO AGUJEROS: SOLO con Shift/Alt ---
       if (holesMode) {
+        if (!usingModifier) return; // ignorar clics sin modificador
+
+        const hit = hits[0];
         const localPoint = (hit.object as any).worldToLocal(hit.point.clone());
         const normalWorld = hit.face?.normal
           ? hit.face.normal.clone().transformDirection((hit.object as any).normalMatrix).normalize()
@@ -157,6 +170,8 @@ export default function STLViewer({
         return;
       }
 
+      // --- MEDICIÓN (dos clics) ---
+      const hit = hits[0];
       tempPts.push(hit.point.clone());
       if (tempPts.length === 2) {
         const [a, b] = tempPts;
@@ -191,7 +206,7 @@ export default function STLViewer({
     };
   }, [height, width, background, holesMode, addDiameter, snapStep, onAddMarker]);
 
-  // Carga STL (Y-up)
+  // Carga STL
   useEffect(() => {
     if (!state.renderer) return;
 
@@ -229,7 +244,7 @@ export default function STLViewer({
         const center = new THREE.Vector3().addVectors(bb.min, bb.max).multiplyScalar(0.5);
         const size = new THREE.Vector3().subVectors(bb.max, bb.min);
 
-        // Y es vertical: levantamos la base a Y=0
+        // base a Y=0
         state.scene.position.set(-center.x, -bb.min.y, -center.z);
 
         const maxDim = Math.max(size.x, size.y, size.z);
@@ -243,7 +258,7 @@ export default function STLViewer({
     );
   }, [stlUrl]);
 
-  // Caja guía **física** en Y-up (clickeable) + wireframe
+  // Caja guía (clicable) en Y-up + wireframe
   useEffect(() => {
     state.helpersGroup.clear();
     if (state.hitTarget) {
@@ -256,7 +271,7 @@ export default function STLViewer({
     const boxGeo = new THREE.BoxGeometry(length, h, w);
     const boxMat = new THREE.MeshLambertMaterial({ color: 0xdddddd, transparent: true, opacity: 0.28 });
     const solid = new THREE.Mesh(boxGeo, boxMat);
-    solid.position.set(0, h / 2, 0); // Y es up
+    solid.position.set(0, h / 2, 0);
     state.scene.add(solid);
     state.hitTarget = solid;
 
@@ -311,11 +326,17 @@ export default function STLViewer({
     }
   }, [markers]);
 
+  const topLeftText = holesMode
+    ? "Shift/Alt + clic: añadir marcador"
+    : distanceMM
+    ? `Medida: ${distanceMM.toFixed(1)} mm`
+    : "Click x2 para medir";
+
   return (
     <div className="relative rounded-2xl shadow-sm border bg-white" style={{ width, height }}>
       <div ref={mountRef} className="w-full h-full" />
       <div className="absolute top-2 left-2 text-xs px-2 py-1 bg-white/85 rounded">
-        {holesMode ? "Clic: añadir marcador" : distanceMM ? `Medida: ${distanceMM.toFixed(1)} mm` : "Click x2 para medir"}
+        {topLeftText}
       </div>
       <button
         onClick={() => {
