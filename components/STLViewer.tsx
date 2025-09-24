@@ -6,33 +6,25 @@ import { useEffect, useRef, useState, useMemo } from "react";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 
-/** Retro-compatible: acepta ambas variantes de marcador + normales y eje */
+/** Acepta ambas variantes de marcador + normales/eje */
 export type Marker = {
-  // Variante antigua (p.ej., models/registry)
   x?: number; y?: number; z?: number; d?: number;
-  // Variante nueva con mm explícitos
   x_mm?: number; y_mm?: number; z_mm?: number; d_mm?: number;
-  // Normales (opcionales) y eje sugerido
   nx?: number; ny?: number; nz?: number;
   axis?: "auto" | "x" | "y" | "z";
-  // Cara opcional
   side?: "left" | "right" | "top" | "bottom";
 };
 
 type STLViewerProps = {
-  stlUrl?: string;                  // URL firmada o blob
+  stlUrl?: string;
   width?: number;
   height?: number;
-
-  // props opcionales para compat con ForgeForm
-  background?: string;              // e.g. "#ffffff"
+  background?: string;
   box?: { length: number; height: number; width: number; thickness?: number };
-  holesMode?: boolean;              // si true: click añade marcador
-  addDiameter?: number;             // diámetro por defecto al añadir marcador
-  snapStep?: number;                // mm para "snap" al añadir marcador
-  onAddMarker?(m: Marker): void;    // callback al añadir marcador
-
-  // ya existentes
+  holesMode?: boolean;
+  addDiameter?: number;
+  snapStep?: number;
+  onAddMarker?(m: Marker): void;
   markers?: Marker[];
   onMeasure?(mm: number): void;
 };
@@ -53,13 +45,13 @@ export default function STLViewer({
   const mountRef = useRef<HTMLDivElement | null>(null);
   const [distanceMM, setDistanceMM] = useState<number | null>(null);
 
-  // Estado relajado para evitar incompatibilidades de tipos entre versiones de three
   const state = useMemo(
     () => ({
       renderer: null as any,
       scene: new THREE.Scene(),
       camera: new THREE.PerspectiveCamera(45, width / height, 0.1, 5000),
-      model: null as any,
+      model: null as any,           // STL cargado
+      hitTarget: null as any,       // caja física si no hay STL
       markerGroup: new THREE.Group(),
       helpersGroup: new THREE.Group(),
       raycaster: new THREE.Raycaster(),
@@ -70,62 +62,48 @@ export default function STLViewer({
     [width, height]
   );
 
-  // util: snap a un paso dado
-  const snap = (v: number) => {
-    if (!snapStep || snapStep <= 0) return v;
-    return Math.round(v / snapStep) * snapStep;
-  };
+  const snap = (v: number) => (!snapStep || snapStep <= 0 ? v : Math.round(v / snapStep) * snapStep);
 
   useEffect(() => {
     if (!mountRef.current) return;
 
-    // Renderer
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(typeof window !== "undefined" ? window.devicePixelRatio : 1);
     renderer.setSize(width, height);
     mountRef.current.appendChild(renderer.domElement);
     state.renderer = renderer;
 
-    // Scene
-    state.scene.background = background ? new THREE.Color(background) : null;
+    state.scene.background = background ? new THREE.Color(background) : new THREE.Color(0xf6f7fb);
 
-    // Camera
     state.camera.position.set(220, 140, 220);
     state.camera.lookAt(0, 0, 0);
 
-    // Lights
-    const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1.0);
-    hemi.position.set(0, 200, 0);
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x8a8a8a, 0.9);
     const dir = new THREE.DirectionalLight(0xffffff, 0.8);
-    dir.position.set(100, 100, 50);
+    hemi.position.set(0, 200, 0);
+    dir.position.set(200, 200, 120);
     state.scene.add(hemi, dir);
 
-    // Grid en mm (plano Y=0)
-    state.grid = new THREE.GridHelper(1000, 100); // 1000mm, divisiones cada 10mm
-    (state.grid.material as any).opacity = 0.35;
+    state.grid = new THREE.GridHelper(1000, 100);
+    (state.grid.material as any).opacity = 0.4;
     (state.grid.material as any).transparent = true;
     state.grid.rotation.x = Math.PI / 2;
     state.scene.add(state.grid);
 
-    // Ejes
     state.axes = new THREE.AxesHelper(120);
     state.scene.add(state.axes);
 
-    // Grupos
     state.markerGroup.name = "markers";
     state.helpersGroup.name = "helpers";
-    state.scene.add(state.markerGroup);
-    state.scene.add(state.helpersGroup);
+    state.scene.add(state.markerGroup, state.helpersGroup);
 
-    // Controles ligeros (drag/zoom)
     let isDragging = false;
     let last = { x: 0, y: 0 };
     const el = renderer.domElement as HTMLElement;
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      const s = Math.sign(e.deltaY) > 0 ? 1.1 : 0.9;
-      state.camera.position.multiplyScalar(s);
+      state.camera.position.multiplyScalar(Math.sign(e.deltaY) > 0 ? 1.1 : 0.9);
     };
     const onDown = (e: MouseEvent) => {
       isDragging = true;
@@ -149,58 +127,48 @@ export default function STLViewer({
       window.addEventListener("mouseup", onUp);
     }
 
-    // Modo click:
-    // - holesMode=true => añade marcador
-    // - holesMode=false => medir (dos clics)
+    // Click: si holesMode => marcador; si no => medición
     const tempPts: any[] = [];
     const onClick = (e: MouseEvent) => {
-      if (!state.model) return;
+      const target = state.model || state.hitTarget; // <- caja si no hay STL
+      if (!target) return;
+
       const rect = el.getBoundingClientRect();
       state.pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       state.pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
       state.raycaster.setFromCamera(state.pointer, state.camera);
-      const hits = state.raycaster.intersectObject(state.model, true);
+      const hits = state.raycaster.intersectObject(target, true);
       if (!hits.length) return;
 
       const hit = hits[0];
 
       if (holesMode) {
-        // punto en el espacio local del mesh (mm)
         const localPoint = (hit.object as any).worldToLocal(hit.point.clone());
         const normalWorld = hit.face?.normal
           ? hit.face.normal.clone().transformDirection((hit.object as any).normalMatrix).normalize()
           : new THREE.Vector3(0, 1, 0);
 
         const nx = normalWorld.x, ny = normalWorld.y, nz = normalWorld.z;
-        // eje sugerido según componente dominante
         const abs = { x: Math.abs(nx), y: Math.abs(ny), z: Math.abs(nz) };
         let axis: "x" | "y" | "z" = "x";
         if (abs.y >= abs.x && abs.y >= abs.z) axis = "y";
         else if (abs.z >= abs.x && abs.z >= abs.y) axis = "z";
 
-        // snap opcional
         const x_mm = snap(localPoint.x);
         const y_mm = snap(localPoint.y);
         const z_mm = snap(localPoint.z);
 
-        const marker: Marker = {
-          x_mm, y_mm, z_mm,
-          d_mm: addDiameter ?? 6,
-          nx, ny, nz,
-          axis,
-        };
-        onAddMarker?.(marker);
+        onAddMarker?.({ x_mm, y_mm, z_mm, d_mm: addDiameter ?? 6, nx, ny, nz, axis });
         return;
       }
 
-      // --- modo medición ---
+      // medición
       tempPts.push(hit.point.clone());
       if (tempPts.length === 2) {
         const [a, b] = tempPts;
-        const mm = a.distanceTo(b); // unidades = mm
+        const mm = a.distanceTo(b);
         setDistanceMM(mm);
         onMeasure?.(mm);
-        // línea temporal
         const geo = new THREE.BufferGeometry().setFromPoints([a, b]);
         const mat = new THREE.LineBasicMaterial({ transparent: true });
         const line = new THREE.Line(geo, mat);
@@ -215,7 +183,6 @@ export default function STLViewer({
     };
     el.addEventListener("click", onClick);
 
-    // Loop
     let raf = 0;
     const tick = () => {
       state.renderer!.render(state.scene, state.camera);
@@ -223,7 +190,6 @@ export default function STLViewer({
     };
     tick();
 
-    // Cleanup
     return () => {
       cancelAnimationFrame(raf);
       el.removeEventListener("wheel", onWheel);
@@ -238,11 +204,21 @@ export default function STLViewer({
     };
   }, [height, width, background, holesMode, addDiameter, snapStep, onAddMarker]);
 
-  // Carga/recarga STL
+  // Carga STL
   useEffect(() => {
-    if (!state.renderer || !stlUrl) return;
-    const loader = new STLLoader();
+    if (!state.renderer) return;
 
+    // Limpia modelo previo
+    if (state.model) {
+      state.scene.remove(state.model);
+      (state.model.geometry as THREE.BufferGeometry).dispose();
+      (state.model.material as THREE.Material).dispose();
+      state.model = null;
+    }
+
+    if (!stlUrl) return;
+
+    const loader = new STLLoader();
     loader.load(
       stlUrl,
       (geometry) => {
@@ -250,17 +226,12 @@ export default function STLViewer({
         geometry.computeVertexNormals();
 
         const material = new THREE.MeshStandardMaterial({
-          metalness: 0.1,
-          roughness: 0.6,
-          opacity: 1,
+          color: 0xeeeeee,
+          metalness: 0.15,
+          roughness: 0.55,
+          opacity: 1.0,
           transparent: false,
         });
-
-        if (state.model) {
-          state.scene.remove(state.model);
-          (state.model.geometry as THREE.BufferGeometry).dispose();
-          (state.model.material as THREE.Material).dispose();
-        }
 
         const mesh = new THREE.Mesh(geometry, material);
         mesh.castShadow = true;
@@ -268,14 +239,14 @@ export default function STLViewer({
         state.scene.add(mesh);
         state.model = mesh;
 
-        // Centrado y encuadre
+        // Centro/encuadre
         const bb = geometry.boundingBox!;
-        const size = new THREE.Vector3().subVectors(bb.max, bb.min);
         const center = new THREE.Vector3().addVectors(bb.min, bb.max).multiplyScalar(0.5);
+        const size = new THREE.Vector3().subVectors(bb.max, bb.min);
         state.scene.position.set(-center.x, -bb.min.y, -center.z);
 
         const maxDim = Math.max(size.x, size.y, size.z);
-        const dist = maxDim * 2.2;
+        const dist = Math.max(120, maxDim * 2.2);
         state.camera.position.set(dist, dist * 0.6, dist);
         state.camera.lookAt(0, 0, 0);
       },
@@ -284,30 +255,49 @@ export default function STLViewer({
     );
   }, [stlUrl]);
 
-  // Helpers de caja guía si se pasan dimensiones
+  // Caja guía física (raycasteable) + wireframe
   useEffect(() => {
+    // limpia anteriores helpers
     state.helpersGroup.clear();
+    if (state.hitTarget) {
+      state.scene.remove(state.hitTarget);
+      state.hitTarget = null;
+    }
     if (!box) return;
 
     const { length, height: h, width: w } = box;
-    const geo = new THREE.EdgesGeometry(new THREE.BoxGeometry(length, h, w));
-    const mat = new THREE.LineBasicMaterial({ opacity: 0.5, transparent: true });
-    const wire = new THREE.LineSegments(geo, mat);
-    // situamos la caja con base en Z=0 (igual que centrado del modelo)
+
+    // mesh semitransparente (target de clic)
+    const boxGeo = new THREE.BoxGeometry(length, h, w);
+    const boxMat = new THREE.MeshLambertMaterial({ color: 0xdddddd, transparent: true, opacity: 0.18 });
+    const solid = new THREE.Mesh(boxGeo, boxMat);
+    solid.position.set(0, 0, h / 2);
+    state.scene.add(solid);
+    state.hitTarget = solid;
+
+    // wireframe
+    const edgesGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(length, h, w));
+    const edgesMat = new THREE.LineBasicMaterial({ opacity: 0.6, transparent: true });
+    const wire = new THREE.LineSegments(edgesGeo, edgesMat);
     wire.position.set(0, 0, h / 2);
     state.helpersGroup.add(wire);
 
     return () => {
-      state.helpersGroup.remove(wire);
-      geo.dispose();
-      mat.dispose();
+      state.helpersGroup.clear();
+      if (state.hitTarget) {
+        state.scene.remove(state.hitTarget);
+        (solid.geometry as any)?.dispose?.();
+        (solid.material as any)?.dispose?.();
+        state.hitTarget = null;
+      }
+      edgesGeo.dispose();
+      edgesMat.dispose();
     };
   }, [box]);
 
-  // Pintar marcadores (si vienen) – tolerante a ambas variantes
+  // Marcadores
   useEffect(() => {
     if (!state.renderer) return;
-    // limpiar anteriores
     state.markerGroup.clear();
     if (!markers?.length) return;
 
@@ -316,15 +306,14 @@ export default function STLViewer({
       const y = (m.y_mm ?? m.y ?? 0);
       const z = (m.z_mm ?? m.z ?? 0);
       const d = (m.d_mm ?? m.d ?? 4);
-      const r = Math.max(0.6, Math.min(2.5, d / 6)); // radio visual
+      const r = Math.max(0.6, Math.min(2.5, d / 6));
 
       const geo = new THREE.SphereGeometry(r, 16, 16);
-      const mat = new THREE.MeshStandardMaterial({ opacity: 0.9, transparent: true });
+      const mat = new THREE.MeshStandardMaterial({ color: 0xff5500, opacity: 0.95, transparent: true });
       const sphere = new THREE.Mesh(geo, mat);
       sphere.position.set(x, y, z);
       state.markerGroup.add(sphere);
 
-      // Si trae normales, dibujamos una pequeña "flecha"
       if (typeof m.nx === "number" && typeof m.ny === "number" && typeof m.nz === "number") {
         const dir = new THREE.Vector3(m.nx, m.ny, m.nz).normalize().multiplyScalar(10);
         const arrGeo = new THREE.BufferGeometry().setFromPoints([
@@ -339,14 +328,10 @@ export default function STLViewer({
   }, [markers]);
 
   return (
-    <div className="relative rounded-2xl shadow-sm border bg-white/60" style={{ width, height }}>
+    <div className="relative rounded-2xl shadow-sm border bg-white" style={{ width, height }}>
       <div ref={mountRef} className="w-full h-full" />
-      <div className="absolute top-2 left-2 text-xs px-2 py-1 bg-white/80 rounded">
-        {holesMode
-          ? "Clic: añadir marcador"
-          : distanceMM
-            ? `Medida: ${distanceMM.toFixed(1)} mm`
-            : "Click x2 para medir"}
+      <div className="absolute top-2 left-2 text-xs px-2 py-1 bg-white/85 rounded">
+        {holesMode ? "Clic: añadir marcador" : distanceMM ? `Medida: ${distanceMM.toFixed(1)} mm` : "Click x2 para medir"}
       </div>
       <button
         onClick={() => {
@@ -354,7 +339,7 @@ export default function STLViewer({
           state.camera.position.set(220, 140, 220);
           state.camera.lookAt(0, 0, 0);
         }}
-        className="absolute top-2 right-2 text-xs px-2 py-1 bg-white/80 rounded hover:bg-white"
+        className="absolute top-2 right-2 text-xs px-2 py-1 bg-white/85 rounded hover:bg-white"
       >
         Reset
       </button>
