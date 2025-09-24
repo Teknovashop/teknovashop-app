@@ -20,10 +20,10 @@ type STLViewerProps = {
   height?: number;
   background?: string;
   box?: { length: number; height: number; width: number; thickness?: number };
-  holesMode?: boolean;               // si true, habilita “modo agujeros”
-  addDiameter?: number;              // diámetro por defecto al añadir
-  snapStep?: number;                 // rejilla de snap (mm). 0/undefined = libre
-  onAddMarker?(m: Marker): void;     // callback al añadir agujero
+  holesMode?: boolean;
+  addDiameter?: number;
+  snapStep?: number;
+  onAddMarker?(m: Marker): void;
   markers?: Marker[];
   onMeasure?(mm: number): void;
 };
@@ -74,12 +74,13 @@ export default function STLViewer({
 
     state.scene.background = background ? new THREE.Color(background) : new THREE.Color(0xf6f7fb);
 
-    // Y arriba
+    // Cámara: Y arriba
     state.camera.position.set(220, 140, 220);
     state.camera.up.set(0, 1, 0);
     state.camera.lookAt(0, 0, 0);
     state.scene.rotation.set(0, 0, 0);
 
+    // Luces
     const hemi = new THREE.HemisphereLight(0xffffff, 0x8a8a8a, 0.9);
     const dir = new THREE.DirectionalLight(0xffffff, 0.85);
     hemi.position.set(0, 200, 0);
@@ -92,14 +93,15 @@ export default function STLViewer({
     (state.grid.material as any).transparent = true;
     state.scene.add(state.grid);
 
-    state.axes = new THREE.AxesHelper(120); // X rojo, Y verde (vertical), Z azul
+    // Ejes (X rojo, Y verde, Z azul)
+    state.axes = new THREE.AxesHelper(120);
     state.scene.add(state.axes);
 
     state.markerGroup.name = "markers";
     state.helpersGroup.name = "helpers";
     state.scene.add(state.markerGroup, state.helpersGroup);
 
-    // Controles ligeros
+    // Controles de cámara “ligeros”
     let isDragging = false;
     let last = { x: 0, y: 0 };
     const el = renderer.domElement as HTMLElement;
@@ -109,7 +111,7 @@ export default function STLViewer({
       state.camera.position.multiplyScalar(Math.sign(e.deltaY) > 0 ? 1.1 : 0.9);
     };
     const onDown = (e: MouseEvent) => {
-      // Si vamos a poner agujero con modificador, NO activamos drag
+      // si vamos a poner agujero (con Shift/Alt) no arrastramos cámara
       const usingModifier = e.shiftKey || e.altKey;
       if (holesMode && usingModifier) return;
       isDragging = true;
@@ -133,6 +135,7 @@ export default function STLViewer({
       window.addEventListener("mouseup", onUp);
     }
 
+    // Click: o bien agujero (con modificador) o medición 2 puntos
     const tempPts: any[] = [];
     const onClick = (e: MouseEvent) => {
       const target = state.model || state.hitTarget;
@@ -147,10 +150,9 @@ export default function STLViewer({
 
       const usingModifier = e.shiftKey || e.altKey;
 
-      // --- MODO AGUJEROS: SOLO con Shift/Alt ---
+      // --- Modo agujeros: requiere Shift/Alt ---
       if (holesMode) {
         if (!usingModifier) return; // ignorar clics sin modificador
-
         const hit = hits[0];
         const localPoint = (hit.object as any).worldToLocal(hit.point.clone());
         const normalWorld = hit.face?.normal
@@ -170,7 +172,7 @@ export default function STLViewer({
         return;
       }
 
-      // --- MEDICIÓN (dos clics) ---
+      // --- Medición ---
       const hit = hits[0];
       tempPts.push(hit.point.clone());
       if (tempPts.length === 2) {
@@ -258,7 +260,7 @@ export default function STLViewer({
     );
   }, [stlUrl]);
 
-  // Caja guía (clicable) en Y-up + wireframe
+  // Caja-guía clicable (cuando no hay STL)
   useEffect(() => {
     state.helpersGroup.clear();
     if (state.hitTarget) {
