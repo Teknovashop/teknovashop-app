@@ -80,10 +80,10 @@ export default function ForgeForm() {
       const copy = { ...prev };
       const s = { ...copy[model] };
 
-      // Conservamos los "auto" y guardamos únicamente los libres en el estado del modelo
+      // Conservamos "auto" y guardamos sólo los libres
       const auto = def.autoMarkers ? def.autoMarkers(cur) : [];
-      // Heurística sencilla: libres = los que no están en "auto" por igualdad de coordenadas/diámetro
-      const autoKey = (m: Marker) => `${m.x_mm}|${m.y_mm ?? 0}|${m.z_mm}|${m.d_mm}`;
+      const autoKey = (m: Marker) =>
+        `${m.x_mm}|${m.y_mm ?? 0}|${m.z_mm}|${m.d_mm}`;
       const autoSet = new Set(auto.map(autoKey));
       const free = nextMarkers.filter((m) => !autoSet.has(autoKey(m)));
 
@@ -147,7 +147,7 @@ export default function ForgeForm() {
         <ModelSelector value={model} onChange={setModel} />
         <STLViewerPro
           key={model}
-          stlUrl={stlUrl ?? undefined}    /* opcional: previsualizar último STL */
+          stlUrl={stlUrl ?? undefined}
           markers={markers}
           onMarkersChange={handleMarkersChange}
           defaultHoleDiameter={holeDiameter}
@@ -163,7 +163,7 @@ export default function ForgeForm() {
         ventilated={ventilated}
         onToggleVentilated={toggleVentilated}
         holesEnabled={allowFree}
-        onToggleHoles={() => {}}           /* mantenemos API del panel */
+        onToggleHoles={() => {}}
         holeDiameter={holeDiameter}
         onHoleDiameter={setHoleDiameter}
         snapStep={snapStep}
