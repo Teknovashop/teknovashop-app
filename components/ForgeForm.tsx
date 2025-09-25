@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import STLViewer, { type Marker } from "@/components/STLViewer";
+import { useMemo, useState, useCallback } from "react";
+import STLViewer, { type Marker as ViewMarker } from "@/components/STLViewer";
 import ControlsPanel from "@/components/ControlsPanel";
 import ModelSelector from "@/components/ModelSelector";
-import { MODELS, type ModelId } from "@/models/registry";
+import { MODELS, type ModelId, type ModelDef } from "@/models/registry";
 
+// —— util de red (idéntico patrón que ya tenías)
 type GenerateOk = { status: "ok"; stl_url: string };
 type GenerateErr = { status: "error"; message: string };
 type GenerateResponse = GenerateOk | GenerateErr;
@@ -21,7 +22,9 @@ async function generateSTL(payload: any): Promise<GenerateResponse> {
     const text = await res.text();
     let data: any = null;
     try { data = JSON.parse(text); } catch {}
-    if (!res.ok) return { status: "error", message: data?.message || text || `HTTP ${res.status}` };
+    if (!res.ok) {
+      return { status: "error", message: data?.message || text || `HTTP ${res.status}` };
+    }
     const url = data?.stl_url || data?.url || data?.data?.stl_url || null;
     if (url) return { status: "ok", stl_url: url };
     return { status: "error", message: "Backend no devolvió stl_url" };
@@ -30,10 +33,17 @@ async function generateSTL(payload: any): Promise<GenerateResponse> {
   }
 }
 
+// —— Tipos puente
+type RegMarker = { x_mm: number; z_mm: number; d_mm: number };
+
+// Convierte marcadores del estado (x,z,d) al visor (x,y,z,d)
+const toViewMarkers = (mm: RegMarker[]): ViewMarker[] =>
+  (mm || []).map((m) => ({ x_mm: m.x_mm, y_mm: 0, z_mm: m.z_mm, d_mm: m.d_mm }));
+
 export default function ForgeForm() {
   const [model, setModel] = useState<ModelId>("cable_tray");
 
-  // estado por modelo desde defaults del registry
+  // Estado inicial por modelo a partir de MODELS.defaults
   const initialState = useMemo(() => {
     const m: Record<ModelId, any> = {} as any;
     (Object.keys(MODELS) as ModelId[]).forEach((id) => {
@@ -43,81 +53,83 @@ export default function ForgeForm() {
   }, []);
   const [state, setState] = useState<Record<ModelId, any>>(initialState);
 
-  // agujeros
+  // UI de agujeros / snap
+  const [holesEnabled, setHolesEnabled] = useState(true);
   const [holeDiameter, setHoleDiameter] = useState(5);
   const [snapStep, setSnapStep] = useState(1);
 
-  // export
+  // Export/errores
   const [busy, setBusy] = useState(false);
   const [stlUrl, setStlUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const def = MODELS[model];
+  // Definición del modelo activo
+  const def: ModelDef<any> = MODELS[model];
   const cur = state[model];
 
-  // caja del visor (en mm)
-  const box = useMemo(() => def.toBox(cur), [def, cur]);
-
-  // marcadores visibles (auto + libres)
-  const markers: Marker[] = useMemo(() => {
-    const auto = def.autoMarkers ? def.autoMarkers(cur) : [];
-    const free: Marker[] =
-      "extraHoles" in cur ? cur.extraHoles :
-      "holes"      in cur ? cur.holes      : [];
-    return [...auto, ...free];
+  // Markers = automáticos + libres
+  const autoMarkers: RegMarker[] = useMemo(() => {
+    return def.autoMarkers ? def.autoMarkers(cur) : [];
   }, [def, cur]);
 
-  // añadir marcador libre
-  const onAddMarker = (m: Marker) => {
-    if (!def.allowFreeHoles) return;
+  const freeMarkers: RegMarker[] = useMemo(() => {
+    if ("extraHoles" in cur && Array.isArray(cur.extraHoles)) return cur.extraHoles as RegMarker[];
+    if ("holes" in cur && Array.isArray(cur.holes)) return cur.holes as RegMarker[];
+    return [];
+  }, [cur]);
+
+  // Markers visibles en visor
+  const viewMarkers: ViewMarker[] = useMemo(() => {
+    return toViewMarkers([...autoMarkers, ...freeMarkers]);
+  }, [autoMarkers, freeMarkers]);
+
+  // Sliders con sus valores
+  const sliders = useMemo(() => {
+    return def.sliders.map((s) => ({ ...s, value: cur[s.key] }));
+  }, [def.sliders, cur]);
+
+  // Actualiza un slider del estado
+  const updateSlider = (key: string, v: number) => {
     setState((prev) => {
-      const next = { ...prev };
-      const s = { ...next[model] };
-      const hole: Marker = {
+      const copy = { ...prev };
+      copy[model] = { ...copy[model], [key]: v };
+      return copy;
+    });
+    setStlUrl(null); // obligamos a regenerar con nuevos parámetros
+  };
+
+  // Añadir marcador libre (Shift/Alt+Click desde el visor)
+  const handleAddMarker = useCallback(
+    (m: ViewMarker) => {
+      if (!def.allowFreeHoles || !holesEnabled) return;
+
+      // Normalizamos a tipo de estado (x,z,d) — y_mm no se guarda
+      const hole: RegMarker = {
         x_mm: m.x_mm,
-        y_mm: m.y_mm ?? 0,
         z_mm: m.z_mm,
         d_mm: m.d_mm ?? holeDiameter,
-        axis: m.axis ?? "auto",
       };
-      if ("extraHoles" in s) s.extraHoles = [...(s.extraHoles || []), hole];
-      else if ("holes" in s) s.holes = [...(s.holes || []), hole];
-      next[model] = s;
-      return next;
-    });
-  };
 
-  // editar / eliminar agujeros (lista en panel)
-  const holesList: Marker[] =
-    ("extraHoles" in cur && Array.isArray(cur.extraHoles)) ? cur.extraHoles :
-    ("holes" in cur && Array.isArray(cur.holes)) ? cur.holes : [];
+      setState((prev) => {
+        const copy = { ...prev };
+        const s = { ...copy[model] };
 
-  const updateHole = (idx: number, patch: Partial<Marker>) => {
-    setState((prev) => {
-      const next = { ...prev };
-      const s = { ...next[model] };
-      const key = ("extraHoles" in s) ? "extraHoles" : ( "holes" in s ? "holes" : "" );
-      if (!key) return prev;
-      const arr = [...(s as any)[key]];
-      arr[idx] = { ...arr[idx], ...patch };
-      (s as any)[key] = arr;
-      next[model] = s;
-      return next;
-    });
-  };
+        // Evitamos duplicar automáticos
+        const autoSet = new Set(autoMarkers.map((a) => `${a.x_mm}|${a.z_mm}|${a.d_mm}`));
+        const key = `${hole.x_mm}|${hole.z_mm}|${hole.d_mm}`;
+        if (autoSet.has(key)) return prev;
 
-  const removeHole = (idx: number) => {
-    setState((prev) => {
-      const next = { ...prev };
-      const s = { ...next[model] };
-      const key = ("extraHoles" in s) ? "extraHoles" : ( "holes" in s ? "holes" : "" );
-      if (!key) return prev;
-      (s as any)[key] = (s as any)[key].filter((_: any, i: number) => i !== idx);
-      next[model] = s;
-      return next;
-    });
-  };
+        if ("extraHoles" in s) s.extraHoles = [...(s.extraHoles || []), hole];
+        else if ("holes" in s) s.holes = [...(s.holes || []), hole];
 
+        copy[model] = s;
+        return copy;
+      });
+    },
+    [autoMarkers, def.allowFreeHoles, holesEnabled, holeDiameter, model]
+  );
+
+  // Borrar todos los agujeros libres (no los auto)
   const clearMarkers = () => {
     setState((prev) => {
       const next = { ...prev };
@@ -129,106 +141,86 @@ export default function ForgeForm() {
     });
   };
 
-  // sliders dinámicos
-  const sliders = useMemo(() => {
-    return def.sliders.map((s) => ({ ...s, value: cur[s.key] }));
-  }, [def.sliders, cur]);
-
-  const updateSlider = (key: string, v: number) => {
-    setState((prev) => ({ ...prev, [model]: { ...prev[model], [key]: v } }));
+  // Generar STL
+  const onGenerate = async () => {
+    setBusy(true);
+    setError(null);
+    setStlUrl(null);
+    try {
+      const payload = def.toPayload(state[model]);
+      const r = await generateSTL(payload);
+      if (r.status === "ok") {
+        setStlUrl(r.stl_url);
+      } else {
+        setError(r.message);
+      }
+    } finally {
+      setBusy(false);
+    }
   };
 
-  // generar STL (el backend acepta holes como (x, y, d) ó (x, y, z, d); él ignora z si no aplica)
-  async function onGenerate() {
-    setBusy(true); setError(null); setStlUrl(null);
-    const payload = def.toPayload(state[model]);
-    const res = await generateSTL(payload);
-    if (res.status === "ok") setStlUrl(res.stl_url); else setError(res.message);
-    setBusy(false);
-  }
+  // Caja guía para el visor (cuando aún no hay STL)
+  const box = def.toBox(cur);
 
-  const allowFree = def.allowFreeHoles;
-  const ventilated = "ventilated" in cur ? !!cur.ventilated : true;
-  const toggleVentilated = (v: boolean) => {
-    if (!("ventilated" in cur)) return;
-    setState((prev) => ({ ...prev, [model]: { ...prev[model], ventilated: v } }));
-  };
+  // Etiqueta para el selector de modelo
+  const modelLabel = def.label;
 
   return (
-    <div className="mx-auto grid max-w-[1600px] grid-cols-1 gap-6 px-4 py-6 lg:grid-cols-[1fr,380px]">
-      {/* Visor */}
-      <section className="h-[calc(100svh-160px)] rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
-        <ModelSelector value={model} onChange={setModel} />
+    <div className="flex w-full flex-col gap-4 md:flex-row">
+      {/* Panel lateral */}
+      <ControlsPanel
+        modelLabel={modelLabel}
+        sliders={sliders}
+        onChange={updateSlider}
+        ventilated={!!cur.ventilated}
+        onToggleVentilated={(v) => {
+          if (!("ventilated" in cur)) return;
+          setState((prev) => {
+            const copy = { ...prev };
+            copy[model] = { ...copy[model], ventilated: v };
+            return copy;
+          });
+          setStlUrl(null);
+        }}
+        holesEnabled={holesEnabled}
+        onToggleHoles={(v) => setHolesEnabled(v)}
+        holeDiameter={holeDiameter}
+        onHoleDiameter={(v) => setHoleDiameter(v)}
+        snapStep={snapStep}
+        onSnapStep={(v) => setSnapStep(v)}
+        onClearHoles={clearMarkers}
+        onGenerate={onGenerate}
+        busy={busy}
+        stlUrl={stlUrl ?? undefined}
+        error={error ?? undefined}
+      />
+
+      {/* Visor + selector de modelo encima en móviles */}
+      <section className="flex-1">
+        <div className="mb-3">
+          <ModelSelector value={model} onChange={setModel} />
+        </div>
+
         <STLViewer
-          key={model}
-          background="#ffffff"
+          // si hay STL lo enseña; si no, muestra la caja guía
+          stlUrl={stlUrl ?? undefined}
           box={box}
-          markers={markers}
-          holesMode={allowFree}
+          width={920}
+          height={560}
+          // UX avanzada
+          holesMode={holesEnabled}
           addDiameter={holeDiameter}
           snapStep={snapStep}
-          onAddMarker={onAddMarker}
+          // marcadores visibles = automáticos + libres
+          markers={viewMarkers}
+          // callback al añadir un marcador libre
+          onAddMarker={handleAddMarker}
+          // empezamos cámara libre; clipping apagado
+          defaultAxis="free"
+          defaultClipping={false}
+          defaultClipMM={0}
         />
       </section>
-
-      {/* Panel + lista de agujeros simple */}
-      <div>
-        <ControlsPanel
-          modelLabel={def.label}
-          sliders={sliders}
-          onChange={updateSlider}
-          ventilated={ventilated}
-          onToggleVentilated={toggleVentilated}
-          holesEnabled={allowFree}
-          onToggleHoles={() => {}}
-          holeDiameter={holeDiameter}
-          onHoleDiameter={setHoleDiameter}
-          snapStep={snapStep}
-          onSnapStep={setSnapStep}
-          onClearHoles={clearMarkers}
-          onGenerate={onGenerate}
-          busy={busy}
-          stlUrl={stlUrl || undefined}
-          error={error || undefined}
-        />
-
-        {/* Agujeros (lista editable, no tapa el visor) */}
-        <section className="mt-4 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
-          <div className="mb-2 flex items-center justify-between">
-            <h4 className="text-sm font-semibold">Agujeros ({holesList.length})</h4>
-          </div>
-          {holesList.length === 0 ? (
-            <p className="text-sm text-gray-500">No hay agujeros.</p>
-          ) : (
-            <div className="grid gap-2">
-              {holesList.map((h, i) => (
-                <div key={i} className="grid grid-cols-[repeat(5,1fr)_auto] items-center gap-2">
-                  <label className="text-xs">X</label>
-                  <input className="rounded border px-2 py-1 text-sm"
-                    type="number" step={1} value={h.x_mm}
-                    onChange={(e) => updateHole(i, { x_mm: Number(e.target.value) })}/>
-                  <label className="text-xs">Y</label>
-                  <input className="rounded border px-2 py-1 text-sm"
-                    type="number" step={1} value={h.y_mm ?? 0}
-                    onChange={(e) => updateHole(i, { y_mm: Number(e.target.value) })}/>
-                  <label className="text-xs">Z</label>
-                  <input className="rounded border px-2 py-1 text-sm"
-                    type="number" step={1} value={h.z_mm}
-                    onChange={(e) => updateHole(i, { z_mm: Number(e.target.value) })}/>
-                  <label className="text-xs">Ø</label>
-                  <input className="rounded border px-2 py-1 text-sm"
-                    type="number" step={0.5} value={h.d_mm ?? holeDiameter}
-                    onChange={(e) => updateHole(i, { d_mm: Number(e.target.value) })}/>
-                  <button onClick={() => removeHole(i)}
-                    className="justify-self-end rounded border px-2 py-1 text-sm hover:bg-gray-50">
-                    Eliminar
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-      </div>
     </div>
   );
 }
