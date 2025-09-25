@@ -8,7 +8,8 @@ export type ModelId =
   | "phone_stand"
   | "qr_plate"
   | "enclosure_ip65"
-  | "cable_clip";
+  | "cable_clip"
+  | "vesa_shelf"; // NUEVO
 
 export type SliderDef = {
   key: string;
@@ -89,7 +90,7 @@ export type VesaPattern = 75 | 100 | 200;
 
 export type VesaAdapterState = {
   plateWidth: number;    // tamaño placa cuadrada
-  plateHeight: number;   // solo para visor (espesor visual)
+  plateHeight: number;   // sólo visor
   thickness: number;
   pattern: VesaPattern;  // 75, 100 o 200
   holeDiameter: number;  // diámetro de los agujeros del patrón
@@ -99,7 +100,7 @@ export type VesaAdapterState = {
 export const VesaAdapter: ModelDef<VesaAdapterState> = {
   id: "vesa_adapter",
   label: "VESA Adapter",
-  allowFreeHoles: true, // permitimos extras además del patrón
+  allowFreeHoles: true, // extras además del patrón
   sliders: [
     { key: "plateWidth", label: "Ancho placa (mm)", min: 80, max: 260, step: 1 },
     { key: "thickness", label: "Espesor (mm)", min: 2, max: 8, step: 0.5 },
@@ -139,7 +140,7 @@ export const VesaAdapter: ModelDef<VesaAdapterState> = {
   }),
 };
 
-// 3) Router Mount (balda en L simple)
+// 3) Router Mount (balda en L)
 export type RouterMountState = {
   width: number;      // ancho total
   depth: number;      // fondo de la balda
@@ -180,8 +181,6 @@ export const RouterMount: ModelDef<RouterMountState> = {
     holes: s.holes,
   }),
 };
-
-// ——— NUEVOS MODELOS
 
 // 4) Universal Phone Stand
 export type PhoneStandState = {
@@ -225,7 +224,7 @@ export const PhoneStand: ModelDef<PhoneStandState> = {
   }),
 };
 
-// 5) Quick-Release Plate (Arca/Manfrotto)
+// 5) Quick-Release Plate
 export type QRSystem = "arca" | "manfrotto";
 
 export type QRPlateState = {
@@ -252,14 +251,13 @@ export const QRPlate: ModelDef<QRPlateState> = {
   defaults: {
     system: "arca",
     length: 90,
-    width: 38,          // estándar Arca ~38 mm
+    width: 38,
     thickness: 8,
     screw_d: 6.5,
     slot_len: 22,
     extraHoles: [],
   },
   autoMarkers: (s) => {
-    // patrón sencillo: agujero central + dos taladros/ranuras a ±L/4
     const d = s.screw_d;
     const L = s.length;
     return [
@@ -286,7 +284,7 @@ export const QRPlate: ModelDef<QRPlateState> = {
   }),
 };
 
-// 6) Electronics Enclosure IP65
+// 6) Enclosure IP65
 export type EnclosureState = {
   length: number;
   width: number;
@@ -378,6 +376,67 @@ export const CableClip: ModelDef<CableClipState> = {
   }),
 };
 
+// 8) VESA Shelf + Quick Release (NUEVO)
+export type VesaShelfState = {
+  vesa_mm: 75 | 100 | 200;
+  thickness: number;
+  shelf_width: number;   // ancho útil de la balda
+  shelf_depth: number;   // fondo útil
+  lip_height: number;    // pestaña frontal
+  vesa_hole_d: number;   // Ø de los agujeros del patrón
+  extraHoles: Marker[];  // agujeros extra en la balda
+};
+
+export const VesaShelf: ModelDef<VesaShelfState> = {
+  id: "vesa_shelf",
+  label: "VESA Shelf",
+  allowFreeHoles: true,
+  sliders: [
+    { key: "vesa_mm", label: "Patrón VESA (mm)", min: 75, max: 200, step: 25 },
+    { key: "shelf_width", label: "Ancho balda (mm)", min: 120, max: 400, step: 1 },
+    { key: "shelf_depth", label: "Fondo balda (mm)", min: 80, max: 300, step: 1 },
+    { key: "lip_height", label: "Pestaña frontal (mm)", min: 0, max: 30, step: 1 },
+    { key: "thickness", label: "Espesor (mm)", min: 3, max: 8, step: 0.5 },
+    { key: "vesa_hole_d", label: "Ø VESA (mm)", min: 3, max: 8, step: 0.5 },
+  ],
+  defaults: {
+    vesa_mm: 100,
+    thickness: 5,
+    shelf_width: 220,
+    shelf_depth: 160,
+    lip_height: 10,
+    vesa_hole_d: 5,
+    extraHoles: [],
+  },
+  autoMarkers: (s) => {
+    const p = s.vesa_mm;
+    const d = s.vesa_hole_d;
+    return [
+      { x_mm:  p / 2, z_mm:  p / 2, d_mm: d },
+      { x_mm: -p / 2, z_mm:  p / 2, d_mm: d },
+      { x_mm:  p / 2, z_mm: -p / 2, d_mm: d },
+      { x_mm: -p / 2, z_mm: -p / 2, d_mm: d },
+    ];
+  },
+  toBox: (s) => ({
+    length: s.shelf_depth,
+    height: s.thickness,
+    width: s.shelf_width,
+    thickness: s.thickness,
+  }),
+  toPayload: (s) => ({
+    model: "vesa_shelf",
+    vesa_mm: s.vesa_mm,
+    thickness_mm: s.thickness,
+    shelf_width_mm: s.shelf_width,
+    shelf_depth_mm: s.shelf_depth,
+    lip_height_mm: s.lip_height,
+    vesa_hole_d_mm: s.vesa_hole_d,
+    // agujeros incluye patrón + extras (el backend puede ignorar los que estén fuera)
+    holes: [...(VesaShelf.autoMarkers!(s)), ...s.extraHoles],
+  }),
+};
+
 // ——— Registry export
 export const MODELS = {
   cable_tray: CableTray,
@@ -387,4 +446,5 @@ export const MODELS = {
   qr_plate: QRPlate,
   enclosure_ip65: EnclosureIP65,
   cable_clip: CableClip,
+  vesa_shelf: VesaShelf, // NUEVO
 } as const;
