@@ -65,14 +65,14 @@ export default function STLViewer({
   const [clipping, setClipping] = useState<boolean>(defaultClipping);
   const [clipMM, setClipMM] = useState<number>(defaultClipMM);
 
-  // Estado interno (sin tipos de THREE para evitar errores en build)
+  // Estado interno (sin tipos de THREE en posiciones de tipo para evitar errores en build)
   const state = useMemo(
     () => ({
       renderer: null as any,
       scene: new THREE.Scene(),
       camera: new THREE.PerspectiveCamera(45, width / height, 0.1, 8000),
-      model: null as any,          // THREE.Mesh | null
-      boxMesh: null as any,        // THREE.LineSegments | null
+      model: null as any,          // Mesh
+      boxMesh: null as any,        // LineSegments
       markerGroup: new THREE.Group(),
       raycaster: new THREE.Raycaster(),
       pointer: new THREE.Vector2(),
@@ -125,7 +125,7 @@ export default function STLViewer({
       const tickGeo = new THREE.BufferGeometry();
       const verts: number[] = [];
 
-      const addTick = (p1: THREE.Vector3, p2: THREE.Vector3) => {
+      const addTick = (p1: any, p2: any) => {
         verts.push(p1.x, p1.y, p1.z, p2.x, p2.y, p2.z);
       };
 
@@ -165,7 +165,7 @@ export default function STLViewer({
 
   /** Centra cámara en pieza/caja */
   const fitToTarget = useCallback(() => {
-    let bb: THREE.Box3 | null = null;
+    let bb: any = null;
 
     if (state.model) {
       (state.model.geometry as any).computeBoundingBox?.();
@@ -268,18 +268,18 @@ export default function STLViewer({
     window.addEventListener("mouseup", onUp);
 
     // Clicks: medir (2 clicks) y añadir agujeros con **Alt** (solo)
-    const tempPts: THREE.Vector3[] = [];
+    const tempPts: any[] = [];
     const onClick = (e: MouseEvent) => {
       const rect = el.getBoundingClientRect();
       state.pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       state.pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
       state.raycaster.setFromCamera(state.pointer, state.camera);
 
-      const targets: THREE.Object3D[] = [];
+      const targets: any[] = [];
       if (state.model) targets.push(state.model);
       const ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0); // Y=0
 
-      let hitPoint: THREE.Vector3 | null = null;
+      let hitPoint: any = null;
       const hits = state.raycaster.intersectObjects(targets, true);
       if (hits.length) {
         hitPoint = hits[0].point.clone();
