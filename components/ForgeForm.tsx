@@ -24,18 +24,10 @@ async function generateSTL(payload: any): Promise<GenerateResponse> {
     if (!res.ok) {
       return { status: "error", message: data?.message || text || `HTTP ${res.status}` };
     }
-
-    // IMPORTANT: devolvemos una URL estable de descarga (proxy)
-    // evitamos abrir directamente la firmada de supabase para no caer en "requested path is invalid"
-    const key = data?.key || data?.path || data?.stl_path; // el backend devuelve la clave guardada (p.e. "cable_tray/xxxx.stl")
-    const stableUrl = key ? `/api/forge/download?p=${encodeURIComponent(key)}` : null;
-
-    // fallback por si solo viniera stl_url
-    const direct = data?.stl_url || data?.url || data?.data?.stl_url || null;
-    const url = stableUrl ?? direct;
-
+    // Respetamos tu backend: usamos la URL que ya devuelve
+    const url = data?.stl_url || data?.url || data?.data?.stl_url || null;
     if (url) return { status: "ok", stl_url: url };
-    return { status: "error", message: "Backend no devolvió ruta del STL" };
+    return { status: "error", message: "Backend no devolvió stl_url" };
   } catch (e: any) {
     return { status: "error", message: e?.message || "Fallo de red" };
   }
@@ -54,7 +46,7 @@ export default function ForgeForm() {
   }, []);
   const [state, setState] = useState<Record<ModelId, any>>(initialState);
 
-  // agujeros: diámetro default (cuando añades con ALT/Shift+clic) y snap
+  // agujeros: diámetro default y snap
   const [holeDiameter, setHoleDiameter] = useState(5);
   const [snapStep, setSnapStep] = useState(1);
 
@@ -65,36 +57,33 @@ export default function ForgeForm() {
   const def = MODELS[model];
   const cur = state[model];
 
-  // caja para dibujar la pieza aunque aún no haya STL
+  // caja para que el visor no quede vacío nunca
   const box = useMemo(() => def.toBox(cur), [def, cur]);
 
-  // lista visible de marcadores = auto (si el modelo define) + libres (del estado)
+  // markers visibles = auto + libres (libres pisan a auto si coinciden)
   const markers: Marker[] = useMemo(() => {
     const auto: Marker[] = def.autoMarkers ? def.autoMarkers(cur) : [];
     const free: Marker[] =
       "extraHoles" in cur ? (cur.extraHoles as Marker[]) :
       "holes"      in cur ? (cur.holes as Marker[])      : [];
-    // dejamos que los libres pisen a los auto si coinciden
     const k = (m: Marker) => `${m.x_mm}|${m.y_mm ?? 0}|${m.z_mm}|${m.d_mm ?? holeDiameter}`;
     const seen = new Set<string>();
     const out: Marker[] = [];
     for (const m of auto)  { const kk = k(m); if (!seen.has(kk)) { seen.add(kk); out.push(m); } }
-    for (const m of free)  { const kk = k(m); if (seen.has(kk)) { const i = out.findIndex(o => k(o) === kk); if (i >= 0) out[i] = m; } else { out.push(m); seen.add(kk); } }
+    for (const m of free)  { const kk = k(m); const i = out.findIndex(o => k(o) === kk); if (i >= 0) out[i] = m; else { out.push(m); seen.add(kk); } }
     return out;
   }, [def, cur, holeDiameter]);
 
-  // cuando el visor devuelve los marcadores editados: guardamos solo los "libres"
+  // el visor devuelve la lista completa => guardamos SOLO los libres (auto se recalcula)
   const handleMarkersChange = (nextMarkers: Marker[]) => {
     if (!def.allowFreeHoles) return;
     setState((prev) => {
       const copy = { ...prev };
       const s = { ...copy[model] };
-
       const auto = def.autoMarkers ? def.autoMarkers(cur) : [];
       const key = (m: Marker) => `${m.x_mm}|${m.y_mm ?? 0}|${m.z_mm}|${m.d_mm ?? holeDiameter}`;
       const autoSet = new Set(auto.map(key));
       const free = nextMarkers.filter((m) => !autoSet.has(key(m)));
-
       if ("extraHoles" in s) s.extraHoles = free;
       else if ("holes" in s) s.holes = free;
       copy[model] = s;
@@ -102,7 +91,7 @@ export default function ForgeForm() {
     });
   };
 
-  // lista “editable” para el panel derecho
+  // lista editable para el panel
   const holesList: Marker[] =
     "extraHoles" in cur ? (cur.extraHoles as Marker[]) :
     "holes"      in cur ? (cur.holes as Marker[])      : [];
@@ -115,7 +104,6 @@ export default function ForgeForm() {
       const list: Marker[] =
         "extraHoles" in s ? [...(s.extraHoles as Marker[])] :
         "holes"      in s ? [...(s.holes as Marker[])]      : [];
-
       if (!list[idx]) return prev;
       list[idx] = {
         x_mm: list[idx].x_mm,
@@ -124,7 +112,6 @@ export default function ForgeForm() {
         d_mm: list[idx].d_mm ?? holeDiameter,
         ...patch,
       };
-
       if ("extraHoles" in s) s.extraHoles = list;
       else if ("holes" in s) s.holes = list;
       copy[model] = s;
@@ -160,18 +147,13 @@ export default function ForgeForm() {
   };
 
   // sliders dinámicos
-  const sliders = useMemo(() => {
-    return def.sliders.map((s) => ({ ...s, value: cur[s.key] }));
-  }, [def.sliders, cur]);
-
+  const sliders = useMemo(() => def.sliders.map((s) => ({ ...s, value: cur[s.key] })), [def.sliders, cur]);
   const updateSlider = (key: string, v: number) => {
     setState((prev) => ({ ...prev, [model]: { ...prev[model], [key]: v } }));
   };
 
-  // generar STL con el estado actual (incluye agujeros libres)
   async function onGenerate() {
     setBusy(true); setError(null); setStlUrl(null);
-    // IMPORTANT: el backend debe devolver también "key" (ruta dentro del bucket)
     const payload = def.toPayload(state[model]);
     const res = await generateSTL(payload);
     if (res.status === "ok") setStlUrl(res.stl_url);
@@ -193,22 +175,15 @@ export default function ForgeForm() {
         <ModelSelector value={model} onChange={setModel} />
         <STLViewerPro
           key={model}
-          // mostrar siempre el sólido “paramétrico” para que no haya lienzo vacío
           box={box}
-          // cámara/UX mejoradas por defecto
-          defaultAxis="free"
-          defaultClipping={false}
-          defaultClipMM={0}
-          // agujeros visibles y editables
           markers={markers}
           onMarkersChange={handleMarkersChange}
-          // interacción
           snapMM={snapStep}
           addDiameter={holeDiameter}
         />
       </section>
 
-      {/* Panel derecho */}
+      {/* Panel */}
       <ControlsPanel
         modelLabel={def.label}
         sliders={sliders}
@@ -226,7 +201,7 @@ export default function ForgeForm() {
         busy={busy}
         stlUrl={stlUrl}
         error={error}
-        // NUEVO: edición numérica de agujeros en el panel (profesional y sin tapar el visor)
+        // edición numérica sin panel flotante:
         holes={holesList}
         onUpdateHole={(idx, patch) => updateHole(idx, patch)}
         onRemoveHole={removeHole}
