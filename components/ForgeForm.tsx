@@ -35,6 +35,7 @@ async function generateSTL(payload: any): Promise<GenerateResponse> {
 export default function ForgeForm() {
   const [model, setModel] = useState<ModelId>("cable_tray");
 
+  // Estado por modelo desde defaults del registry
   const initialState = useMemo(() => {
     const m: Record<ModelId, any> = {} as any;
     (Object.keys(MODELS) as ModelId[]).forEach((id) => {
@@ -44,6 +45,7 @@ export default function ForgeForm() {
   }, []);
   const [state, setState] = useState<Record<ModelId, any>>(initialState);
 
+  // parámetros comunes para agujeros
   const [holeDiameter, setHoleDiameter] = useState(5);
   const [snapStep, setSnapStep] = useState(1);
 
@@ -54,25 +56,32 @@ export default function ForgeForm() {
   const def = MODELS[model];
   const cur = state[model];
 
+  // Marcadores visibles (auto + libres)
   const markers: Marker[] = useMemo(() => {
     const auto = def.autoMarkers ? def.autoMarkers(cur) : [];
     const free: Marker[] =
       "extraHoles" in cur ? cur.extraHoles :
       "holes" in cur ? cur.holes : [];
+    // los “auto” van primero para que los libres pisen si coinciden
     return [...auto, ...free];
   }, [def, cur]);
 
+  // El visor notifica cualquier cambio en la lista completa de marcadores
   const handleMarkersChange = (nextMarkers: Marker[]) => {
     if (!def.allowFreeHoles) return;
     setState((prev) => {
       const copy = { ...prev };
       const s = { ...copy[model] };
+
+      // filtra autoMarkers para dejar solo los libres en estado
       const auto = def.autoMarkers ? def.autoMarkers(cur) : [];
       const key = (m: Marker) => `${m.x_mm}|${m.y_mm ?? 0}|${m.z_mm}|${m.d_mm}`;
       const autoSet = new Set(auto.map(key));
       const free = nextMarkers.filter((m) => !autoSet.has(key(m)));
+
       if ("extraHoles" in s) s.extraHoles = free;
       else if ("holes" in s) s.holes = free;
+
       copy[model] = s;
       return copy;
     });
@@ -89,6 +98,74 @@ export default function ForgeForm() {
     });
   };
 
+  // Sliders dinámicos del modelo actual
   const sliders = useMemo(() => {
     return def.sliders.map((s) => ({ ...s, value: cur[s.key] }));
   }, [def.sliders, cur]);
+
+  const updateSlider = (key: string, v: number) => {
+    setState((prev) => ({ ...prev, [model]: { ...prev[model], [key]: v } }));
+  };
+
+  // Generar STL con el payload que define cada modelo en el registry
+  async function onGenerate() {
+    setBusy(true);
+    setError(null);
+    setStlUrl(null);
+    const payload = def.toPayload(state[model]);
+    const res = await generateSTL(payload);
+    if (res.status === "ok") setStlUrl(res.stl_url);
+    else setError(res.message);
+    setBusy(false);
+  }
+
+  // Opciones específicas presentes en varios modelos
+  const allowFree = def.allowFreeHoles;
+  const ventilated = "ventilated" in cur ? !!cur.ventilated : true;
+  const toggleVentilated = (v: boolean) => {
+    if (!("ventilated" in cur)) return;
+    setState((prev) => ({ ...prev, [model]: { ...prev[model], ventilated: v } }));
+  };
+
+  return (
+    <div className="mx-auto grid max-w-[1600px] grid-cols-1 gap-6 px-4 py-6 lg:grid-cols-[1fr,380px]">
+      {/* Visor */}
+      <section className="h-[calc(100svh-160px)] rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
+        <ModelSelector value={model} onChange={setModel} />
+        <STLViewerPro
+          key={model}
+          stlUrl={stlUrl ?? undefined}
+          markers={markers}
+          onMarkersChange={handleMarkersChange}
+          defaultHoleDiameter={holeDiameter}
+          snapMM={snapStep}
+          // El Pro ya incluye:
+          // - bloqueo por ejes en su propio UI
+          // - reglas 3D con ticks/labels
+          // - plano de corte (clipping plane) visual
+          // - lista editable de agujeros (x/y/z/Ø) con borrar por ítem
+        />
+      </section>
+
+      {/* Panel */}
+      <ControlsPanel
+        modelLabel={def.label}
+        sliders={sliders}
+        onChange={updateSlider}
+        ventilated={ventilated}
+        onToggleVentilated={toggleVentilated}
+        holesEnabled={allowFree}
+        onToggleHoles={() => {}}
+        holeDiameter={holeDiameter}
+        onHoleDiameter={setHoleDiameter}
+        snapStep={snapStep}
+        onSnapStep={setSnapStep}
+        onClearHoles={clearMarkers}
+        onGenerate={onGenerate}
+        busy={busy}
+        stlUrl={stlUrl}
+        error={error}
+      />
+    </div>
+  );
+}
