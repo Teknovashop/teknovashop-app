@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import STLViewer, { type Marker } from "@/components/STLViewer";
+import STLViewerPro from "@/components/STLViewerPro";
+import { type Marker } from "@/components/STLViewer"; // fuente única del tipo
 import ControlsPanel from "@/components/ControlsPanel";
 import ModelSelector from "@/components/ModelSelector";
 import { MODELS, type ModelId } from "@/models/registry";
@@ -20,8 +21,14 @@ async function generateSTL(payload: any): Promise<GenerateResponse> {
     });
     const text = await res.text();
     let data: any = null;
-    try { data = JSON.parse(text); } catch {}
-    if (!res.ok) return { status: "error", message: data?.message || text || `HTTP ${res.status}` };
+    try {
+      data = JSON.parse(text);
+    } catch {}
+    if (!res.ok)
+      return {
+        status: "error",
+        message: data?.message || text || `HTTP ${res.status}`,
+      };
     const url = data?.stl_url || data?.url || data?.data?.stl_url || null;
     if (url) return { status: "ok", stl_url: url };
     return { status: "error", message: "Backend no devolvió stl_url" };
@@ -54,37 +61,37 @@ export default function ForgeForm() {
   const def = MODELS[model];
   const cur = state[model];
 
-  // caja del visor
-  const box = useMemo(() => def.toBox(cur), [def, cur]);
+  // caja del visor (lo calcula el modelo; el Pro no la necesita, pero lo dejamos por si el Panel la usa)
+  const box = useMemo(() => def.toBox(cur), [def, cur]); // eslint-disable-line @typescript-eslint/no-unused-vars
 
   // marcadores visibles (auto + libres)
   const markers: Marker[] = useMemo(() => {
     const auto = def.autoMarkers ? def.autoMarkers(cur) : [];
     const free: Marker[] =
-      "extraHoles" in cur ? cur.extraHoles :
-      "holes" in cur ? cur.holes : [];
+      "extraHoles" in cur ? cur.extraHoles : "holes" in cur ? cur.holes : [];
     // preferimos que free pise a auto si coinciden
     return [...auto, ...free];
   }, [def, cur]);
 
-  // añadir / borrar marcadores libres (con normal + y_mm)
-  const onAddMarker = (m: Marker) => {
+  // callback desde el visor Pro para persistir los agujeros libres
+  const handleMarkersChange = (nextMarkers: Marker[]) => {
     if (!def.allowFreeHoles) return;
     setState((prev) => {
-      const next = { ...prev };
-      const s = { ...next[model] };
-      const hole: Marker = {
-        x_mm: m.x_mm,
-        y_mm: m.y_mm ?? 0,
-        z_mm: m.z_mm,
-        d_mm: m.d_mm ?? holeDiameter,
-        nx: m.nx, ny: m.ny, nz: m.nz,
-        axis: m.axis ?? "auto",
-      };
-      if ("extraHoles" in s) s.extraHoles = [...(s.extraHoles || []), hole];
-      else if ("holes" in s) s.holes = [...(s.holes || []), hole];
-      next[model] = s;
-      return next;
+      const copy = { ...prev };
+      const s = { ...copy[model] };
+
+      // Conservamos los "auto" y guardamos únicamente los libres en el estado del modelo
+      const auto = def.autoMarkers ? def.autoMarkers(cur) : [];
+      // Heurística sencilla: libres = los que no están en "auto" por igualdad de coordenadas/diámetro
+      const autoKey = (m: Marker) => `${m.x_mm}|${m.y_mm ?? 0}|${m.z_mm}|${m.d_mm}`;
+      const autoSet = new Set(auto.map(autoKey));
+      const free = nextMarkers.filter((m) => !autoSet.has(autoKey(m)));
+
+      if ("extraHoles" in s) s.extraHoles = free;
+      else if ("holes" in s) s.holes = free;
+
+      copy[model] = s;
+      return copy;
     });
   };
 
@@ -113,11 +120,13 @@ export default function ForgeForm() {
 
   // generar STL (viaja la estructura de agujeros tal cual)
   async function onGenerate() {
-    setBusy(true); setError(null); setStlUrl(null);
+    setBusy(true);
+    setError(null);
+    setStlUrl(null);
     const payload = def.toPayload(state[model]);
-    // no filtramos: payload.{holes|extraHoles} incluyen {x,y,z,d, nx,ny,nz, axis}
     const res = await generateSTL(payload);
-    if (res.status === "ok") setStlUrl(res.stl_url); else setError(res.message);
+    if (res.status === "ok") setStlUrl(res.stl_url);
+    else setError(res.message);
     setBusy(false);
   }
 
@@ -125,7 +134,10 @@ export default function ForgeForm() {
   const ventilated = "ventilated" in cur ? !!cur.ventilated : true;
   const toggleVentilated = (v: boolean) => {
     if (!("ventilated" in cur)) return;
-    setState((prev) => ({ ...prev, [model]: { ...prev[model], ventilated: v } }));
+    setState((prev) => ({
+      ...prev,
+      [model]: { ...prev[model], ventilated: v },
+    }));
   };
 
   return (
@@ -133,15 +145,13 @@ export default function ForgeForm() {
       {/* Visor */}
       <section className="h-[calc(100svh-160px)] rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
         <ModelSelector value={model} onChange={setModel} />
-        <STLViewer
+        <STLViewerPro
           key={model}
-          background="#ffffff"
-          box={box}
+          stlUrl={stlUrl ?? undefined}    /* opcional: previsualizar último STL */
           markers={markers}
-          holesMode={allowFree}
-          addDiameter={holeDiameter}
-          snapStep={snapStep}
-          onAddMarker={onAddMarker}
+          onMarkersChange={handleMarkersChange}
+          defaultHoleDiameter={holeDiameter}
+          snapMM={snapStep}
         />
       </section>
 
@@ -153,7 +163,7 @@ export default function ForgeForm() {
         ventilated={ventilated}
         onToggleVentilated={toggleVentilated}
         holesEnabled={allowFree}
-        onToggleHoles={() => {}}
+        onToggleHoles={() => {}}           /* mantenemos API del panel */
         holeDiameter={holeDiameter}
         onHoleDiameter={setHoleDiameter}
         snapStep={snapStep}
