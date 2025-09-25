@@ -21,10 +21,21 @@ async function generateSTL(payload: any): Promise<GenerateResponse> {
     const text = await res.text();
     let data: any = null;
     try { data = JSON.parse(text); } catch {}
-    if (!res.ok) return { status: "error", message: data?.message || text || `HTTP ${res.status}` };
-    const url = data?.stl_url || data?.url || data?.data?.stl_url || null;
+    if (!res.ok) {
+      return { status: "error", message: data?.message || text || `HTTP ${res.status}` };
+    }
+
+    // IMPORTANT: devolvemos una URL estable de descarga (proxy)
+    // evitamos abrir directamente la firmada de supabase para no caer en "requested path is invalid"
+    const key = data?.key || data?.path || data?.stl_path; // el backend devuelve la clave guardada (p.e. "cable_tray/xxxx.stl")
+    const stableUrl = key ? `/api/forge/download?p=${encodeURIComponent(key)}` : null;
+
+    // fallback por si solo viniera stl_url
+    const direct = data?.stl_url || data?.url || data?.data?.stl_url || null;
+    const url = stableUrl ?? direct;
+
     if (url) return { status: "ok", stl_url: url };
-    return { status: "error", message: "Backend no devolvió stl_url" };
+    return { status: "error", message: "Backend no devolvió ruta del STL" };
   } catch (e: any) {
     return { status: "error", message: e?.message || "Fallo de red" };
   }
@@ -33,7 +44,7 @@ async function generateSTL(payload: any): Promise<GenerateResponse> {
 export default function ForgeForm() {
   const [model, setModel] = useState<ModelId>("cable_tray");
 
-  // Estado por modelo desde defaults del registry
+  // estado inicial por modelo
   const initialState = useMemo(() => {
     const m: Record<ModelId, any> = {} as any;
     (Object.keys(MODELS) as ModelId[]).forEach((id) => {
@@ -43,10 +54,9 @@ export default function ForgeForm() {
   }, []);
   const [state, setState] = useState<Record<ModelId, any>>(initialState);
 
-  // parámetros comunes de agujeros
+  // agujeros: diámetro default (cuando añades con ALT/Shift+clic) y snap
   const [holeDiameter, setHoleDiameter] = useState(5);
   const [snapStep, setSnapStep] = useState(1);
-  const [holesMode, setHolesMode] = useState(true);
 
   const [busy, setBusy] = useState(false);
   const [stlUrl, setStlUrl] = useState<string | null>(null);
@@ -55,30 +65,84 @@ export default function ForgeForm() {
   const def = MODELS[model];
   const cur = state[model];
 
-  // caja del visor (¡siempre se dibuja!)
+  // caja para dibujar la pieza aunque aún no haya STL
   const box = useMemo(() => def.toBox(cur), [def, cur]);
 
-  // marcadores visibles (auto + libres)
+  // lista visible de marcadores = auto (si el modelo define) + libres (del estado)
   const markers: Marker[] = useMemo(() => {
-    const auto = def.autoMarkers ? def.autoMarkers(cur) : [];
+    const auto: Marker[] = def.autoMarkers ? def.autoMarkers(cur) : [];
     const free: Marker[] =
-      "extraHoles" in cur ? cur.extraHoles :
-      "holes" in cur ? cur.holes : [];
-    // preferimos que free pise a auto si coinciden
-    return [...auto, ...free];
-  }, [def, cur]);
+      "extraHoles" in cur ? (cur.extraHoles as Marker[]) :
+      "holes"      in cur ? (cur.holes as Marker[])      : [];
+    // dejamos que los libres pisen a los auto si coinciden
+    const k = (m: Marker) => `${m.x_mm}|${m.y_mm ?? 0}|${m.z_mm}|${m.d_mm ?? holeDiameter}`;
+    const seen = new Set<string>();
+    const out: Marker[] = [];
+    for (const m of auto)  { const kk = k(m); if (!seen.has(kk)) { seen.add(kk); out.push(m); } }
+    for (const m of free)  { const kk = k(m); if (seen.has(kk)) { const i = out.findIndex(o => k(o) === kk); if (i >= 0) out[i] = m; } else { out.push(m); seen.add(kk); } }
+    return out;
+  }, [def, cur, holeDiameter]);
 
+  // cuando el visor devuelve los marcadores editados: guardamos solo los "libres"
   const handleMarkersChange = (nextMarkers: Marker[]) => {
     if (!def.allowFreeHoles) return;
     setState((prev) => {
       const copy = { ...prev };
       const s = { ...copy[model] };
+
       const auto = def.autoMarkers ? def.autoMarkers(cur) : [];
-      const key = (m: Marker) => `${m.x_mm}|${m.y_mm ?? 0}|${m.z_mm}|${m.d_mm}`;
+      const key = (m: Marker) => `${m.x_mm}|${m.y_mm ?? 0}|${m.z_mm}|${m.d_mm ?? holeDiameter}`;
       const autoSet = new Set(auto.map(key));
       const free = nextMarkers.filter((m) => !autoSet.has(key(m)));
+
       if ("extraHoles" in s) s.extraHoles = free;
       else if ("holes" in s) s.holes = free;
+      copy[model] = s;
+      return copy;
+    });
+  };
+
+  // lista “editable” para el panel derecho
+  const holesList: Marker[] =
+    "extraHoles" in cur ? (cur.extraHoles as Marker[]) :
+    "holes"      in cur ? (cur.holes as Marker[])      : [];
+
+  const updateHole = (idx: number, patch: Partial<Marker>) => {
+    if (!def.allowFreeHoles) return;
+    setState((prev) => {
+      const copy = { ...prev };
+      const s = { ...copy[model] };
+      const list: Marker[] =
+        "extraHoles" in s ? [...(s.extraHoles as Marker[])] :
+        "holes"      in s ? [...(s.holes as Marker[])]      : [];
+
+      if (!list[idx]) return prev;
+      list[idx] = {
+        x_mm: list[idx].x_mm,
+        y_mm: list[idx].y_mm ?? 0,
+        z_mm: list[idx].z_mm,
+        d_mm: list[idx].d_mm ?? holeDiameter,
+        ...patch,
+      };
+
+      if ("extraHoles" in s) s.extraHoles = list;
+      else if ("holes" in s) s.holes = list;
+      copy[model] = s;
+      return copy;
+    });
+  };
+
+  const removeHole = (idx: number) => {
+    if (!def.allowFreeHoles) return;
+    setState((prev) => {
+      const copy = { ...prev };
+      const s = { ...copy[model] };
+      const list: Marker[] =
+        "extraHoles" in s ? [...(s.extraHoles as Marker[])] :
+        "holes"      in s ? [...(s.holes as Marker[])]      : [];
+      list.splice(idx, 1);
+      if ("extraHoles" in s) s.extraHoles = list;
+      else if ("holes" in s) s.holes = list;
       copy[model] = s;
       return copy;
     });
@@ -104,12 +168,14 @@ export default function ForgeForm() {
     setState((prev) => ({ ...prev, [model]: { ...prev[model], [key]: v } }));
   };
 
-  // generar STL
+  // generar STL con el estado actual (incluye agujeros libres)
   async function onGenerate() {
     setBusy(true); setError(null); setStlUrl(null);
-    const payload = def.toPayload(state[model]); // holes viaja tal cual
+    // IMPORTANT: el backend debe devolver también "key" (ruta dentro del bucket)
+    const payload = def.toPayload(state[model]);
     const res = await generateSTL(payload);
-    if (res.status === "ok") setStlUrl(res.stl_url); else setError(res.message);
+    if (res.status === "ok") setStlUrl(res.stl_url);
+    else setError(res.message);
     setBusy(false);
   }
 
@@ -120,38 +186,6 @@ export default function ForgeForm() {
     setState((prev) => ({ ...prev, [model]: { ...prev[model], ventilated: v } }));
   };
 
-  // lista de agujeros (solo los libres)
-  const holesList: Marker[] = useMemo(() => {
-    if ("extraHoles" in cur) return cur.extraHoles || [];
-    if ("holes" in cur) return cur.holes || [];
-    return [];
-  }, [cur]);
-
-  const updateHole = (idx: number, patch: Partial<Marker>) => {
-    setState(prev => {
-      const copy = { ...prev };
-      const s = { ...copy[model] };
-      const arr = ("extraHoles" in s) ? (s.extraHoles || []) : (("holes" in s) ? (s.holes || []) : []);
-      const next = arr.map((m: Marker, i: number) => i===idx ? { ...m, ...patch } : m);
-      if ("extraHoles" in s) s.extraHoles = next;
-      else if ("holes" in s) s.holes = next;
-      copy[model] = s;
-      return copy;
-    });
-  };
-  const removeHole = (idx: number) => {
-    setState(prev => {
-      const copy = { ...prev };
-      const s = { ...copy[model] };
-      const arr = ("extraHoles" in s) ? (s.extraHoles || []) : (("holes" in s) ? (s.holes || []) : []);
-      const next = arr.filter((_: any, i: number) => i!==idx);
-      if ("extraHoles" in s) s.extraHoles = next;
-      else if ("holes" in s) s.holes = next;
-      copy[model] = s;
-      return copy;
-    });
-  };
-
   return (
     <div className="mx-auto grid max-w-[1600px] grid-cols-1 gap-6 px-4 py-6 lg:grid-cols-[1fr,380px]">
       {/* Visor */}
@@ -159,24 +193,30 @@ export default function ForgeForm() {
         <ModelSelector value={model} onChange={setModel} />
         <STLViewerPro
           key={model}
+          // mostrar siempre el sólido “paramétrico” para que no haya lienzo vacío
           box={box}
+          // cámara/UX mejoradas por defecto
+          defaultAxis="free"
+          defaultClipping={false}
+          defaultClipMM={0}
+          // agujeros visibles y editables
           markers={markers}
           onMarkersChange={handleMarkersChange}
-          holesEnabled={allowFree && holesMode}
-          holeDiameter={holeDiameter}
+          // interacción
           snapMM={snapStep}
+          addDiameter={holeDiameter}
         />
       </section>
 
-      {/* Panel derecho (tu ControlsPanel, sin romper) */}
+      {/* Panel derecho */}
       <ControlsPanel
         modelLabel={def.label}
         sliders={sliders}
         onChange={updateSlider}
         ventilated={ventilated}
         onToggleVentilated={toggleVentilated}
-        holesEnabled={holesMode}
-        onToggleHoles={setHolesMode}
+        holesEnabled={allowFree}
+        onToggleHoles={() => {}}
         holeDiameter={holeDiameter}
         onHoleDiameter={setHoleDiameter}
         snapStep={snapStep}
@@ -186,6 +226,10 @@ export default function ForgeForm() {
         busy={busy}
         stlUrl={stlUrl}
         error={error}
+        // NUEVO: edición numérica de agujeros en el panel (profesional y sin tapar el visor)
+        holes={holesList}
+        onUpdateHole={(idx, patch) => updateHole(idx, patch)}
+        onRemoveHole={removeHole}
       />
     </div>
   );
