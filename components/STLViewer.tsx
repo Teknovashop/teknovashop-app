@@ -1,254 +1,254 @@
-// components/STLViewerPro.tsx
+// components/STLViewer.tsx
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
-import STLViewer, { type Marker } from "./STLViewer";
+import { useEffect, useRef, useState, useMemo } from "react";
+import * as THREE from "three";
+import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 
-/** Props del Pro: superset del visor base */
-type STLViewerProProps = {
-  stlUrl?: string;
-  width?: number;
-  height?: number;
-
-  /** marcadores que ya manejas en ForgeForm */
-  markers?: Marker[];
-  onMarkersChange?: (mk: Marker[]) => void;
-
-  /** diámetro por defecto de agujero al añadir */
-  defaultHoleDiameter?: number;
-  /** paso de snap en mm para marcadores y medidas */
-  snapMM?: number;
+/** Marcador simple (compat con backend) */
+export type Marker = {
+  x_mm: number;
+  y_mm?: number;
+  z_mm: number;
+  d_mm: number;
+  side?: "left" | "right" | "top" | "bottom";
 };
 
-export default function STLViewerPro({
+type STLViewerProps = {
+  stlUrl?: string;                  // URL firmada o blob
+  width?: number;
+  height?: number;
+  markers?: Marker[];               // opcional
+  onMeasure?(mm: number): void;     // callback distancia medida
+};
+
+export default function STLViewer({
   stlUrl,
-  width = 960,
-  height = 560,
-  markers: markersIn = [],
-  onMarkersChange,
-  defaultHoleDiameter = 5,
-  snapMM = 1,
-}: STLViewerProProps) {
-  /** estado local no destructivo sobre los marcadores entrantes */
-  const [localMarkers, setLocalMarkers] = useState<Marker[]>(markersIn);
-  const [holesMode, setHolesMode] = useState<boolean>(false);
-  const [measureMode, setMeasureMode] = useState<boolean>(false);
-  const [sectionOn, setSectionOn] = useState<boolean>(false);
-  const [ortho, setOrtho] = useState<boolean>(false);
-  const [snap, setSnap] = useState<number>(snapMM);
-  const [bg, setBg] = useState<"light" | "dark">("light");
+  width = 800,
+  height = 520,
+  markers = [],
+  onMeasure,
+}: STLViewerProps) {
+  const mountRef = useRef<HTMLDivElement | null>(null);
+  const [distanceMM, setDistanceMM] = useState<number | null>(null);
 
-  // sincroniza cuando cambian desde fuera
-  const first = useRef(true);
-  if (first.current || markersIn !== localMarkers) {
-    first.current = false;
-    // evita re-render infinito
-    if (JSON.stringify(markersIn) !== JSON.stringify(localMarkers)) {
-      setLocalMarkers(markersIn);
-    }
-  }
-
-  /** util: aplica snap */
-  const sn = useCallback(
-    (v: number) => (snap > 0 ? Math.round(v / snap) * snap : v),
-    [snap]
+  const state = useMemo(
+    () => ({
+      renderer: null as THREE.WebGLRenderer | null,
+      scene: new THREE.Scene(),
+      camera: new THREE.PerspectiveCamera(45, width / height, 0.1, 5000),
+      model: null as THREE.Mesh | null,
+      markerGroup: new THREE.Group(),
+      raycaster: new THREE.Raycaster(),
+      pointer: new THREE.Vector2(),
+      grid: null as THREE.GridHelper | null,
+      axes: null as THREE.AxesHelper | null,
+    }),
+    [width, height]
   );
 
-  /** añadir marcador desde visor base */
-  const handleAddMarker = useCallback(
-    (m: Marker) => {
-      const hole: Marker = {
-        x_mm: sn(m.x_mm),
-        y_mm: sn(m.y_mm ?? 0),
-        z_mm: sn(m.z_mm),
-        d_mm: m.d_mm ?? defaultHoleDiameter,
-      };
-      const next = [...localMarkers, hole];
-      setLocalMarkers(next);
-      onMarkersChange?.(next);
-    },
-    [localMarkers, onMarkersChange, defaultHoleDiameter, sn]
-  );
+  useEffect(() => {
+    if (!mountRef.current) return;
 
-  /** borrar último marcador */
-  const popMarker = useCallback(() => {
-    if (!localMarkers.length) return;
-    const next = localMarkers.slice(0, -1);
-    setLocalMarkers(next);
-    onMarkersChange?.(next);
-  }, [localMarkers, onMarkersChange]);
+    // Renderer
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(width, height);
+    mountRef.current.appendChild(renderer.domElement);
+    state.renderer = renderer;
 
-  /** limpiar todos */
-  const clearMarkers = useCallback(() => {
-    setLocalMarkers([]);
-    onMarkersChange?.([]);
-  }, [onMarkersChange]);
+    // Scene
+    state.scene.background = null;
 
-  /** descarga captura PNG del canvas del visor */
-  const takeScreenshot = useCallback(() => {
-    const mount = document.querySelector<HTMLDivElement>(
-      "[data-stlviewer-root]"
+    // Camera
+    state.camera.position.set(220, 140, 220);
+    state.camera.lookAt(0, 0, 0);
+
+    // Lights
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1.0);
+    hemi.position.set(0, 200, 0);
+    const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+    dir.position.set(100, 100, 50);
+    state.scene.add(hemi, dir);
+
+    // Grid en mm (plano Y=0)
+    state.grid = new THREE.GridHelper(1000, 100);
+    (state.grid.material as THREE.Material).opacity = 0.35;
+    (state.grid.material as THREE.Material).transparent = true;
+    state.grid.rotation.x = Math.PI / 2;
+    state.scene.add(state.grid);
+
+    // Ejes
+    state.axes = new THREE.AxesHelper(120);
+    state.scene.add(state.axes);
+
+    // Grupo para marcadores
+    state.markerGroup.name = "markers";
+    state.scene.add(state.markerGroup);
+
+    // Controles ligeros (drag/zoom)
+    let isDragging = false;
+    let last = { x: 0, y: 0 };
+    const el = renderer.domElement;
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const s = Math.sign(e.deltaY) > 0 ? 1.1 : 0.9;
+      state.camera.position.multiplyScalar(s);
+    };
+    const onDown = (e: MouseEvent) => {
+      isDragging = true;
+      last = { x: e.clientX, y: e.clientY };
+    };
+    const onMove = (e: MouseEvent) => {
+      if (!isDragging) return;
+      const dx = e.clientX - last.x;
+      const dy = e.clientY - last.y;
+      last = { x: e.clientX, y: e.clientY };
+      const rot = 0.005;
+      state.scene.rotation.y += dx * rot;
+      state.scene.rotation.x += dy * rot;
+    };
+    const onUp = () => (isDragging = false);
+
+    el.addEventListener("wheel", onWheel, { passive: false });
+    el.addEventListener("mousedown", onDown);
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+
+    // Medición 2 puntos sobre el modelo
+    const tempPts: THREE.Vector3[] = [];
+    const onClick = (e: MouseEvent) => {
+      if (!state.model) return;
+      const rect = el.getBoundingClientRect();
+      state.pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      state.pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      state.raycaster.setFromCamera(state.pointer, state.camera);
+      const hits = state.raycaster.intersectObject(state.model, true);
+      if (hits.length) {
+        tempPts.push(hits[0].point.clone());
+        if (tempPts.length === 2) {
+          const [a, b] = tempPts;
+          const mm = a.distanceTo(b);
+          setDistanceMM(mm);
+          onMeasure?.(mm);
+          // línea temporal
+          const geo = new THREE.BufferGeometry().setFromPoints([a, b]);
+          const mat = new THREE.LineBasicMaterial({ transparent: true });
+          const line = new THREE.Line(geo, mat);
+          state.scene.add(line);
+          setTimeout(() => {
+            state.scene.remove(line);
+            geo.dispose();
+            mat.dispose();
+          }, 1500);
+          tempPts.length = 0;
+        }
+      }
+    };
+    el.addEventListener("click", onClick);
+
+    // Loop
+    let raf = 0;
+    const tick = () => {
+      state.renderer!.render(state.scene, state.camera);
+      raf = requestAnimationFrame(tick);
+    };
+    tick();
+
+    // Cleanup
+    return () => {
+      cancelAnimationFrame(raf);
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("mousedown", onDown);
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      el.removeEventListener("click", onClick);
+      renderer.dispose();
+      if (mountRef.current) mountRef.current.removeChild(renderer.domElement);
+    };
+  }, [height, width]); // no dependemos de stlUrl/markers aquí
+
+  // Carga/recarga STL
+  useEffect(() => {
+    if (!state.renderer || !stlUrl) return;
+    const loader = new STLLoader();
+
+    loader.load(
+      stlUrl,
+      (geometry) => {
+        geometry.computeBoundingBox();
+        geometry.computeVertexNormals();
+
+        const material = new THREE.MeshStandardMaterial({
+          metalness: 0.1,
+          roughness: 0.6,
+          opacity: 1,
+          transparent: false,
+          color: 0xb8b8b8,
+        });
+
+        if (state.model) {
+          state.scene.remove(state.model);
+          (state.model.geometry as THREE.BufferGeometry).dispose();
+          (state.model.material as THREE.Material).dispose();
+        }
+
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        state.scene.add(mesh);
+        state.model = mesh;
+
+        // Centrado y encuadre
+        const bb = geometry.boundingBox!;
+        const size = new THREE.Vector3().subVectors(bb.max, bb.min);
+        const center = new THREE.Vector3().addVectors(bb.min, bb.max).multiplyScalar(0.5);
+        state.scene.position.set(-center.x, -bb.min.y, -center.z);
+
+        const maxDim = Math.max(size.x, size.y, size.z);
+        const dist = maxDim * 2.2;
+        state.camera.position.set(dist, dist * 0.6, dist);
+        state.camera.lookAt(0, 0, 0);
+      },
+      undefined,
+      (err) => console.error("STL load error:", err)
     );
-    if (!mount) return;
-    const canvas = mount.querySelector("canvas");
-    if (!canvas) return;
-    const url = canvas.toDataURL("image/png");
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "forge-preview.png";
-    a.click();
-  }, []);
+  }, [stlUrl]);
 
-  /** toolbar button */
-  const Btn = (p: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
-    <button
-      {...p}
-      className={[
-        "px-2 py-1 text-xs rounded border shadow-sm",
-        "bg-white hover:bg-gray-50 active:translate-y-px",
-        (p as any)["data-active"] ? "ring-2 ring-blue-500" : "",
-      ].join(" ")}
-    />
-  );
+  // Pintar marcadores (si vienen)
+  useEffect(() => {
+    if (!state.renderer) return;
+    // limpiar anteriores
+    state.markerGroup.clear();
+    if (!markers?.length) return;
 
-  /** HUD simple (coordenadas, #marcadores) */
-  const HUD = (
-    <div className="absolute left-2 bottom-2 text-[11px] bg-white/80 rounded px-2 py-1 border">
-      <div>
-        <b>Marcadores:</b> {localMarkers.length}
-      </div>
-      <div>
-        <b>Snap:</b> {snap} mm
-      </div>
-      <div>
-        <b>Vista:</b> {ortho ? "Orto" : "Persp"}
-      </div>
-    </div>
-  );
-
-  /** reglas/rulers (HTML superpuesto, no rompe perf) */
-  const Rulers = (
-    <>
-      {/* regla superior X */}
-      <div className="absolute top-0 left-0 right-0 h-6 bg-gradient-to-b from-gray-200 to-transparent pointer-events-none">
-        <div className="flex h-full text-[10px] text-gray-700">
-          {Array.from({ length: 21 }, (_, i) => (
-            <div key={i} className="flex-1 relative">
-              <div className="absolute left-1/2 -translate-x-1/2 top-0">|</div>
-              <div className="absolute left-1/2 -translate-x-1/2 top-2">
-                {i * 50}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-      {/* regla izquierda Z */}
-      <div className="absolute top-0 bottom-0 left-0 w-6 bg-gradient-to-r from-gray-200 to-transparent pointer-events-none">
-        <div className="flex flex-col h-full text-[10px] text-gray-700 items-start">
-          {Array.from({ length: 21 }, (_, i) => (
-            <div key={i} className="relative" style={{ height: `${100 / 20}%` }}>
-              <div className="absolute left-0 top-0">— {i * 50}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </>
-  );
+    for (const m of markers) {
+      const r = Math.max(0.6, Math.min(2.5, m.d_mm / 6)); // radio visual
+      const geo = new THREE.SphereGeometry(r, 16, 16);
+      const mat = new THREE.MeshStandardMaterial({ opacity: 0.9, transparent: true, color: 0xff9900 });
+      const sphere = new THREE.Mesh(geo, mat);
+      sphere.position.set(m.x_mm, m.y_mm ?? 0, m.z_mm);
+      state.markerGroup.add(sphere);
+    }
+  }, [markers]);
 
   return (
-    <div
-      className={
-        "relative rounded-2xl border shadow-sm " +
-        (bg === "light" ? "bg-white" : "bg-neutral-900")
-      }
-      style={{ width, height }}
-    >
-      {/* Barra de herramientas */}
-      <div className="absolute top-2 left-2 z-10 flex gap-2">
-        <Btn
-          onClick={() => setHolesMode((v) => !v)}
-          data-active={holesMode}
-          title="Modo agujeros (clic para añadir)"
-        >
-          🔩 Agujeros
-        </Btn>
-        <Btn
-          onClick={() => setMeasureMode((v) => !v)}
-          data-active={measureMode}
-          title="Medición (doble clic)"
-        >
-          📏 Medir
-        </Btn>
-        <Btn onClick={popMarker} title="Borrar último">
-          ⌫ Último
-        </Btn>
-        <Btn onClick={clearMarkers} title="Borrar todos">
-          🗑️ Todos
-        </Btn>
-        <span className="inline-flex items-center gap-1 text-xs bg-white/80 rounded border px-2">
-          Snap
-          <input
-            type="number"
-            min={0}
-            step={0.5}
-            value={snap}
-            onChange={(e) => setSnap(Number(e.target.value || 0))}
-            className="w-12 border rounded px-1 py-0.5"
-            title="Snap mm"
-          />
-          mm
-        </span>
-        <Btn
-          onClick={() => setOrtho((v) => !v)}
-          data-active={ortho}
-          title="Proyección ortográfica / perspectiva"
-        >
-          🧭 Orto
-        </Btn>
-        <Btn
-          onClick={() => setSectionOn((v) => !v)}
-          data-active={sectionOn}
-          title="Corte seccional (visual)"
-        >
-          ✂️ Sección
-        </Btn>
-        <Btn onClick={takeScreenshot} title="Capturar PNG">
-          📸 Captura
-        </Btn>
-        <Btn
-          onClick={() => setBg((b) => (b === "light" ? "dark" : "light"))}
-          title="Fondo claro/oscuro"
-        >
-          🌓 Fondo
-        </Btn>
+    <div className="relative rounded-2xl shadow-sm border bg-white/60" style={{ width, height }}>
+      <div ref={mountRef} className="w-full h-full" />
+      <div className="absolute top-2 left-2 text-xs px-2 py-1 bg-white/80 rounded">
+        {distanceMM ? `Medida: ${distanceMM.toFixed(1)} mm` : "Click x2 para medir"}
       </div>
-
-      {/* Reglas y HUD */}
-      {Rulers}
-      {HUD}
-
-      {/* Contenedor del visor base.
-          Importante: data-stlviewer-root para la captura */}
-      <div data-stlviewer-root className="absolute inset-6">
-        <STLViewer
-          stlUrl={stlUrl}
-          width={width - 12}   // margenes de rulers
-          height={height - 12}
-          markers={localMarkers}
-          holesMode={holesMode}
-          onAddMarker={handleAddMarker}
-        />
-      </div>
-
-      {/* overlays de modos */}
-      <div className="absolute right-2 top-2 text-xs bg-white/80 rounded px-2 py-1 border">
-        {holesMode ? "Modo: Agujeros" : measureMode ? "Modo: Medición" : "Modo: Navegar"}
-      </div>
-
-      {/* Indicador de sección (visual; el corte real es trabajo del modelo) */}
-      {sectionOn && (
-        <div className="pointer-events-none absolute inset-6 ring-2 ring-pink-500/60 rounded-xl" />
-      )}
+      <button
+        onClick={() => {
+          state.scene.rotation.set(0, 0, 0);
+          state.camera.position.set(220, 140, 220);
+          state.camera.lookAt(0, 0, 0);
+        }}
+        className="absolute top-2 right-2 text-xs px-2 py-1 bg-white/80 rounded hover:bg-white"
+      >
+        Reset
+      </button>
     </div>
   );
 }
