@@ -1,7 +1,6 @@
-// components/ForgeForm.tsx
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import STLViewerPro, { type Marker } from "@/components/STLViewerPro";
 import ControlsPanel from "@/components/ControlsPanel";
 import ModelSelector from "@/components/ModelSelector";
@@ -22,9 +21,7 @@ async function generateSTL(payload: any): Promise<GenerateResponse> {
     const text = await res.text();
     let data: any = null;
     try { data = JSON.parse(text); } catch {}
-    if (!res.ok) {
-      return { status: "error", message: data?.message || text || `HTTP ${res.status}` };
-    }
+    if (!res.ok) return { status: "error", message: data?.message || text || `HTTP ${res.status}` };
     const url = data?.stl_url || data?.url || data?.data?.stl_url || null;
     if (url) return { status: "ok", stl_url: url };
     return { status: "error", message: "Backend no devolvió stl_url" };
@@ -108,6 +105,14 @@ export default function ForgeForm() {
     else setError(res.message);
     setBusy(false);
   }
+
+  // === Autogeneración inicial para ver la pieza al abrir ===
+  useEffect(() => {
+    if (!stlUrl && !busy) {
+      onGenerate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [model]); // cuando cambies de pestaña de modelo, genera una vista
 
   const allowFree = def.allowFreeHoles;
   const ventilated = "ventilated" in cur ? !!cur.ventilated : true;
