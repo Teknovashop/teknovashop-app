@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import STLViewerPro, { type Marker } from "@/components/STLViewerPro"; // <-- import correcto
+import STLViewerPro, { type Marker } from "@/components/STLViewerPro";
 import ControlsPanel from "@/components/ControlsPanel";
 import ModelSelector from "@/components/ModelSelector";
 import { MODELS, type ModelId } from "@/models/registry";
@@ -35,7 +35,6 @@ async function generateSTL(payload: any): Promise<GenerateResponse> {
 export default function ForgeForm() {
   const [model, setModel] = useState<ModelId>("cable_tray");
 
-  // Estado por modelo desde defaults del registry
   const initialState = useMemo(() => {
     const m: Record<ModelId, any> = {} as any;
     (Object.keys(MODELS) as ModelId[]).forEach((id) => {
@@ -45,7 +44,6 @@ export default function ForgeForm() {
   }, []);
   const [state, setState] = useState<Record<ModelId, any>>(initialState);
 
-  // parámetros comunes para agujeros
   const [holeDiameter, setHoleDiameter] = useState(5);
   const [snapStep, setSnapStep] = useState(1);
 
@@ -56,10 +54,6 @@ export default function ForgeForm() {
   const def = MODELS[model];
   const cur = state[model];
 
-  // (Opcional) caja del visor por compatibilidad con tu panel/cálculos
-  // const box = useMemo(() => def.toBox(cur), [def, cur]);
-
-  // marcadores visibles (auto + libres)
   const markers: Marker[] = useMemo(() => {
     const auto = def.autoMarkers ? def.autoMarkers(cur) : [];
     const free: Marker[] =
@@ -68,21 +62,17 @@ export default function ForgeForm() {
     return [...auto, ...free];
   }, [def, cur]);
 
-  // persistir los agujeros libres cuando cambian desde el visor Pro
   const handleMarkersChange = (nextMarkers: Marker[]) => {
     if (!def.allowFreeHoles) return;
     setState((prev) => {
       const copy = { ...prev };
       const s = { ...copy[model] };
-
       const auto = def.autoMarkers ? def.autoMarkers(cur) : [];
       const key = (m: Marker) => `${m.x_mm}|${m.y_mm ?? 0}|${m.z_mm}|${m.d_mm}`;
       const autoSet = new Set(auto.map(key));
       const free = nextMarkers.filter((m) => !autoSet.has(key(m)));
-
       if ("extraHoles" in s) s.extraHoles = free;
       else if ("holes" in s) s.holes = free;
-
       copy[model] = s;
       return copy;
     });
@@ -99,71 +89,6 @@ export default function ForgeForm() {
     });
   };
 
-  // sliders dinámicos
   const sliders = useMemo(() => {
-    return def.sliders.map((s) => ({
-      ...s,
-      value: cur[s.key],
-    }));
+    return def.sliders.map((s) => ({ ...s, value: cur[s.key] }));
   }, [def.sliders, cur]);
-
-  const updateSlider = (key: string, v: number) => {
-    setState((prev) => ({ ...prev, [model]: { ...prev[model], [key]: v } }));
-  };
-
-  // generar STL
-  async function onGenerate() {
-    setBusy(true);
-    setError(null);
-    setStlUrl(null);
-    const payload = def.toPayload(state[model]);
-    const res = await generateSTL(payload);
-    if (res.status === "ok") setStlUrl(res.stl_url);
-    else setError(res.message);
-    setBusy(false);
-  }
-
-  const allowFree = def.allowFreeHoles;
-  const ventilated = "ventilated" in cur ? !!cur.ventilated : true;
-  const toggleVentilated = (v: boolean) => {
-    if (!("ventilated" in cur)) return;
-    setState((prev) => ({ ...prev, [model]: { ...prev[model], ventilated: v } }));
-  };
-
-  return (
-    <div className="mx-auto grid max-w-[1600px] grid-cols-1 gap-6 px-4 py-6 lg:grid-cols-[1fr,380px]">
-      {/* Visor */}
-      <section className="h-[calc(100svh-160px)] rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
-        <ModelSelector value={model} onChange={setModel} />
-        <STLViewerPro
-          key={model}
-          stlUrl={stlUrl ?? undefined}
-          markers={markers}
-          onMarkersChange={handleMarkersChange}
-          defaultHoleDiameter={holeDiameter}
-          snapMM={snapStep}
-        />
-      </section>
-
-      {/* Panel */}
-      <ControlsPanel
-        modelLabel={def.label}
-        sliders={sliders}
-        onChange={updateSlider}
-        ventilated={ventilated}
-        onToggleVentilated={toggleVentilated}
-        holesEnabled={allowFree}
-        onToggleHoles={() => {}}
-        holeDiameter={holeDiameter}
-        onHoleDiameter={setHoleDiameter}
-        snapStep={snapStep}
-        onSnapStep={setSnapStep}
-        onClearHoles={clearMarkers}
-        onGenerate={onGenerate}
-        busy={busy}
-        stlUrl={stlUrl}
-        error={error}
-      />
-    </div>
-  );
-}
