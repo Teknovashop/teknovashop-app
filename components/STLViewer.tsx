@@ -12,6 +12,8 @@ export type Marker = {
   z_mm: number;
   d_mm: number;
   side?: "left" | "right" | "top" | "bottom";
+  /** NUEVO: usado por ForgeForm; opcional para no romper nada */
+  axis?: "auto" | "x" | "y" | "z";
 };
 
 type Box = { length: number; width: number; height: number; thickness?: number };
