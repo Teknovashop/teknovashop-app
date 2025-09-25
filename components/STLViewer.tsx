@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, useMemo } from "react";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 
-/** Tipo Marker (exportado) */
+/** Marcador visible en el visor y que puede viajar al backend */
 export type Marker = {
   x_mm: number;
   y_mm?: number;
@@ -32,7 +32,7 @@ export default function STLViewer({
   const mountRef = useRef<HTMLDivElement | null>(null);
   const [distanceMM, setDistanceMM] = useState<number | null>(null);
 
-  // Tipado laxo para evitar incompatibilidades de tipos de Three en Vercel
+  // Estado interno (tipos lazos -> evita errores de tipos en Vercel)
   const state = useMemo(
     () => ({
       renderer: null as any,
@@ -58,14 +58,14 @@ export default function STLViewer({
     mountRef.current.appendChild(renderer.domElement);
     state.renderer = renderer;
 
-    // Scene
+    // Fondo
     state.scene.background = null;
 
-    // Camera
+    // Cámara
     state.camera.position.set(220, 140, 220);
     state.camera.lookAt(0, 0, 0);
 
-    // Lights
+    // Luces
     const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1.0);
     hemi.position.set(0, 200, 0);
     const dir = new THREE.DirectionalLight(0xffffff, 0.9);
@@ -74,8 +74,8 @@ export default function STLViewer({
 
     // Grid en mm (plano Y=0)
     state.grid = new THREE.GridHelper(1000, 100);
-    (state.grid.material as THREE.Material).opacity = 0.35;
-    (state.grid.material as THREE.Material).transparent = true;
+    (state.grid.material as any).opacity = 0.35;
+    (state.grid.material as any).transparent = true;
     state.grid.rotation.x = Math.PI / 2;
     state.scene.add(state.grid);
 
@@ -118,7 +118,7 @@ export default function STLViewer({
     window.addEventListener("mouseup", onUp);
 
     // Medición 2 puntos sobre el modelo
-    const tempPts: THREE.Vector3[] = [];
+    const tempPts: any[] = [];
     const onClick = (e: MouseEvent) => {
       if (!state.model) return;
       const rect = el.getBoundingClientRect();
@@ -133,7 +133,7 @@ export default function STLViewer({
           const mm = a.distanceTo(b);
           setDistanceMM(mm);
           onMeasure?.(mm);
-          // línea temporal
+          // Línea temporal
           const geo = new THREE.BufferGeometry().setFromPoints([a, b]);
           const mat = new THREE.LineBasicMaterial({ transparent: true });
           const line = new THREE.Line(geo, mat);
@@ -192,8 +192,8 @@ export default function STLViewer({
 
         if (state.model) {
           state.scene.remove(state.model);
-          (state.model.geometry as THREE.BufferGeometry).dispose();
-          (state.model.material as THREE.Material).dispose();
+          (state.model.geometry as any).dispose?.();
+          (state.model.material as any).dispose?.();
         }
 
         const mesh = new THREE.Mesh(geometry, material);
