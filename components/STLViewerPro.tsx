@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 
-/** Igual que el Marker exportado por STLViewer; y_mm es opcional */
+/** Tipo local para agujeros (evita acoplamiento) */
 export type Marker = {
   x_mm: number;
   z_mm: number;
@@ -36,7 +36,6 @@ function makeTextSprite(text: string, font = "10px Inter, system-ui, Arial") {
   canvas.width = w;
   canvas.height = h;
 
-  // re-pintar con tamaño real
   const ctx2 = canvas.getContext("2d")!;
   ctx2.font = font;
   ctx2.fillStyle = "rgba(255,255,255,0.9)";
@@ -50,7 +49,6 @@ function makeTextSprite(text: string, font = "10px Inter, system-ui, Arial") {
   tex.anisotropy = 4;
   const mat = new THREE.SpriteMaterial({ map: tex, depthTest: false });
   const sprite = new THREE.Sprite(mat);
-  // tamaño en “mm”: que sea legible
   const scale = 12;
   sprite.scale.set((w / h) * scale, scale, 1);
   return sprite;
@@ -65,15 +63,13 @@ export default function STLViewerPro({
   defaultHoleDiameter = 5,
   snapMM = 1,
 }: STLViewerProProps) {
-  // ======== estado UI ========
   const [snap, setSnap] = useState<number>(snapMM);
   const [holeDia, setHoleDia] = useState<number>(defaultHoleDiameter);
   const [mode, setMode] = useState<"nav" | "holes" | "measure">("nav");
   const [axisLock, setAxisLock] = useState<"free" | "yaw" | "pitch">("free");
   const [clipping, setClipping] = useState<boolean>(false);
-  const [clipOffset, setClipOffset] = useState<number>(0); // mm desde el plano Y
+  const [clipOffset, setClipOffset] = useState<number>(0);
 
-  // ======== estado escena ========
   const mountRef = useRef<HTMLDivElement | null>(null);
   const state = useMemo(() => {
     return {
@@ -88,7 +84,7 @@ export default function STLViewerPro({
       axes: null as THREE.AxesHelper | null,
       rulers: new THREE.Group(),
       markers: new THREE.Group(),
-      clippingPlane: new THREE.Plane(new THREE.Vector3(0, -1, 0), 0), // por encima reduce Y visible
+      clippingPlane: new THREE.Plane(new THREE.Vector3(0, -1, 0), 0),
       dragging: false,
       last: { x: 0, y: 0 },
       yaw: 0,
@@ -96,7 +92,6 @@ export default function STLViewerPro({
     };
   }, [width, height]);
 
-  // ======== control del array de marcadores ========
   const [localMarkers, setLocalMarkers] = useState<Marker[]>(markersIn);
   const first = useRef(true);
   useEffect(() => {
@@ -105,17 +100,13 @@ export default function STLViewerPro({
       setLocalMarkers(markersIn);
       return;
     }
-    // si vienen de fuera y son distintos, sincroniza
     if (JSON.stringify(markersIn) !== JSON.stringify(localMarkers)) {
       setLocalMarkers(markersIn);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(markersIn)]);
 
-  const sn = useCallback(
-    (v: number) => (snap > 0 ? Math.round(v / snap) * snap : v),
-    [snap]
-  );
+  const sn = useCallback((v: number) => (snap > 0 ? Math.round(v / snap) * snap : v), [snap]);
 
   const pushMarker = useCallback(
     (m: Marker) => {
@@ -134,9 +125,7 @@ export default function STLViewerPro({
 
   const updateMarker = useCallback(
     (idx: number, patch: Partial<Marker>) => {
-      const next = localMarkers.map((m, i) =>
-        i === idx ? { ...m, ...patch } : m
-      );
+      const next = localMarkers.map((m, i) => (i === idx ? { ...m, ...patch } : m));
       setLocalMarkers(next);
       onMarkersChange?.(next);
     },
@@ -157,7 +146,6 @@ export default function STLViewerPro({
     onMarkersChange?.([]);
   }, [onMarkersChange]);
 
-  // ======== setup three ========
   useEffect(() => {
     if (!mountRef.current) return;
 
@@ -168,22 +156,16 @@ export default function STLViewerPro({
     mountRef.current.appendChild(renderer.domElement);
     state.renderer = renderer;
 
-    // fondo
     state.scene.background = null;
-
-    // cámara
     state.camera.position.set(280, 180, 280);
     state.camera.lookAt(0, 0, 0);
 
-    // luces
     const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1);
     hemi.position.set(0, 200, 0);
     const dir = new THREE.DirectionalLight(0xffffff, 0.9);
     dir.position.set(150, 180, 100);
-    dir.castShadow = false;
     state.scene.add(hemi, dir);
 
-    // grid + axes
     const grid = new THREE.GridHelper(1200, 120, 0x888888, 0xcccccc);
     (grid.material as THREE.Material).transparent = true;
     (grid.material as THREE.Material).opacity = 0.35;
@@ -195,21 +177,18 @@ export default function STLViewerPro({
     state.axes = axes;
     state.scene.add(axes);
 
-    // grupo modelo + marcadores + reglas
     state.scene.add(state.modelGroup);
     state.scene.add(state.markers);
     state.scene.add(state.rulers);
 
-    // reglas 3D con ticks y texto (X y Z en plano Y=0)
     const buildRulers = () => {
       state.rulers.clear();
       const ticks = new THREE.Group();
       const labels = new THREE.Group();
 
-      const span = 500; // +-500 mm
-      const step = 50; // cada 50mm
+      const span = 500;
+      const step = 50;
       for (let i = -span; i <= span; i += step) {
-        // X ticks en Z=0
         const geoX = new THREE.BufferGeometry().setFromPoints([
           new THREE.Vector3(i, 0.1, -3),
           new THREE.Vector3(i, 0.1, +3),
@@ -222,7 +201,6 @@ export default function STLViewerPro({
         ticks.add(new THREE.Line(geoX, mat));
         ticks.add(new THREE.Line(geoZ, mat));
 
-        // etiquetas cada 100 mm
         if (i % 100 === 0) {
           const sx = makeTextSprite(`${i}`, "11px Inter, Arial");
           sx.position.set(i, 0.1, 8);
@@ -237,7 +215,6 @@ export default function STLViewerPro({
     };
     buildRulers();
 
-    // interacción (rotación con bloqueo por ejes)
     const el = renderer.domElement;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
@@ -264,7 +241,6 @@ export default function STLViewerPro({
         state.pitch = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, state.pitch));
       }
 
-      // aplica rotación al grupo de la escena (no al modelo directamente)
       state.scene.rotation.set(state.pitch, state.yaw, 0);
     };
     const onUp = () => (state.dragging = false);
@@ -274,10 +250,8 @@ export default function STLViewerPro({
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
 
-    // picking para agujeros / medir
     const tmpPts: THREE.Vector3[] = [];
     const onClick = (e: MouseEvent) => {
-      // en nav no hacemos picking
       if (mode === "nav") return;
       if (!state.model) return;
 
@@ -298,7 +272,6 @@ export default function STLViewerPro({
       if (mode === "measure") {
         tmpPts.push(p);
         if (tmpPts.length === 2) {
-          // línea temporal
           const [a, b] = tmpPts;
           const geo = new THREE.BufferGeometry().setFromPoints([a, b]);
           const mat = new THREE.LineDashedMaterial({ dashSize: 5, gapSize: 3 });
@@ -306,7 +279,6 @@ export default function STLViewerPro({
           (line.material as THREE.LineDashedMaterial).computeLineDistances();
           state.scene.add(line);
 
-          // etiqueta con la distancia
           const mm = a.distanceTo(b).toFixed(1) + " mm";
           const label = makeTextSprite(mm, "12px Inter, Arial");
           label.position.copy(a.clone().add(b).multiplyScalar(0.5));
@@ -325,10 +297,8 @@ export default function STLViewerPro({
     };
     el.addEventListener("click", onClick);
 
-    // render loop
     let raf = 0;
     const tick = () => {
-      // clipping plane (global)
       if (state.model) {
         const planes = clipping ? [state.clippingPlane] : [];
         state.model.traverse((obj: any) => {
@@ -342,7 +312,6 @@ export default function STLViewerPro({
             }
           }
         });
-        // mover la distancia del plano
         state.clippingPlane.set(state.clippingPlane.normal, -clipOffset);
       }
 
@@ -363,7 +332,6 @@ export default function STLViewerPro({
     };
   }, [height, width, axisLock, mode, clipping, clipOffset, pushMarker, holeDia, state]);
 
-  // ======== carga STL ========
   useEffect(() => {
     if (!state.renderer || !stlUrl) return;
     const loader = new STLLoader();
@@ -373,7 +341,6 @@ export default function STLViewerPro({
         geometry.computeBoundingBox();
         geometry.computeVertexNormals();
 
-        // limpiar modelo previo
         state.modelGroup.clear();
 
         const mat = new THREE.MeshStandardMaterial({
@@ -389,11 +356,9 @@ export default function STLViewerPro({
         state.modelGroup.add(mesh);
         state.model = mesh;
 
-        // encuadre
         const bb = geometry.boundingBox!;
         const size = new THREE.Vector3().subVectors(bb.max, bb.min);
         const center = new THREE.Vector3().addVectors(bb.min, bb.max).multiplyScalar(0.5);
-        // centro modelo sobre (0,0,0) y elevar sobre Y=0
         state.modelGroup.position.set(-center.x, -bb.min.y, -center.z);
 
         const maxDim = Math.max(size.x, size.y, size.z);
@@ -406,7 +371,6 @@ export default function STLViewerPro({
     );
   }, [stlUrl, state.renderer]);
 
-  // ======== pintar marcadores ========
   useEffect(() => {
     if (!state.renderer) return;
     state.markers.clear();
@@ -426,31 +390,8 @@ export default function STLViewerPro({
     }
   }, [JSON.stringify(localMarkers), state.renderer]);
 
-  // ======== UI utils ========
-  const takeScreenshot = useCallback(() => {
-    const canvas = mountRef.current?.querySelector("canvas");
-    if (!canvas) return;
-    const url = canvas.toDataURL("image/png");
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "forge-preview.png";
-    a.click();
-  }, []);
-
-  const resetView = useCallback(() => {
-    state.scene.rotation.set(0, 0, 0);
-    state.yaw = 0;
-    state.pitch = 0;
-    state.camera.position.set(280, 180, 280);
-    state.camera.lookAt(0, 0, 0);
-  }, [state]);
-
-  // ======== render ========
   return (
-    <div
-      className="relative rounded-2xl border shadow-sm bg-white"
-      style={{ width, height }}
-    >
+    <div className="relative rounded-2xl border shadow-sm bg-white" style={{ width, height }}>
       {/* Toolbar */}
       <div className="absolute top-2 left-2 z-10 flex flex-wrap gap-2">
         <button
@@ -482,7 +423,6 @@ export default function STLViewerPro({
           />
           mm
         </div>
-
         <div className="px-2 py-1 text-xs rounded border bg-white shadow-sm flex items-center gap-1">
           Ø
           <input
@@ -492,32 +432,26 @@ export default function STLViewerPro({
             value={holeDia}
             onChange={(e) => setHoleDia(Number(e.target.value || 5))}
             className="w-14 border rounded px-1 py-0.5"
-            title="Diámetro por defecto de agujero"
+            title="Diámetro por defecto"
           />
           mm
         </div>
-
         <div className="px-2 py-1 text-xs rounded border bg-white shadow-sm flex items-center gap-1">
           Bloqueo:
           <select
             value={axisLock}
             onChange={(e) => setAxisLock(e.target.value as any)}
             className="border rounded px-1 py-0.5"
-            title="Bloqueo por ejes para la cámara"
+            title="Bloqueo por ejes"
           >
             <option value="free">Libre</option>
             <option value="yaw">Solo Yaw</option>
             <option value="pitch">Solo Pitch</option>
           </select>
         </div>
-
         <div className="px-2 py-1 text-xs rounded border bg-white shadow-sm flex items-center gap-2">
           <label className="inline-flex items-center gap-1">
-            <input
-              type="checkbox"
-              checked={clipping}
-              onChange={(e) => setClipping(e.target.checked)}
-            />
+            <input type="checkbox" checked={clipping} onChange={(e) => setClipping(e.target.checked)} />
             Corte (clip)
           </label>
           <input
@@ -527,24 +461,9 @@ export default function STLViewerPro({
             value={clipOffset}
             onChange={(e) => setClipOffset(Number(e.target.value))}
             className="w-40"
-            title="Plano de corte vertical (Y)"
+            title="Plano de corte (Y)"
           />
         </div>
-
-        <button
-          onClick={takeScreenshot}
-          className="px-2 py-1 text-xs rounded border bg-white hover:bg-gray-50 shadow-sm"
-          title="Capturar PNG"
-        >
-          📸 Captura
-        </button>
-        <button
-          onClick={resetView}
-          className="px-2 py-1 text-xs rounded border bg-white hover:bg-gray-50 shadow-sm"
-          title="Reset cámara"
-        >
-          ⟳ Reset
-        </button>
       </div>
 
       {/* Lista editable de agujeros */}
@@ -598,17 +517,12 @@ export default function STLViewerPro({
           </div>
         ))}
         {localMarkers.length > 0 && (
-          <button
-            onClick={clearMarkers}
-            className="mt-1 w-full text-xs px-2 py-1 border rounded bg-white hover:bg-gray-50"
-            title="Borrar todos"
-          >
+          <button onClick={clearMarkers} className="mt-1 w-full text-xs px-2 py-1 border rounded bg-white hover:bg-gray-50">
             Borrar todos
           </button>
         )}
       </div>
 
-      {/* canvas */}
       <div ref={mountRef} className="absolute inset-0" />
     </div>
   );
