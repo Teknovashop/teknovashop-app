@@ -12,8 +12,6 @@ export type Marker = {
   z_mm: number;
   d_mm: number;
   side?: "left" | "right" | "top" | "bottom";
-  /** NUEVO: usado por ForgeForm; opcional para no romper nada */
-  axis?: "auto" | "x" | "y" | "z";
 };
 
 type Box = { length: number; width: number; height: number; thickness?: number };
@@ -84,14 +82,14 @@ export default function STLViewer({
   const [clipping, setClipping] = useState<boolean>(defaultClipping);
   const [clipMM, setClipMM] = useState<number>(defaultClipMM);
 
-  // Estado interno (pragmático para evitar problemas de tipos en despliegue)
+  // Estado interno (tipos relajados para evitar problemas de TS en Vercel)
   const state = useMemo(
     () => ({
       renderer: null as any,
       scene: new THREE.Scene(),
       camera: new THREE.PerspectiveCamera(45, width / height, 0.1, 8000),
-      model: null as any as THREE.Mesh | null,
-      boxMesh: null as any as THREE.LineSegments | null,
+      model: null as any,       // <<— antes: THREE.Mesh | null
+      boxMesh: null as any,     // <<— antes: THREE.LineSegments | null
       markerGroup: new THREE.Group(),
       raycaster: new THREE.Raycaster(),
       pointer: new THREE.Vector2(),
@@ -377,7 +375,7 @@ export default function STLViewer({
     };
     el.addEventListener("click", onClick);
 
-    // Render loop (solo cuando hay cambios)
+    // Render loop (sólo cuando hay cambios)
     let raf = 0;
     const tick = () => {
       if (state.needsRender) {
