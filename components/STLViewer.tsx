@@ -60,7 +60,7 @@ export default function STLViewer({
   const [clipping, setClipping] = useState<boolean>(defaultClipping);
   const [clipMM, setClipMM] = useState<number>(defaultClipMM);
 
-  // Estado interno SIN tipos de THREE en las anotaciones (para Vercel/TS)
+  // Estado interno SIN tipos de THREE en anotaciones
   const state = useMemo(
     () => ({
       renderer: null as any,
@@ -118,7 +118,6 @@ export default function STLViewer({
       const tickGeo = new THREE.BufferGeometry();
       const verts: number[] = [];
 
-      // ⚠️ sin tipos de THREE en firma
       const addTick = (p1: any, p2: any) => {
         verts.push(p1.x, p1.y, p1.z, p2.x, p2.y, p2.z);
       };
@@ -214,8 +213,9 @@ export default function STLViewer({
     state.scene.add(state.lightHemi, state.lightDir);
 
     state.grid = new THREE.GridHelper(1000, 100);
-    (state.grid.material as THREE.Material).opacity = 0.35;
-    (state.grid.material as THREE.Material).transparent = true;
+    // ⬇⬇ corrección: sin THREE.Material en el cast
+    (state.grid.material as any).opacity = 0.35;
+    (state.grid.material as any).transparent = true;
     state.scene.add(state.grid);
 
     state.axes = new THREE.AxesHelper(160);
