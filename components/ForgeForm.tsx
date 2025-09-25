@@ -1,3 +1,4 @@
+// components/ForgeForm.tsx
 "use client";
 
 import { useMemo, useState } from "react";
@@ -35,7 +36,7 @@ async function generateSTL(payload: any): Promise<GenerateResponse> {
 export default function ForgeForm() {
   const [model, setModel] = useState<ModelId>("cable_tray");
 
-  // Estado por modelo desde defaults del registry
+  // Estado por modelo (desde defaults del registry)
   const initialState = useMemo(() => {
     const m: Record<ModelId, any> = {} as any;
     (Object.keys(MODELS) as ModelId[]).forEach((id) => {
@@ -45,10 +46,11 @@ export default function ForgeForm() {
   }, []);
   const [state, setState] = useState<Record<ModelId, any>>(initialState);
 
-  // parámetros comunes para agujeros
+  // Parámetros comunes de agujeros
   const [holeDiameter, setHoleDiameter] = useState(5);
   const [snapStep, setSnapStep] = useState(1);
 
+  // Generación STL
   const [busy, setBusy] = useState(false);
   const [stlUrl, setStlUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -56,37 +58,37 @@ export default function ForgeForm() {
   const def = MODELS[model];
   const cur = state[model];
 
+  // Caja del visor (mm)
+  const box = useMemo(() => def.toBox(cur), [def, cur]);
+
   // Marcadores visibles (auto + libres)
   const markers: Marker[] = useMemo(() => {
     const auto = def.autoMarkers ? def.autoMarkers(cur) : [];
     const free: Marker[] =
       "extraHoles" in cur ? cur.extraHoles :
       "holes" in cur ? cur.holes : [];
-    // los “auto” van primero para que los libres pisen si coinciden
+    // que pisen los libres a los auto si coinciden
     return [...auto, ...free];
   }, [def, cur]);
 
-  // El visor notifica cualquier cambio en la lista completa de marcadores
+  // Cambio controlado de marcadores (mantiene solo los libres en el estado del modelo)
   const handleMarkersChange = (nextMarkers: Marker[]) => {
     if (!def.allowFreeHoles) return;
     setState((prev) => {
       const copy = { ...prev };
       const s = { ...copy[model] };
-
-      // filtra autoMarkers para dejar solo los libres en estado
       const auto = def.autoMarkers ? def.autoMarkers(cur) : [];
       const key = (m: Marker) => `${m.x_mm}|${m.y_mm ?? 0}|${m.z_mm}|${m.d_mm}`;
       const autoSet = new Set(auto.map(key));
       const free = nextMarkers.filter((m) => !autoSet.has(key(m)));
-
       if ("extraHoles" in s) s.extraHoles = free;
       else if ("holes" in s) s.holes = free;
-
       copy[model] = s;
       return copy;
     });
   };
 
+  // Limpiar agujeros libres
   const clearMarkers = () => {
     setState((prev) => {
       const next = { ...prev };
@@ -98,20 +100,18 @@ export default function ForgeForm() {
     });
   };
 
-  // Sliders dinámicos del modelo actual
+  // Sliders dinámicos (desde registry)
   const sliders = useMemo(() => {
-    return def.sliders.map((s) => ({ ...s, value: cur[s.key] }));
+    return def.sliders.map((s: any) => ({ ...s, value: cur[s.key] }));
   }, [def.sliders, cur]);
 
   const updateSlider = (key: string, v: number) => {
     setState((prev) => ({ ...prev, [model]: { ...prev[model], [key]: v } }));
   };
 
-  // Generar STL con el payload que define cada modelo en el registry
+  // Generar STL enviando el payload mapeado por el registry
   async function onGenerate() {
-    setBusy(true);
-    setError(null);
-    setStlUrl(null);
+    setBusy(true); setError(null); setStlUrl(null);
     const payload = def.toPayload(state[model]);
     const res = await generateSTL(payload);
     if (res.status === "ok") setStlUrl(res.stl_url);
@@ -119,7 +119,6 @@ export default function ForgeForm() {
     setBusy(false);
   }
 
-  // Opciones específicas presentes en varios modelos
   const allowFree = def.allowFreeHoles;
   const ventilated = "ventilated" in cur ? !!cur.ventilated : true;
   const toggleVentilated = (v: boolean) => {
@@ -134,16 +133,14 @@ export default function ForgeForm() {
         <ModelSelector value={model} onChange={setModel} />
         <STLViewerPro
           key={model}
-          stlUrl={stlUrl ?? undefined}
+          stlUrl={stlUrl || undefined}
+          background="#ffffff"
+          box={box}
           markers={markers}
           onMarkersChange={handleMarkersChange}
-          defaultHoleDiameter={holeDiameter}
-          snapMM={snapStep}
-          // El Pro ya incluye:
-          // - bloqueo por ejes en su propio UI
-          // - reglas 3D con ticks/labels
-          // - plano de corte (clipping plane) visual
-          // - lista editable de agujeros (x/y/z/Ø) con borrar por ítem
+          holesMode={allowFree}
+          addDiameter={holeDiameter}   // <-- nombre correcto
+          snapStep={snapStep}          // <-- nombre correcto
         />
       </section>
 
