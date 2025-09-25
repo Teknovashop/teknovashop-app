@@ -60,14 +60,14 @@ export default function STLViewer({
   const [clipping, setClipping] = useState<boolean>(defaultClipping);
   const [clipMM, setClipMM] = useState<number>(defaultClipMM);
 
-  // ⚠️ Nada de tipos de THREE en el estado interno (para evitar errores de compilación en Vercel)
+  // Estado interno SIN tipos de THREE en las anotaciones (para Vercel/TS)
   const state = useMemo(
     () => ({
       renderer: null as any,
       scene: new THREE.Scene(),
       camera: new THREE.PerspectiveCamera(45, width / height, 0.1, 8000),
-      model: null as any,              // antes: THREE.Mesh | null
-      boxMesh: null as any,            // antes: THREE.LineSegments | null
+      model: null as any,
+      boxMesh: null as any,
       markerGroup: new THREE.Group(),
       raycaster: new THREE.Raycaster(),
       pointer: new THREE.Vector2(),
@@ -117,9 +117,12 @@ export default function STLViewer({
       const tickMat = new THREE.LineBasicMaterial({ transparent: true, opacity: 0.7 });
       const tickGeo = new THREE.BufferGeometry();
       const verts: number[] = [];
-      const addTick = (p1: THREE.Vector3, p2: THREE.Vector3) => {
+
+      // ⚠️ sin tipos de THREE en firma
+      const addTick = (p1: any, p2: any) => {
         verts.push(p1.x, p1.y, p1.z, p2.x, p2.y, p2.z);
       };
+
       const addAxisTicks = (axis: "x" | "y" | "z", color: number) => {
         const dir = new THREE.Vector3(axis === "x" ? 1 : 0, axis === "y" ? 1 : 0, axis === "z" ? 1 : 0);
         const orthoA = axis === "x" ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
@@ -137,11 +140,13 @@ export default function STLViewer({
           }
         }
       };
+
       addAxisTicks("x", 0x3b82f6);
       addAxisTicks("y", 0x10b981);
       addAxisTicks("z", 0xf59e0b);
+
       tickGeo.setAttribute("position", new THREE.Float32BufferAttribute(verts, 3));
-      const ticks = new THREE.LineSegments(tickGeo, new THREE.LineBasicMaterial({ transparent: true, opacity: 0.7 }));
+      const ticks = new THREE.LineSegments(tickGeo, tickMat);
       ticks.renderOrder = 1;
       state.labelsGroup.add(ticks);
       state.scene.add(state.labelsGroup);
@@ -152,7 +157,7 @@ export default function STLViewer({
 
   // === Encuadre ===
   const fitToTarget = useCallback(() => {
-    let bb: any = null; // antes: THREE.Box3 | null
+    let bb: any = null;
 
     if (state.model) {
       (state.model.geometry as any).computeBoundingBox?.();
@@ -248,15 +253,15 @@ export default function STLViewer({
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
 
-    // Clicks: medición vs agujeros (SOLO Alt+click)
-    const tempPts: THREE.Vector3[] = [];
+    // Clicks: SOLO Alt+click para agujeros. Doble click para medir si holesMode=false
+    const tempPts: any[] = [];
     const onClick = (e: MouseEvent) => {
       const rect = el.getBoundingClientRect();
       state.pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       state.pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
       state.raycaster.setFromCamera(state.pointer, state.camera);
 
-      const targets: THREE.Object3D[] = [];
+      const targets: any[] = [];
       if (state.model) targets.push(state.model);
       const ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 
@@ -272,7 +277,7 @@ export default function STLViewer({
       }
       if (!hitPoint) return;
 
-      // SOLO Alt + click para agujeros
+      // SOLO Alt+click hace agujeros
       if (holesMode && e.altKey) {
         const snap = Math.max(0, snapStep || 0);
         const sx = snap ? Math.round(hitPoint.x / snap) * snap : hitPoint.x;
@@ -289,7 +294,7 @@ export default function STLViewer({
         return;
       }
 
-      // Medición con dos clicks cuando NO está el modo agujeros
+      // Medición (cuando NO está el modo agujeros)
       if (!holesMode) {
         tempPts.push(hitPoint.clone());
         if (tempPts.length === 2) {
