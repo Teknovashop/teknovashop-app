@@ -36,7 +36,6 @@ async function generateSTL(payload: any): Promise<GenerateResponse> {
 export default function ForgeForm() {
   const [model, setModel] = useState<ModelId>("cable_tray");
 
-  // Estado por modelo (desde defaults del registry)
   const initialState = useMemo(() => {
     const m: Record<ModelId, any> = {} as any;
     (Object.keys(MODELS) as ModelId[]).forEach((id) => {
@@ -46,11 +45,9 @@ export default function ForgeForm() {
   }, []);
   const [state, setState] = useState<Record<ModelId, any>>(initialState);
 
-  // Parámetros comunes de agujeros
   const [holeDiameter, setHoleDiameter] = useState(5);
   const [snapStep, setSnapStep] = useState(1);
 
-  // Generación STL
   const [busy, setBusy] = useState(false);
   const [stlUrl, setStlUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -58,20 +55,16 @@ export default function ForgeForm() {
   const def = MODELS[model];
   const cur = state[model];
 
-  // Caja del visor (mm)
   const box = useMemo(() => def.toBox(cur), [def, cur]);
 
-  // Marcadores visibles (auto + libres)
   const markers: Marker[] = useMemo(() => {
     const auto = def.autoMarkers ? def.autoMarkers(cur) : [];
     const free: Marker[] =
       "extraHoles" in cur ? cur.extraHoles :
       "holes" in cur ? cur.holes : [];
-    // que pisen los libres a los auto si coinciden
     return [...auto, ...free];
   }, [def, cur]);
 
-  // Cambio controlado de marcadores (mantiene solo los libres en el estado del modelo)
   const handleMarkersChange = (nextMarkers: Marker[]) => {
     if (!def.allowFreeHoles) return;
     setState((prev) => {
@@ -88,7 +81,6 @@ export default function ForgeForm() {
     });
   };
 
-  // Limpiar agujeros libres
   const clearMarkers = () => {
     setState((prev) => {
       const next = { ...prev };
@@ -100,7 +92,6 @@ export default function ForgeForm() {
     });
   };
 
-  // Sliders dinámicos (desde registry)
   const sliders = useMemo(() => {
     return def.sliders.map((s: any) => ({ ...s, value: cur[s.key] }));
   }, [def.sliders, cur]);
@@ -109,7 +100,6 @@ export default function ForgeForm() {
     setState((prev) => ({ ...prev, [model]: { ...prev[model], [key]: v } }));
   };
 
-  // Generar STL enviando el payload mapeado por el registry
   async function onGenerate() {
     setBusy(true); setError(null); setStlUrl(null);
     const payload = def.toPayload(state[model]);
@@ -139,8 +129,8 @@ export default function ForgeForm() {
           markers={markers}
           onMarkersChange={handleMarkersChange}
           holesMode={allowFree}
-          addDiameter={holeDiameter}   // <-- nombre correcto
-          snapStep={snapStep}          // <-- nombre correcto
+          addDiameter={holeDiameter}
+          snapStep={snapStep}
         />
       </section>
 
