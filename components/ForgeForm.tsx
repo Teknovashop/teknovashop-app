@@ -21,7 +21,9 @@ async function generateSTL(payload: any): Promise<GenerateResponse> {
     });
     const text = await res.text();
     let data: any = null;
-    try { data = JSON.parse(text); } catch {}
+    try {
+      data = JSON.parse(text);
+    } catch {}
     if (!res.ok) {
       return { status: "error", message: data?.message || text || `HTTP ${res.status}` };
     }
@@ -95,7 +97,7 @@ export default function ForgeForm() {
       copy[model] = { ...copy[model], [key]: v };
       return copy;
     });
-    setStlUrl(null); // obligamos a regenerar con nuevos parámetros
+    setStlUrl(null); // forzar regeneración para nuevos parámetros
   };
 
   // Añadir marcador libre (Shift/Alt+Click desde el visor)
@@ -198,7 +200,15 @@ export default function ForgeForm() {
       {/* Visor + selector de modelo encima en móviles */}
       <section className="flex-1">
         <div className="mb-3">
-          <ModelSelector value={model} onChange={setModel} />
+          <ModelSelector
+            value={model}
+            onChange={(id) => {
+              setModel(id);
+              // al cambiar de modelo, reseteamos URL de STL para que se vea la caja guía y no “quede colgado”
+              setStlUrl(null);
+              setError(null);
+            }}
+          />
         </div>
 
         <STLViewer
@@ -208,7 +218,7 @@ export default function ForgeForm() {
           width={920}
           height={560}
           // UX avanzada
-          holesMode={holesEnabled}
+          holesMode={holesEnabled && def.allowFreeHoles}
           addDiameter={holeDiameter}
           snapStep={snapStep}
           // marcadores visibles = automáticos + libres
