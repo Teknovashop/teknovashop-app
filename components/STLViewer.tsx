@@ -5,22 +5,6 @@ import { useEffect, useRef, useState, useMemo } from "react";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 
-// Importa SOLO TIPOS desde three (evita errores de namespace en Vercel)
-import type {
-  WebGLRenderer,
-  Mesh,
-  GridHelper,
-  AxesHelper,
-  Raycaster,
-  Vector2,
-  Vector3,
-  Scene,
-  PerspectiveCamera,
-  Group,
-  Material,
-  BufferGeometry,
-} from "three";
-
 /** Tipo Marker (exportado) */
 export type Marker = {
   x_mm: number;
@@ -48,17 +32,18 @@ export default function STLViewer({
   const mountRef = useRef<HTMLDivElement | null>(null);
   const [distanceMM, setDistanceMM] = useState<number | null>(null);
 
+  // Tipado laxo para evitar incompatibilidades de tipos de Three en Vercel
   const state = useMemo(
     () => ({
-      renderer: null as WebGLRenderer | null,
-      scene: new THREE.Scene() as Scene,
-      camera: new THREE.PerspectiveCamera(45, width / height, 0.1, 5000) as PerspectiveCamera,
-      model: null as Mesh | null,
-      markerGroup: new THREE.Group() as Group,
-      raycaster: new THREE.Raycaster() as Raycaster,
-      pointer: new THREE.Vector2() as Vector2,
-      grid: null as GridHelper | null,
-      axes: null as AxesHelper | null,
+      renderer: null as any,
+      scene: new THREE.Scene(),
+      camera: new THREE.PerspectiveCamera(45, width / height, 0.1, 5000),
+      model: null as any,
+      markerGroup: new THREE.Group(),
+      raycaster: new THREE.Raycaster(),
+      pointer: new THREE.Vector2(),
+      grid: null as any,
+      axes: null as any,
     }),
     [width, height]
   );
@@ -89,8 +74,8 @@ export default function STLViewer({
 
     // Grid en mm (plano Y=0)
     state.grid = new THREE.GridHelper(1000, 100);
-    (state.grid.material as Material).opacity = 0.35;
-    (state.grid.material as Material).transparent = true;
+    (state.grid.material as THREE.Material).opacity = 0.35;
+    (state.grid.material as THREE.Material).transparent = true;
     state.grid.rotation.x = Math.PI / 2;
     state.scene.add(state.grid);
 
@@ -133,7 +118,7 @@ export default function STLViewer({
     window.addEventListener("mouseup", onUp);
 
     // Medición 2 puntos sobre el modelo
-    const tempPts: Vector3[] = [];
+    const tempPts: THREE.Vector3[] = [];
     const onClick = (e: MouseEvent) => {
       if (!state.model) return;
       const rect = el.getBoundingClientRect();
@@ -183,7 +168,7 @@ export default function STLViewer({
       renderer.dispose();
       if (mountRef.current) mountRef.current.removeChild(renderer.domElement);
     };
-  }, [height, width]); // no dependemos de stlUrl/markers aquí
+  }, [height, width]);
 
   // Carga/recarga STL
   useEffect(() => {
@@ -207,8 +192,8 @@ export default function STLViewer({
 
         if (state.model) {
           state.scene.remove(state.model);
-          (state.model.geometry as BufferGeometry).dispose();
-          (state.model.material as Material).dispose();
+          (state.model.geometry as THREE.BufferGeometry).dispose();
+          (state.model.material as THREE.Material).dispose();
         }
 
         const mesh = new THREE.Mesh(geometry, material);
@@ -236,7 +221,6 @@ export default function STLViewer({
   // Pintar marcadores (si vienen)
   useEffect(() => {
     if (!state.renderer) return;
-    // limpiar anteriores
     state.markerGroup.clear();
     if (!markers?.length) return;
 
