@@ -60,13 +60,14 @@ export default function STLViewer({
   const [clipping, setClipping] = useState<boolean>(defaultClipping);
   const [clipMM, setClipMM] = useState<number>(defaultClipMM);
 
+  // ⚠️ Nada de tipos de THREE en el estado interno (para evitar errores de compilación en Vercel)
   const state = useMemo(
     () => ({
       renderer: null as any,
       scene: new THREE.Scene(),
       camera: new THREE.PerspectiveCamera(45, width / height, 0.1, 8000),
-      model: null as any as THREE.Mesh | null,
-      boxMesh: null as any as THREE.LineSegments | null,
+      model: null as any,              // antes: THREE.Mesh | null
+      boxMesh: null as any,            // antes: THREE.LineSegments | null
       markerGroup: new THREE.Group(),
       raycaster: new THREE.Raycaster(),
       pointer: new THREE.Vector2(),
@@ -87,6 +88,7 @@ export default function STLViewer({
     state.needsRender = true;
   }, [state]);
 
+  // === UI: sprites de texto para reglas ===
   const makeTextSprite = useCallback((text: string) => {
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d")!;
@@ -139,7 +141,7 @@ export default function STLViewer({
       addAxisTicks("y", 0x10b981);
       addAxisTicks("z", 0xf59e0b);
       tickGeo.setAttribute("position", new THREE.Float32BufferAttribute(verts, 3));
-      const ticks = new THREE.LineSegments(tickGeo, tickMat);
+      const ticks = new THREE.LineSegments(tickGeo, new THREE.LineBasicMaterial({ transparent: true, opacity: 0.7 }));
       ticks.renderOrder = 1;
       state.labelsGroup.add(ticks);
       state.scene.add(state.labelsGroup);
@@ -148,8 +150,10 @@ export default function STLViewer({
     [makeTextSprite, needRender, state]
   );
 
+  // === Encuadre ===
   const fitToTarget = useCallback(() => {
-    let bb: THREE.Box3 | null = null;
+    let bb: any = null; // antes: THREE.Box3 | null
+
     if (state.model) {
       (state.model.geometry as any).computeBoundingBox?.();
       bb = (state.model.geometry as any).boundingBox?.clone?.() ?? null;
@@ -183,6 +187,7 @@ export default function STLViewer({
     needRender();
   }, [axisMode, box, buildRulers, needRender, state]);
 
+  // === Inicialización ===
   useEffect(() => {
     if (!mountRef.current) return;
 
@@ -243,6 +248,7 @@ export default function STLViewer({
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
 
+    // Clicks: medición vs agujeros (SOLO Alt+click)
     const tempPts: THREE.Vector3[] = [];
     const onClick = (e: MouseEvent) => {
       const rect = el.getBoundingClientRect();
@@ -283,7 +289,7 @@ export default function STLViewer({
         return;
       }
 
-      // Medición con dos clicks (si NO estamos en modo agujeros)
+      // Medición con dos clicks cuando NO está el modo agujeros
       if (!holesMode) {
         tempPts.push(hitPoint.clone());
         if (tempPts.length === 2) {
@@ -308,6 +314,7 @@ export default function STLViewer({
     };
     el.addEventListener("click", onClick);
 
+    // Render bajo demanda
     let raf = 0;
     const tick = () => {
       if (state.needsRender) {
@@ -330,9 +337,9 @@ export default function STLViewer({
     };
   }, [background, height, holesMode, addDiameter, onAddMarker, onMeasure, snapStep, width, axisMode, state]);
 
+  // Caja guía
   useEffect(() => {
     if (!state.renderer) return;
-
     if (state.boxMesh) {
       state.scene.remove(state.boxMesh);
       (state.boxMesh.geometry as any)?.dispose?.();
@@ -350,6 +357,7 @@ export default function STLViewer({
     fitToTarget();
   }, [box, stlUrl, fitToTarget, state]);
 
+  // Carga STL
   useEffect(() => {
     if (!state.renderer || !stlUrl) {
       fitToTarget();
@@ -387,6 +395,7 @@ export default function STLViewer({
     );
   }, [stlUrl, state, fitToTarget, needRender]);
 
+  // Marcadores
   useEffect(() => {
     if (!state.renderer) return;
     state.markerGroup.clear();
@@ -405,6 +414,7 @@ export default function STLViewer({
     needRender();
   }, [markers, addDiameter, needRender, state]);
 
+  // Clipping
   useEffect(() => {
     if (!state.renderer) return;
     if (!clipping) {
@@ -418,6 +428,7 @@ export default function STLViewer({
     needRender();
   }, [clipping, clipMM, needRender, state]);
 
+  // Reencuadre al cambiar de eje
   useEffect(() => {
     if (!state.renderer) return;
     fitToTarget();
