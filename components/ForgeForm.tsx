@@ -20,14 +20,9 @@ async function generateSTL(payload: any): Promise<GenerateResponse> {
     });
     const text = await res.text();
     let data: any = null;
-    try {
-      data = JSON.parse(text);
-    } catch {}
+    try { data = JSON.parse(text); } catch {}
     if (!res.ok) {
-      return {
-        status: "error",
-        message: data?.message || text || `HTTP ${res.status}`,
-      };
+      return { status: "error", message: data?.message || text || `HTTP ${res.status}` };
     }
     const url = data?.stl_url || data?.url || data?.data?.stl_url || null;
     if (url) return { status: "ok", stl_url: url };
@@ -100,11 +95,7 @@ export default function ForgeForm() {
       // Tomamos los que no están en los auto (son los libres)
       const free = nextMarkers
         .filter((m) => !autoSet.has(key(m)))
-        .map((m) => ({
-          ...m,
-          // Asegura Ø por si el visor no lo puso
-          d_mm: m.d_mm ?? holeDiameter,
-        }));
+        .map((m) => ({ ...m, d_mm: m.d_mm ?? holeDiameter }));
 
       if ("extraHoles" in s) s.extraHoles = free;
       else if ("holes" in s) s.holes = free;
@@ -128,10 +119,7 @@ export default function ForgeForm() {
 
   // Sliders dinámicos
   const sliders = useMemo(() => {
-    return def.sliders.map((s) => ({
-      ...s,
-      value: cur[s.key],
-    }));
+    return def.sliders.map((s) => ({ ...s, value: cur[s.key] }));
   }, [def.sliders, cur]);
 
   const updateSlider = (key: string, v: number) => {
@@ -145,7 +133,7 @@ export default function ForgeForm() {
     setState((prev) => ({ ...prev, [model]: { ...prev[model], ventilated: v } }));
   };
 
-  // Edición numérica de agujeros (lista en panel)
+  // Lista editable de agujeros (numérico en panel)
   const holesList: Marker[] = useMemo(() => {
     if ("extraHoles" in cur) return cur.extraHoles || [];
     if ("holes" in cur) return cur.holes || [];
@@ -160,10 +148,7 @@ export default function ForgeForm() {
         "extraHoles" in s ? [...(s.extraHoles || [])] :
         "holes" in s ? [...(s.holes || [])] : [];
       if (!list[idx]) return prev;
-      list[idx] = {
-        ...list[idx],
-        ...patch,
-      };
+      list[idx] = { ...list[idx], ...patch };
       if ("extraHoles" in s) s.extraHoles = list;
       else if ("holes" in s) s.holes = list;
       copy[model] = s;
@@ -193,7 +178,6 @@ export default function ForgeForm() {
     setError(null);
     setStlUrl(null);
 
-    // El payload lo define cada modelo (incluye agujeros "libres")
     const payload = def.toPayload(state[model]);
     const res = await generateSTL(payload);
     if (res.status === "ok") setStlUrl(res.stl_url);
@@ -214,11 +198,10 @@ export default function ForgeForm() {
           box={box}
           markers={markers}
           onMarkersChange={handleMarkersChange}
-          snapMM={snapStep}
           // El Pro ya incluye:
           // - bloqueo por ejes (X/Y/Z y libre)
-          // - plano de clipping (slider)
-          // - reglas 3D con ticks y texto
+          // - plano de clipping
+          // - reglas 3D
           // - creación de agujeros con ALT/Shift + clic
         />
       </section>
@@ -231,7 +214,7 @@ export default function ForgeForm() {
         ventilated={ventilated}
         onToggleVentilated={toggleVentilated}
         holesEnabled={allowFree}
-        onToggleHoles={() => {}} // El Pro ya controla la creación; dejamos el switch como indicador
+        onToggleHoles={() => {}}
         holeDiameter={holeDiameter}
         onHoleDiameter={setHoleDiameter}
         snapStep={snapStep}
@@ -241,7 +224,6 @@ export default function ForgeForm() {
         busy={busy}
         stlUrl={stlUrl}
         error={error}
-        // NUEVO: lista editable de agujeros (x/y/z/Ø + borrar)
         holes={holesList}
         onUpdateHole={updateHole}
         onRemoveHole={removeHole}
