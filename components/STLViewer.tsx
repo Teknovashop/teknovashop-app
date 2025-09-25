@@ -75,14 +75,14 @@ export default function STLViewer({
   const [clipping, setClipping] = useState<boolean>(defaultClipping);
   const [clipMM, setClipMM] = useState<number>(defaultClipMM);
 
-  // Estado interno (sin tipos de THREE en anotaciones para evitar errores en Vercel)
+  // Estado interno (sin anotaciones de tipos THREE.* para evitar problemas en build)
   const state = useMemo(
     () => ({
       renderer: null as any,
       scene: new THREE.Scene(),
       camera: new THREE.PerspectiveCamera(45, width / height, 0.1, 8000),
-      model: null as any, // Mesh | null
-      boxMesh: null as any, // LineSegments | null
+      model: null as any,       // Mesh | null
+      boxMesh: null as any,     // LineSegments | null
       markerGroup: new THREE.Group(),
       raycaster: new THREE.Raycaster(),
       pointer: new THREE.Vector2(),
@@ -176,7 +176,8 @@ export default function STLViewer({
 
   /** Centra cámara en pieza/caja */
   const fitToTarget = useCallback(() => {
-    let bb: THREE.Box3 | null = null;
+    // 👇 Evita THREE.Box3 en anotación de tipo
+    let bb: any = null;
 
     if (state.model) {
       (state.model.geometry as any).computeBoundingBox?.();
@@ -283,7 +284,7 @@ export default function STLViewer({
       state.pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
       state.raycaster.setFromCamera(state.pointer, state.camera);
 
-      const targets: THREE.Object3D[] = [];
+      const targets: any[] = []; // evita THREE.Object3D[] tipado
       if (state.model) targets.push(state.model);
       const ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0); // Y=0
 
@@ -292,7 +293,7 @@ export default function STLViewer({
       if (hits.length) {
         hitPoint = hits[0].point.clone();
       } else {
-        const ray = state.raycaster.ray;
+        const ray: any = state.raycaster.ray;
         const p = new THREE.Vector3();
         ray.intersectPlane(ground, p);
         if (Number.isFinite(p.x)) hitPoint = p;
