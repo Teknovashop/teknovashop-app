@@ -5,7 +5,6 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 
-/** Marcador visible en el visor y que puede viajar al backend */
 export type Marker = {
   x_mm: number;
   y_mm?: number;
@@ -17,19 +16,16 @@ export type Marker = {
 type Box = { length: number; width: number; height: number; thickness?: number };
 
 type STLViewerProps = {
-  stlUrl?: string;              // URL firmada o blob
+  stlUrl?: string;
   box?: Box;
-
   width?: number;
   height?: number;
-
   markers?: Marker[];
-
   onMeasure?(mm: number): void;
 
-  /** === Opcionales UX === */
+  /** UX */
   background?: string | null;
-  holesMode?: boolean;      // true: SOLO Alt+click añade agujero
+  holesMode?: boolean;       // si true: SOLO Alt + click añade agujero
   addDiameter?: number;
   snapStep?: number;
   onAddMarker?(m: Marker): void;
@@ -65,27 +61,26 @@ export default function STLViewer({
   const [clipping, setClipping] = useState<boolean>(defaultClipping);
   const [clipMM, setClipMM] = useState<number>(defaultClipMM);
 
-  // Estado interno
   const state = useMemo(
-    () => (Object.seal({
+    () => ({
       renderer: null as any,
       scene: new THREE.Scene(),
       camera: new THREE.PerspectiveCamera(45, width / height, 0.1, 8000),
-      model: null as any,          // Mesh
-      boxMesh: null as any,        // LineSegments
+      model: null as any,          // THREE.Mesh
+      boxMesh: null as any,        // THREE.LineSegments
       markerGroup: new THREE.Group(),
       raycaster: new THREE.Raycaster(),
       pointer: new THREE.Vector2(),
       grid: null as any,
       axes: null as any,
       labelsGroup: new THREE.Group(),
-      clippingPlane: new THREE.Plane(new THREE.Vector3(0, 0, -1), 0), // z+
+      clippingPlane: new THREE.Plane(new THREE.Vector3(0, 0, -1), 0),
       lightHemi: null as any,
       lightDir: null as any,
       isDragging: false,
       last: { x: 0, y: 0 },
       needsRender: true,
-    })),
+    }),
     [width, height]
   );
 
@@ -93,7 +88,6 @@ export default function STLViewer({
     state.needsRender = true;
   }, [state]);
 
-  /** Texto como Sprite (para reglas) */
   const makeTextSprite = useCallback((text: string) => {
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d")!;
@@ -116,7 +110,6 @@ export default function STLViewer({
     return sprite;
   }, []);
 
-  /** Reglas 3D con ticks y texto */
   const buildRulers = useCallback(
     (range: number) => {
       state.labelsGroup.clear();
@@ -163,7 +156,6 @@ export default function STLViewer({
     [makeTextSprite, needRender, state]
   );
 
-  /** Centra cámara en pieza/caja */
   const fitToTarget = useCallback(() => {
     let bb: any = null;
 
@@ -204,7 +196,6 @@ export default function STLViewer({
     needRender();
   }, [axisMode, box, buildRulers, needRender, state]);
 
-  /** Inicialización */
   useEffect(() => {
     if (!mountRef.current) return;
 
@@ -212,11 +203,9 @@ export default function STLViewer({
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(width, height);
     renderer.localClippingEnabled = true;
+    renderer.domElement.style.cursor = "crosshair";   // ← evitar la “mano”
     mountRef.current.appendChild(renderer.domElement);
     state.renderer = renderer;
-
-    // cursor claro
-    renderer.domElement.style.cursor = holesMode ? "crosshair" : "default";
 
     state.scene.background = background === null ? null : new THREE.Color(background);
 
@@ -240,7 +229,7 @@ export default function STLViewer({
     state.markerGroup.name = "markers";
     state.scene.add(state.markerGroup);
 
-    // Controles de cámara (drag/zoom)
+    // Controles cámara
     const el = renderer.domElement;
     const rotSpeed = 0.005;
 
@@ -251,14 +240,6 @@ export default function STLViewer({
       needRender();
     };
     const onDown = (e: MouseEvent) => {
-      // Si estamos en modo agujeros y se pulsa ALT + botón izq -> AÑADIR agujero, no iniciar drag
-      if (holesMode && e.altKey && e.button === 0) {
-        e.preventDefault();
-        e.stopPropagation();
-        tryAddHoleFromEvent(el, e);
-        return;
-      }
-      // Si no estamos añadiendo agujero, inicio de drag
       state.isDragging = true;
       state.last = { x: e.clientX, y: e.clientY };
     };
@@ -273,88 +254,74 @@ export default function STLViewer({
     };
     const onUp = () => { state.isDragging = false; };
 
-    // Click normal (sin alt) lo usamos para medir cuando NO estamos en modo agujeros
-    const tempPts: any[] = [];
-    const onClick = (e: MouseEvent) => {
-      if (holesMode) return; // en modo agujeros ignoramos clicks normales
-      // medición rápida con dos clicks
-      const hitPoint = raycastPoint(el, e);
-      if (!hitPoint) return;
-      tempPts.push(hitPoint.clone());
-      if (tempPts.length === 2) {
-        const [a, b] = tempPts;
-        const mm = a.distanceTo(b);
-        setDistanceMM(mm);
-        onMeasure?.(mm);
-        const geo = new THREE.BufferGeometry().setFromPoints([a, b]);
-        const mat = new THREE.LineBasicMaterial({ transparent: true });
-        const line = new THREE.Line(geo, mat);
-        state.scene.add(line);
-        needRender();
-        setTimeout(() => {
-          state.scene.remove(line);
-          geo.dispose();
-          (mat as any).dispose?.();
-          needRender();
-        }, 1400);
-        tempPts.length = 0;
-      }
-    };
-
-    // helpers para raycast y añadir agujeros
-    const raycastPoint = (targetEl: HTMLCanvasElement, e: MouseEvent) => {
-      const rect = targetEl.getBoundingClientRect();
-      state.pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-      state.pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-      state.raycaster.setFromCamera(state.pointer, state.camera);
-
-      // primero el modelo si existe
-      if (state.model) {
-        const hits = state.raycaster.intersectObject(state.model, true);
-        if (hits.length) return hits[0].point.clone();
-      }
-      // si no, plano suelo Y=0
-      const ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-      const p = new THREE.Vector3();
-      const ray = state.raycaster.ray;
-      ray.intersectPlane(ground, p);
-      if (Number.isFinite(p.x)) return p.clone();
-      return null;
-    };
-
-    const tryAddHoleFromEvent = (targetEl: HTMLCanvasElement, e: MouseEvent) => {
-      const hitPoint = raycastPoint(targetEl, e);
-      if (!hitPoint) return;
-
-      const snap = Math.max(0, snapStep || 0);
-      const sx = snap ? Math.round(hitPoint.x / snap) * snap : hitPoint.x;
-      const sz = snap ? Math.round(hitPoint.z / snap) * snap : hitPoint.z;
-      const marker: Marker = {
-        x_mm: sx,
-        y_mm: 0,
-        z_mm: sz,
-        d_mm: addDiameter || 5,
-      };
-
-      // esfera visual
-      const r = Math.max(0.6, Math.min(2.5, marker.d_mm / 6));
-      const geo = new THREE.SphereGeometry(r, 16, 16);
-      const mat = new THREE.MeshStandardMaterial({ opacity: 0.95, transparent: true });
-      const sphere = new THREE.Mesh(geo, mat);
-      sphere.position.set(marker.x_mm, marker.y_mm ?? 0, marker.z_mm);
-      state.markerGroup.add(sphere);
-
-      onAddMarker?.(marker);
-      needRender();
-    };
-
     el.addEventListener("wheel", onWheel, { passive: false });
     el.addEventListener("mousedown", onDown);
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+
+    // Clicks: medir (si holesMode=false) o añadir agujeros SOLO con Alt
+    const tempPts: any[] = [];
+    const onClick = (e: MouseEvent) => {
+      const rect = el.getBoundingClientRect();
+      state.pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      state.pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      state.raycaster.setFromCamera(state.pointer, state.camera);
+
+      // Intersección: malla si existe, si no plano Y=0
+      let hitPoint: THREE.Vector3 | null = null;
+      const hits = state.model ? state.raycaster.intersectObject(state.model, true) : [];
+      if (hits.length) {
+        hitPoint = hits[0].point.clone();
+      } else {
+        const ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+        const p = new THREE.Vector3();
+        if (state.raycaster.ray.intersectPlane(ground, p)) hitPoint = p.clone();
+      }
+      if (!hitPoint) return;
+
+      // SOLO Alt + click crea agujero
+      if (holesMode && e.altKey) {
+        const snap = Math.max(0, snapStep || 0);
+        const sx = snap ? Math.round(hitPoint.x / snap) * snap : hitPoint.x;
+        const sz = snap ? Math.round(hitPoint.z / snap) * snap : hitPoint.z;
+        const marker: Marker = { x_mm: sx, y_mm: 0, z_mm: sz, d_mm: addDiameter || 5 };
+        const r = Math.max(0.6, Math.min(2.5, marker.d_mm / 6));
+        const geo = new THREE.SphereGeometry(r, 16, 16);
+        const mat = new THREE.MeshStandardMaterial({ opacity: 0.95, transparent: true });
+        const sphere = new THREE.Mesh(geo, mat);
+        sphere.position.set(marker.x_mm, marker.y_mm ?? 0, marker.z_mm);
+        state.markerGroup.add(sphere);
+        onAddMarker?.(marker);
+        needRender();
+        return;
+      }
+
+      // Medición si holesMode = false
+      if (!holesMode) {
+        tempPts.push(hitPoint.clone());
+        if (tempPts.length === 2) {
+          const [a, b] = tempPts;
+          const mm = a.distanceTo(b);
+          setDistanceMM(mm);
+          onMeasure?.(mm);
+          const geo = new THREE.BufferGeometry().setFromPoints([a, b]);
+          const mat = new THREE.LineBasicMaterial({ transparent: true });
+          const line = new THREE.Line(geo, mat);
+          state.scene.add(line);
+          needRender();
+          setTimeout(() => {
+            state.scene.remove(line);
+            geo.dispose();
+            (mat as any).dispose?.();
+            needRender();
+          }, 1400);
+          tempPts.length = 0;
+        }
+      }
+    };
     el.addEventListener("click", onClick);
 
-    // Render loop (sólo si hay cambios)
+    // Render loop
     let raf = 0;
     const tick = () => {
       if (state.needsRender) {
@@ -365,7 +332,6 @@ export default function STLViewer({
     };
     tick();
 
-    // Limpieza
     return () => {
       cancelAnimationFrame(raf);
       el.removeEventListener("wheel", onWheel);
@@ -378,15 +344,6 @@ export default function STLViewer({
     };
   }, [background, height, holesMode, addDiameter, onAddMarker, onMeasure, snapStep, width, axisMode, state]);
 
-  /** Cambia cursor si cambia holesMode */
-  useEffect(() => {
-    const canvas = state.renderer?.domElement as HTMLCanvasElement | undefined;
-    if (canvas) {
-      canvas.style.cursor = holesMode ? "crosshair" : "default";
-    }
-  }, [holesMode, state.renderer]);
-
-  /** Crea/actualiza caja guía si no hay STL */
   useEffect(() => {
     if (!state.renderer) return;
 
@@ -407,7 +364,6 @@ export default function STLViewer({
     fitToTarget();
   }, [box, stlUrl, fitToTarget, state]);
 
-  /** Carga/recarga STL */
   useEffect(() => {
     if (!state.renderer || !stlUrl) {
       fitToTarget();
@@ -450,7 +406,6 @@ export default function STLViewer({
     );
   }, [stlUrl, state, fitToTarget, needRender]);
 
-  /** Pintar marcadores que vengan por props */
   useEffect(() => {
     if (!state.renderer) return;
     state.markerGroup.clear();
@@ -469,7 +424,6 @@ export default function STLViewer({
     needRender();
   }, [markers, addDiameter, needRender, state]);
 
-  /** Clipping plane */
   useEffect(() => {
     if (!state.renderer) return;
     if (!clipping) {
@@ -483,13 +437,11 @@ export default function STLViewer({
     needRender();
   }, [clipping, clipMM, needRender, state]);
 
-  /** Cuando cambia el modo de cámara, reencuadra */
   useEffect(() => {
     if (!state.renderer) return;
     fitToTarget();
   }, [axisMode, fitToTarget, state]);
 
-  /** Reset cámara (libre) */
   const resetView = () => {
     setAxisMode("free");
     fitToTarget();
@@ -497,15 +449,13 @@ export default function STLViewer({
 
   return (
     <div className="relative rounded-2xl border bg-white/60 shadow-sm" style={{ width, height }}>
-      <div ref={mountRef} className="h-full w-full select-none" />
+      <div ref={mountRef} className="h-full w-full" />
 
-      {/* HUD superior-izquierda: modo/ayudas */}
       <div className="pointer-events-none absolute left-2 top-2 rounded bg-white/85 px-2 py-1 text-xs">
-        {distanceMM ? `Medida: ${distanceMM.toFixed(1)} mm` : holesMode ? "Alt + click = agujero" : "Click x2 = medir"}
+        {distanceMM ? `Medida: ${distanceMM.toFixed(1)} mm` : "Alt + clic = agujero"}
       </div>
 
-      {/* Controles de cámara */}
-      <div className="absolute left-2 top-10 z-10 flex items-center gap-2 rounded bg-white/85 p-1 text-xs">
+      <div className="absolute left-2 top-10 flex items-center gap-2 rounded bg-white/85 p-1 text-xs">
         <span className="px-1">Cámara:</span>
         {(["free", "x", "y", "z"] as const).map((m) => (
           <button
@@ -520,8 +470,7 @@ export default function STLViewer({
         <button onClick={resetView} className="rounded border px-2 py-1 hover:bg-gray-100">Reset</button>
       </div>
 
-      {/* Clipping */}
-      <div className="absolute left-2 top-20 z-10 flex items-center gap-2 rounded bg-white/85 p-2 text-xs">
+      <div className="absolute left-2 top-20 flex items-center gap-2 rounded bg-white/85 p-2 text-xs">
         <label className="inline-flex items-center gap-1">
           <input type="checkbox" checked={clipping} onChange={(e) => setClipping(e.target.checked)} />
           Clipping
