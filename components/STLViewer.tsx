@@ -288,7 +288,9 @@ export default function STLViewer({
       state.raycaster.setFromCamera(state.pointer, state.camera);
 
       // Intersección: malla si existe. Si no, plano superior Y = box.height/2. Si tampoco hay box, suelo Y=0.
-      let hitPoint: THREE.Vector3 | null = null;
+      // ✅ sin tipos de THREE para evitar el fallo del checker en Vercel
+      let hitPoint: any = null;
+
 
       if (state.model) {
         const hits = state.raycaster.intersectObject(state.model, true);
