@@ -23,9 +23,8 @@ type STLViewerProps = {
   markers?: Marker[];
   onMeasure?(mm: number): void;
 
-  /** UX */
   background?: string | null;
-  holesMode?: boolean;       // si true: SOLO Alt + click añade agujero
+  holesMode?: boolean;       // SOLO Alt + click añade agujero
   addDiameter?: number;
   snapStep?: number;
   onAddMarker?(m: Marker): void;
@@ -56,7 +55,6 @@ export default function STLViewer({
   const mountRef = useRef<HTMLDivElement | null>(null);
   const [distanceMM, setDistanceMM] = useState<number | null>(null);
 
-  // UI local (cámara y clipping)
   const [axisMode, setAxisMode] = useState<"free" | "x" | "y" | "z">(defaultAxis);
   const [clipping, setClipping] = useState<boolean>(defaultClipping);
   const [clipMM, setClipMM] = useState<number>(defaultClipMM);
@@ -66,8 +64,8 @@ export default function STLViewer({
       renderer: null as any,
       scene: new THREE.Scene(),
       camera: new THREE.PerspectiveCamera(45, width / height, 0.1, 8000),
-      model: null as any,          // THREE.Mesh
-      boxMesh: null as any,        // THREE.LineSegments
+      model: null as any,          // Mesh
+      boxMesh: null as any,        // LineSegments
       markerGroup: new THREE.Group(),
       raycaster: new THREE.Raycaster(),
       pointer: new THREE.Vector2(),
@@ -203,7 +201,7 @@ export default function STLViewer({
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(width, height);
     renderer.localClippingEnabled = true;
-    renderer.domElement.style.cursor = "crosshair";   // ← evitar la “mano”
+    renderer.domElement.style.cursor = "crosshair"; // evitar cursor “mano”
     mountRef.current.appendChild(renderer.domElement);
     state.renderer = renderer;
 
@@ -229,7 +227,7 @@ export default function STLViewer({
     state.markerGroup.name = "markers";
     state.scene.add(state.markerGroup);
 
-    // Controles cámara
+    // Cámara
     const el = renderer.domElement;
     const rotSpeed = 0.005;
 
@@ -259,7 +257,7 @@ export default function STLViewer({
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
 
-    // Clicks: medir (si holesMode=false) o añadir agujeros SOLO con Alt
+    // Clicks
     const tempPts: any[] = [];
     const onClick = (e: MouseEvent) => {
       const rect = el.getBoundingClientRect();
@@ -267,13 +265,13 @@ export default function STLViewer({
       state.pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
       state.raycaster.setFromCamera(state.pointer, state.camera);
 
-      // Intersección: malla si existe, si no plano Y=0
-      let hitPoint: THREE.Vector3 | null = null;
+      // Intersección: malla o plano Y=0
+      let hitPoint: any = null;
       const hits = state.model ? state.raycaster.intersectObject(state.model, true) : [];
       if (hits.length) {
         hitPoint = hits[0].point.clone();
       } else {
-        const ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+        const ground: any = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
         const p = new THREE.Vector3();
         if (state.raycaster.ray.intersectPlane(ground, p)) hitPoint = p.clone();
       }
@@ -344,6 +342,7 @@ export default function STLViewer({
     };
   }, [background, height, holesMode, addDiameter, onAddMarker, onMeasure, snapStep, width, axisMode, state]);
 
+  // Caja guía
   useEffect(() => {
     if (!state.renderer) return;
 
@@ -364,6 +363,7 @@ export default function STLViewer({
     fitToTarget();
   }, [box, stlUrl, fitToTarget, state]);
 
+  // STL
   useEffect(() => {
     if (!state.renderer || !stlUrl) {
       fitToTarget();
@@ -406,6 +406,7 @@ export default function STLViewer({
     );
   }, [stlUrl, state, fitToTarget, needRender]);
 
+  // Pintar marcadores recibidos
   useEffect(() => {
     if (!state.renderer) return;
     state.markerGroup.clear();
@@ -424,6 +425,7 @@ export default function STLViewer({
     needRender();
   }, [markers, addDiameter, needRender, state]);
 
+  // Clipping
   useEffect(() => {
     if (!state.renderer) return;
     if (!clipping) {
