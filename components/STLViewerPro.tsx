@@ -1,254 +1,259 @@
 "use client";
 
-import React, { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import {
+  OrbitControls,
+  Environment,
+  ContactShadows,
+  GizmoHelper,
+  GizmoViewport,
+  Html,
+  StatsGl,
+} from "@react-three/drei";
 
-type BoxSpec = { length: number; width: number; height: number; thickness?: number };
-type Marker = { x_mm: number; z_mm: number; d_mm: number };
-type Mode = "free" | "x" | "y" | "z";
+// Utilidad: cargar BufferGeometry desde un STL en runtime (opcional)
+async function loadSTLGeometry(url: string): Promise<any> {
+  const { STLLoader } = await import("three/examples/jsm/loaders/STLLoader.js");
+  const loader: any = new (STLLoader as any)();
+  return new Promise((resolve, reject) => {
+    loader.load(url, (geom: any) => resolve(geom), undefined, reject);
+  });
+}
 
-type Props = {
-  className?: string;
-  box: BoxSpec;
-  markers?: Marker[];
-  holesEnabled?: boolean;
-  holeDiameter?: number;
-  snapMM?: number;
-  onMarkersChange?: (m: Marker[]) => void;
+type ViewerProps = {
+  // O pasas una geometry ya construida…
+  geometry?: any;
+  // …o pasas una URL STL para previsualizar:
+  stlUrl?: string;
+  //
+  metalness?: number;
+  roughness?: number;
+  showShadows?: boolean;
+  envPreset?: "studio" | "city" | "sunset" | "warehouse" | "forest" | "apartment";
 };
 
-const STLViewerPro: React.FC<Props> = ({
-  className,
-  box,
-  markers = [],
-  holesEnabled = true,
-  holeDiameter = 5,
-  snapMM = 1,
-  onMarkersChange,
-}) => {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const [three, setThree] = useState<any>(null);
-  const sceneRef = useRef<any>(null);
-  const cameraRef = useRef<any>(null);
-  const rendererRef = useRef<any>(null);
-  const controlsRef = useRef<any>(null);
-  const meshRef = useRef<any>(null);
-  const edgesRef = useRef<any>(null);
-  const markersGroupRef = useRef<any>(null);
-  const clipPlaneRef = useRef<any>(null);
+function Rig() {
+  const controls = useRef<any>(null);
+  useFrame(() => {
+    if (controls.current) controls.current.update();
+  });
+  return <OrbitControls ref={controls} enableDamping dampingFactor={0.08} rotateSpeed={0.6} />;
+}
 
-  const dims = useMemo(() => {
-    const L = box.length, W = box.width, H = box.height;
-    return { L, W, H };
-  }, [box.length, box.width, box.height]);
-
+function ClippingController({ active, constant, planeRef }: { active: boolean; constant: number; planeRef: any }) {
+  const { gl } = useThree();
   useEffect(() => {
-    let mounted = true;
-    (async () => {
-      const _three = await import("three");
-      const { OrbitControls } = await import("three/examples/jsm/controls/OrbitControls.js");
-      if (!mounted) return;
-      setThree({ ..._three, OrbitControls });
-    })();
-    return () => { mounted = false; };
-  }, []);
-
-  useEffect(() => {
-    if (!three || !containerRef.current) return;
-    const {
-      Scene, PerspectiveCamera, WebGLRenderer, GridHelper, AxesHelper, Group,
-      Plane, PlaneHelper, EdgesGeometry, LineSegments, LineBasicMaterial,
-      Mesh, MeshBasicMaterial, BoxGeometry, Color, Fog, Vector3
-    } = three;
-
-    const scene = new Scene();
-    scene.background = new Color(0xf6f7fb);
-    scene.fog = new Fog(0xf6f7fb, 5000, 12000);
-
-    const camera = new PerspectiveCamera(
-      45,
-      containerRef.current.clientWidth / containerRef.current.clientHeight,
-      0.1,
-      50000
-    );
-    camera.position.set(dims.L * 0.9, dims.W * -1.2, dims.H * 1.6);
-
-    const renderer = new WebGLRenderer({ antialias: true, alpha: false });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio ?? 1, 2));
-    renderer.setSize(containerRef.current.clientWidth, containerRef.current.clientHeight);
-    renderer.localClippingEnabled = true;
-    containerRef.current.innerHTML = "";
-    containerRef.current.appendChild(renderer.domElement);
-
-    const controls = new three.OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-
-    const grid = new GridHelper(Math.max(dims.L, dims.W) * 2, 40);
-    const axes = new AxesHelper(Math.max(dims.L, dims.W) * 0.6);
-    scene.add(grid, axes);
-
-    const group = new Group();
-    scene.add(group);
-
-    const boxGeom = new BoxGeometry(dims.L, dims.W, dims.H);
-    const boxMesh = new Mesh(
-      boxGeom,
-      new MeshBasicMaterial({ color: 0x9aa0a6, wireframe: true, transparent: true, opacity: 0.35, depthWrite: false })
-    );
-    boxMesh.position.set(0, 0, dims.H / 2);
-    group.add(boxMesh);
-    meshRef.current = boxMesh;
-
-    const edges = new EdgesGeometry(boxGeom);
-    const edgesLines = new LineSegments(edges, new LineBasicMaterial({ color: 0x6b7280 }));
-    edgesLines.position.copy(boxMesh.position);
-    group.add(edgesLines);
-    edgesRef.current = edgesLines;
-
-    const plane = new Plane(new Vector3(0, 0, -1), 0);
-    clipPlaneRef.current = plane;
-    renderer.clippingPlanes = [plane];
-    const planeHelper = new PlaneHelper(plane, Math.max(dims.L, dims.W), 0x999999);
-    planeHelper.visible = false;
-    scene.add(planeHelper);
-
-    const markersGroup = new Group();
-    scene.add(markersGroup);
-    markersGroupRef.current = markersGroup;
-
-    const onResize = () => {
-      if (!containerRef.current) return;
-      camera.aspect = containerRef.current.clientWidth / containerRef.current.clientHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(containerRef.current.clientWidth, containerRef.current.clientHeight);
-    };
-    window.addEventListener("resize", onResize);
-
-    let raf = 0;
-    const animate = () => {
-      raf = requestAnimationFrame(animate);
-      controls.update();
-      renderer.render(scene, camera);
-    };
-    animate();
-
-    sceneRef.current = scene;
-    cameraRef.current = camera;
-    rendererRef.current = renderer;
-    controlsRef.current = controls;
-
+    gl.localClippingEnabled = active;
     return () => {
-      cancelAnimationFrame(raf);
-      window.removeEventListener("resize", onResize);
-      try { renderer.dispose(); } catch {}
-      scene.clear();
+      gl.localClippingEnabled = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [three, dims.L, dims.W, dims.H]);
-
+  }, [active, gl]);
+  // planeRef.current = new THREE.Plane(new THREE.Vector3(0, 0, -1), constant)
   useEffect(() => {
-    if (!three || !markersGroupRef.current) return;
-    const g = markersGroupRef.current as any;
-    for (let i = g.children.length - 1; i >= 0; i--) g.remove(g.children[i]);
+    if (!planeRef.current) {
+      const THREE: any = (globalThis as any).THREE;
+      planeRef.current = new THREE.Plane(new THREE.Vector3(0, 0, -1), constant);
+    } else {
+      planeRef.current.constant = constant;
+    }
+  }, [constant, planeRef]);
+  return null;
+}
 
-    const { SphereGeometry, MeshBasicMaterial, Mesh } = three;
-    const sph = new SphereGeometry((Math.max(1, (markers[0]?.d_mm ?? 5)) / 2) * 0.6, 16, 16);
+function ModelMesh({
+  geometry,
+  planeRef,
+  metalness,
+  roughness,
+  showShadows,
+}: {
+  geometry: any;
+  planeRef: any;
+  metalness: number;
+  roughness: number;
+  showShadows: boolean;
+}) {
+  const matProps: any = useMemo(
+    () => ({
+      metalness,
+      roughness,
+      color: "#c9c9c9",
+      clippingPlanes: planeRef.current ? [planeRef.current] : [],
+    }),
+    [metalness, roughness, planeRef]
+  );
 
-    markers.forEach((m) => {
-      const mesh = new Mesh(sph, new MeshBasicMaterial({ color: 0x3b82f6 }));
-      mesh.position.set(m.x_mm - dims.L / 2, 0, m.z_mm);
-      g.add(mesh);
-    });
-  }, [three, markers, dims.L]);
-
+  // Centrar y escalar dentro de escena (auto-fit)
+  const meshRef = useRef<any>(null);
   useEffect(() => {
-    if (!three || !rendererRef.current || !cameraRef.current || !meshRef.current) return;
-    const renderer = rendererRef.current as any;
-    const camera = cameraRef.current as any;
-    const mesh = meshRef.current as any;
-
-    const onClick = (ev: MouseEvent) => {
-      if (!holesEnabled || !ev.altKey) return;
-      const rect = renderer.domElement.getBoundingClientRect();
-      const ndc = new three.Vector2(
-        ((ev.clientX - rect.left) / rect.width) * 2 - 1,
-        -(((ev.clientY - rect.top) / rect.height) * 2 - 1)
-      );
-      const raycaster = new three.Raycaster();
-      raycaster.setFromCamera(ndc, camera);
-
-      const plane = new three.Plane(new three.Vector3(0, 0, -1), -(mesh.position.z + dims.H / 2));
-      const hit = new three.Vector3();
-      raycaster.ray.intersectPlane(plane, hit);
-      if (!hit) return;
-
-      const local = mesh.worldToLocal(hit.clone());
-      let x = local.x + dims.L / 2;
-      let z = dims.H;
-
-      const s = Math.max(0.1, snapMM);
-      x = Math.round(x / s) * s;
-
-      const margin = Math.max(0.5, (holeDiameter / 2) + 0.5);
-      x = Math.max(margin, Math.min(dims.L - margin, x));
-
-      const newMarker: Marker = { x_mm: x, z_mm: z, d_mm: holeDiameter };
-      onMarkersChange?.([...markers, newMarker]);
-    };
-
-    renderer.domElement.addEventListener("click", onClick);
-    return () => { renderer.domElement.removeEventListener("click", onClick); };
-  }, [three, holesEnabled, holeDiameter, snapMM, markers, onMarkersChange, dims.H, dims.L]);
-
-  const [camLock, setCamLock] = useState<Mode>("free");
-  const [clip, setClip] = useState<number>(0);
-
-  useEffect(() => {
-    if (!controlsRef.current || !cameraRef.current) return;
-    const controls = controlsRef.current as any;
-    const cam = cameraRef.current as any;
-
-    const setLock = (mode: Mode) => {
-      // ✅ fijamos enableRotate aquí para evitar el narrowing
-      controls.enableRotate = (mode === "free");
-      if (mode === "free") {
-        return;
-      }
-      const r = Math.max(dims.L, dims.W, dims.H) * 1.8;
-      if (mode === "x") cam.position.set(r, 0, dims.H * 0.8);
-      if (mode === "y") cam.position.set(0, -r, dims.H * 0.8);
-      if (mode === "z") cam.position.set(0, 0, r);
-      controls.update();
-    };
-    setLock(camLock);
-  }, [camLock, dims.L, dims.W, dims.H]);
-
-  useEffect(() => {
-    if (!rendererRef.current || !clipPlaneRef.current) return;
-    const plane = clipPlaneRef.current as any;
-    const d = Math.max(0, Math.min(1, clip)) * dims.H;
-    plane.constant = d;
-  }, [clip, dims.H]);
+    if (!meshRef.current || !geometry?.boundingBox) return;
+    geometry.computeBoundingBox?.();
+    const bb = geometry.boundingBox;
+    const size = new (window as any).THREE.Vector3();
+    bb.getSize(size);
+    const maxDim = Math.max(size.x, size.y, size.z) || 1;
+    const scale = 1.5 / maxDim; // encaja en ~3 unidades
+    meshRef.current.scale.setScalar(scale);
+    // centra
+    const center = new (window as any).THREE.Vector3();
+    bb.getCenter(center).multiplyScalar(-1);
+    meshRef.current.position.set(center.x * scale, center.y * scale, center.z * scale);
+  }, [geometry]);
 
   return (
-    <div className={className ?? ""}>
-      <div className="mb-2 flex items-center gap-2 text-sm">
-        <span className="opacity-70">Alt + clic = agujero</span>
-        <div className="ml-4">Cámara:</div>
-        <div className="inline-flex rounded-md border border-gray-300 overflow-hidden">
-          <button className={`px-2 py-1 ${camLock==="free"?"bg-gray-900 text-white":"bg-white"}`} onClick={() => setCamLock("free")}>Libre</button>
-          <button className={`px-2 py-1 ${camLock==="x"?"bg-gray-900 text-white":"bg-white"}`} onClick={() => setCamLock("x")}>X</button>
-          <button className={`px-2 py-1 ${camLock==="y"?"bg-gray-900 text-white":"bg-white"}`} onClick={() => setCamLock("y")}>Y</button>
-          <button className={`px-2 py-1 ${camLock==="z"?"bg-gray-900 text-white":"bg-white"}`} onClick={() => setCamLock("z")}>Z</button>
-        </div>
-        <button className="px-2 py-1 rounded-md border border-gray-300" onClick={() => setCamLock("free")}>Reset</button>
-        <label className="ml-4 flex items-center gap-2">
-          <input type="checkbox" checked={clip>0} onChange={(e)=>setClip(e.target.checked?0.5:0)} />
-          <span>Clipping</span>
+    <mesh ref={meshRef} geometry={geometry} castShadow receiveShadow={showShadows}>
+      <meshStandardMaterial {...matProps} />
+    </mesh>
+  );
+}
+
+function STLOrGeometry({ stlUrl, geometry, ...rest }: any) {
+  const [geo, setGeo] = useState<any>(geometry || null);
+  useEffect(() => {
+    let mounted = true;
+    if (geometry) {
+      setGeo(geometry);
+      return;
+    }
+    if (stlUrl) {
+      loadSTLGeometry(stlUrl).then((g) => mounted && setGeo(g));
+    }
+    return () => {
+      mounted = false;
+    };
+  }, [stlUrl, geometry]);
+
+  if (!geo) {
+    return (
+      <Html center>
+        <div className="px-3 py-1 rounded bg-black/60 text-white text-sm">Cargando geometría…</div>
+      </Html>
+    );
+  }
+  return <ModelMesh geometry={geo} {...rest} />;
+}
+
+export default function ViewerPro({
+  geometry,
+  stlUrl,
+  metalness = 0.1,
+  roughness = 0.6,
+  showShadows = true,
+  envPreset = "studio",
+}: ViewerProps) {
+  const [shadows, setShadows] = useState(showShadows);
+  const [tone, setTone] = useState(1.0);
+  const [env, setEnv] = useState(envPreset);
+  const [clipOn, setClipOn] = useState(false);
+  const [clip, setClip] = useState(0); // distancia del plano
+  const clipPlaneRef = useRef<any>(null);
+
+  return (
+    <div className="w-full h-[650px] rounded-2xl overflow-hidden relative bg-neutral-950">
+      {/* Toolbar */}
+      <div className="absolute z-10 top-3 left-3 flex gap-2 bg-black/30 backdrop-blur px-3 py-2 rounded-xl text-white text-sm">
+        <button onClick={() => setShadows((s) => !s)} className="px-2 py-1 rounded bg-white/10 hover:bg-white/20">
+          Sombras: {shadows ? "ON" : "OFF"}
+        </button>
+        <label className="flex items-center gap-2">
+          Tone
+          <input
+            type="range"
+            min={0.5}
+            max={1.5}
+            step={0.01}
+            value={tone}
+            onChange={(e) => setTone(parseFloat(e.target.value))}
+          />
         </label>
+        <select
+          className="px-2 py-1 rounded bg-white/10 hover:bg-white/20"
+          value={env}
+          onChange={(e) => setEnv(e.target.value as any)}
+        >
+          <option value="studio">studio</option>
+          <option value="city">city</option>
+          <option value="sunset">sunset</option>
+          <option value="warehouse">warehouse</option>
+          <option value="forest">forest</option>
+          <option value="apartment">apartment</option>
+        </select>
+        <label className="flex items-center gap-2">
+          Clipping
+          <input type="checkbox" checked={clipOn} onChange={(e) => setClipOn(e.target.checked)} />
+        </label>
+        {clipOn && (
+          <input
+            type="range"
+            min={-2}
+            max={2}
+            step={0.01}
+            value={clip}
+            onChange={(e) => setClip(parseFloat(e.target.value))}
+          />
+        )}
       </div>
-      <div ref={containerRef} style={{ width: "100%", height: "520px", borderRadius: 12, overflow: "hidden", background: "#fff" }} />
+
+      <Canvas
+        shadows={shadows}
+        dpr={[1, 2]}
+        camera={{ position: [2.5, 1.6, 2.5], fov: 45 }}
+        onCreated={({ gl }) => {
+          const THREE: any = (globalThis as any).THREE;
+          gl.outputColorSpace = THREE.SRGBColorSpace;
+          gl.toneMapping = THREE.ACESFilmicToneMapping;
+          gl.toneMappingExposure = tone;
+        }}
+      >
+        {/* tone mapping live */}
+        <ToneMapper value={tone} />
+        <Rig />
+
+        {/* Luces físicas */}
+        <ambientLight intensity={0.5} />
+        <directionalLight
+          position={[3, 4, 2]}
+          intensity={1.2}
+          castShadow={shadows}
+          shadow-mapSize={[1024, 1024] as any}
+        />
+        <Environment preset={env as any} />
+
+        {/* Clipping */}
+        <ClippingController active={clipOn} constant={clip} planeRef={clipPlaneRef} />
+
+        {/* Modelo */}
+        <STLOrGeometry
+          stlUrl={stlUrl}
+          geometry={geometry}
+          planeRef={clipPlaneRef}
+          metalness={metalness}
+          roughness={roughness}
+          showShadows={shadows}
+        />
+
+        {/* Suelo / sombras de contacto */}
+        {shadows && <ContactShadows opacity={0.45} scale={10} blur={2.2} far={3.5} resolution={1024} />}
+
+        {/* Mini-gizmo */}
+        <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
+          <GizmoViewport axisColors={["red", "green", "blue"]} labelColor="white" />
+        </GizmoHelper>
+
+        {/* FPS/Stats opcional */}
+        {/* <StatsGl /> */}
+      </Canvas>
     </div>
   );
-};
+}
 
-export default STLViewerPro;
+function ToneMapper({ value }: { value: number }) {
+  const { gl } = useThree();
+  useEffect(() => {
+    const THREE: any = (globalThis as any).THREE;
+    gl.toneMappingExposure = value;
+    gl.toneMapping = THREE.ACESFilmicToneMapping;
+  }, [gl, value]);
+  return null;
+}
