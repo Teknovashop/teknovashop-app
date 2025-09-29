@@ -1,434 +1,301 @@
 "use client";
 
-/**
- * Visor 3D “Pro” sin dependencias raras: usa three.js por import dinámico
- * para evitar errores de tipos en Vercel. Dibuja:
- * - Grid + ejes
- * - Caja del modelo en alambre (siempre visible) => así se ve dónde poner agujeros
- * - Esferas/puas para cada agujero
- * UI:
- * - Bloqueo de cámara: Libre / X / Y / Z
- * - Clipping con slider (plano horizontal)
- * - Lista editable de agujeros (x/y/z/Ø) con eliminar (panel flotante plegable)
- * - ALT+clic para añadir agujero, con snap en mm
- */
+import React, { useEffect, useRef, useState, useMemo } from "react";
 
-import {useEffect, useMemo, useRef, useState, useCallback} from "react";
-
-export type Marker = {
-  x_mm: number;
-  y_mm?: number; // por compat y para taladros 3D futuros
-  z_mm: number;
-  d_mm?: number;
+type BoxSpec = {
+  length: number; // X (mm)
+  width: number;  // Y (mm)
+  height: number; // Z (mm)
+  thickness?: number;
 };
 
-type Box = { length: number; width: number; height: number; thickness?: number };
+type Marker = { x_mm: number; z_mm: number; d_mm: number };
 
-type STLViewerProProps = {
-  box: Box;
-  markers: Marker[];
-  onMarkersChange: (next: Marker[]) => void;
-
-  // UX
-  holesEnabled?: boolean;       // si no está, ALT+clic sigue funcionando
-  holeDiameter?: number;        // Ø por defecto al crear
-  snapMM?: number;              // paso de snap en mm
-
+type Props = {
   className?: string;
+  box: BoxSpec;
+  markers?: Marker[];
+  holesEnabled?: boolean;
+  holeDiameter?: number; // mm
+  snapMM?: number;       // grid snap in mm
+  onMarkersChange?: (m: Marker[]) => void;
 };
 
-export default function STLViewerPro({
-  box, markers, onMarkersChange,
+const STLViewerPro: React.FC<Props> = ({
+  className,
+  box,
+  markers = [],
   holesEnabled = true,
   holeDiameter = 5,
   snapMM = 1,
-  className
-}: STLViewerProProps) {
-
-  const containerRef = useRef<HTMLDivElement>(null);
-  // three y OrbitControls se cargan dinámicamente (evita errores de tipos en build)
-  const threeRef = useRef<any>(null);
-  const rendererRef = useRef<any>(null);
+  onMarkersChange,
+}) => {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [three, setThree] = useState<any>(null); // import dinámico
   const sceneRef = useRef<any>(null);
   const cameraRef = useRef<any>(null);
+  const rendererRef = useRef<any>(null);
   const controlsRef = useRef<any>(null);
-  const gridRef = useRef<any>(null);
-  const axesRef = useRef<any>(null);
-  const boxEdgesRef = useRef<any>(null);
-  const dotsGroupRef = useRef<any>(null);
+  const meshRef = useRef<any>(null);
+  const edgesRef = useRef<any>(null);
+  const markersGroupRef = useRef<any>(null);
   const clipPlaneRef = useRef<any>(null);
 
-  // UI local
-  const [axisLock, setAxisLock] = useState<"free"|"x"|"y"|"z">("free");
-  const [clipping, setClipping] = useState(false);
-  const [clipValue, setClipValue] = useState(0); // 0..1 (0=sin corte, 1=corte máximo)
-  const [holesOpen, setHolesOpen] = useState(true);
+  const dims = useMemo(() => {
+    // Convertimos de mm a metros para Three (escala 1 = 1 mm está bien también;
+    // pero nos quedamos en mm para evitar confusiones).
+    const L = box.length;
+    const W = box.width;
+    const H = box.height;
+    return { L, W, H };
+  }, [box.length, box.width, box.height]);
 
-  // util: snap
-  const snap = useCallback((v: number) => {
-    if (!snapMM || snapMM <= 0) return v;
-    return Math.round(v / snapMM) * snapMM;
-  }, [snapMM]);
-
-  // inicializa three
+  // Carga diferida de three + OrbitControls (evita SSR y problemas en Vercel)
   useEffect(() => {
     let mounted = true;
-
     (async () => {
-      const THREE = await import("three");
+      const _three = await import("three");
       const { OrbitControls } = await import("three/examples/jsm/controls/OrbitControls.js");
       if (!mounted) return;
-      threeRef.current = THREE;
-
-      const el = containerRef.current!;
-      const width = el.clientWidth;
-      const height = el.clientHeight;
-
-      // renderer
-      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-      renderer.setSize(width, height);
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-      el.innerHTML = "";
-      el.appendChild(renderer.domElement);
-      rendererRef.current = renderer;
-
-      // escena
-      const scene = new THREE.Scene();
-      scene.background = null;
-      sceneRef.current = scene;
-
-      // cámara
-      const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 8000);
-      camera.position.set(300, 220, 320);
-      cameraRef.current = camera;
-
-      // controles
-      const controls = new OrbitControls(camera, renderer.domElement);
-      controls.enableDamping = true;
-      controlsRef.current = controls;
-
-      // grid + ejes
-      const grid = new THREE.GridHelper(2000, 200, 0x999999, 0xdddddd);
-      (grid.material as any).opacity = 0.35;
-      (grid.material as any).transparent = true;
-      grid.rotation.x = Math.PI / 2; // plano XY (Z hacia arriba)
-      scene.add(grid);
-      gridRef.current = grid;
-
-      const axes = new THREE.AxesHelper(120);
-      scene.add(axes);
-      axesRef.current = axes;
-
-      // grupo de marcadores
-      const dotsGroup = new THREE.Group();
-      scene.add(dotsGroup);
-      dotsGroupRef.current = dotsGroup;
-
-      // clipping plane
-      clipPlaneRef.current = new THREE.Plane(new THREE.Vector3(0, 0, -1), 0); // corta por Z
-      renderer.localClippingEnabled = true;
-
-      // caja alambre (siempre visible)
-      rebuildBoxEdges();
-
-      // encuadre inicial
-      fitCameraToBox();
-
-      // listeners
-      const onResize = () => {
-        const w = el.clientWidth, h = el.clientHeight;
-        renderer.setSize(w, h);
-        camera.aspect = w / h;
-        camera.updateProjectionMatrix();
-      };
-      window.addEventListener("resize", onResize);
-
-      const onPointerDown = (ev: PointerEvent) => {
-        // ALT+clic o agujeros habilitados forza creación
-        const mustCreate = ev.altKey || holesEnabled;
-        if (!mustCreate) return;
-        // no crear si click en el panel de agujeros
-        if ((ev.target as HTMLElement).closest?.("[data-holes-panel]")) return;
-
-        const rect = renderer.domElement.getBoundingClientRect();
-        const xN = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
-        const yN = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
-
-        const ray = new THREE.Raycaster();
-        ray.setFromCamera({ x: xN, y: yN }, camera);
-
-        // intersecta caja (si existiese mesh real usaríamos el mesh)
-        const plane = new THREE.Plane(new THREE.Vector3(0,0,1), 0); // plano Z=0
-        const hit = new THREE.Vector3();
-        ray.ray.intersectPlane(plane, hit);
-
-        const x = snap(hit.x);
-        const y = snap(hit.y);
-        const z = snap(hit.z);
-
-        const next = [...markers, { x_mm: x, y_mm: y, z_mm: z, d_mm: holeDiameter }];
-        onMarkersChange(next);
-      };
-      renderer.domElement.addEventListener("pointerdown", onPointerDown);
-
-      // render loop
-      let raf = 0;
-      const loop = () => {
-        raf = requestAnimationFrame(loop);
-        controls.update();
-
-        // aplica clipping si procede
-        if (clipping && renderer.clippingPlanes?.length !== 1) {
-          renderer.clippingPlanes = [clipPlaneRef.current];
-        } else if (!clipping && renderer.clippingPlanes?.length) {
-          renderer.clippingPlanes = [];
-        }
-
-        renderer.render(scene, camera);
-      };
-      loop();
-
-      return () => {
-        mounted = false;
-        cancelAnimationFrame(raf);
-        window.removeEventListener("resize", onResize);
-        renderer.domElement.removeEventListener("pointerdown", onPointerDown);
-        controls.dispose();
-        renderer.dispose();
-      };
+      setThree({ ..._three, OrbitControls });
     })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
+  // Inicializa escena
+  useEffect(() => {
+    if (!three || !containerRef.current) return;
+    const { Scene, PerspectiveCamera, WebGLRenderer, GridHelper, AxesHelper, Group, Plane, PlaneHelper, EdgesGeometry, LineSegments, LineBasicMaterial, Mesh, MeshBasicMaterial, BoxGeometry, Color, Fog, Vector3 } = three;
+
+    const scene = new Scene();
+    scene.background = new Color(0xf6f7fb);
+    scene.fog = new Fog(0xf6f7fb, 5000, 12000);
+
+    const camera = new PerspectiveCamera(45, containerRef.current.clientWidth / containerRef.current.clientHeight, 0.1, 50000);
+    camera.position.set(dims.L * 0.9, dims.W * -1.2, dims.H * 1.6);
+
+    const renderer = new WebGLRenderer({ antialias: true, alpha: false });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio ?? 1, 2));
+    renderer.setSize(containerRef.current.clientWidth, containerRef.current.clientHeight);
+    renderer.localClippingEnabled = true;
+    containerRef.current.innerHTML = "";
+    containerRef.current.appendChild(renderer.domElement);
+
+    // Controles
+    const controls = new three.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+
+    // Grid y ejes
+    const grid = new GridHelper(Math.max(dims.L, dims.W) * 2, 40);
+    grid.position.set(0, 0, 0);
+    const axes = new AxesHelper(Math.max(dims.L, dims.W) * 0.6);
+    axes.position.set(0, 0, 0);
+    scene.add(grid);
+    scene.add(axes);
+
+    // Grupo principal
+    const group = new Group();
+    scene.add(group);
+
+    // Caja “alambre” centrada en (0,0,H/2) para que Z=0 sea la base
+    const boxGeom = new BoxGeometry(dims.L, dims.W, dims.H);
+    const boxMesh = new Mesh(
+      boxGeom,
+      new MeshBasicMaterial({
+        color: 0x9aa0a6,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.35,
+        depthWrite: false,
+      })
+    );
+    boxMesh.position.set(0, 0, dims.H / 2);
+    group.add(boxMesh);
+    meshRef.current = boxMesh;
+
+    // Edges únicos y limpios
+    const edges = new EdgesGeometry(boxGeom);
+    const edgesLines = new LineSegments(
+      edges,
+      new LineBasicMaterial({ color: 0x6b7280 })
+    );
+    edgesLines.position.copy(boxMesh.position);
+    group.add(edgesLines);
+    edgesRef.current = edgesLines;
+
+    // Clipping plane horizontal (Z)
+    const plane = new Plane(new Vector3(0, 0, -1), 0); // por defecto sin corte
+    clipPlaneRef.current = plane;
+    renderer.clippingPlanes = [plane];
+    const planeHelper = new PlaneHelper(plane, Math.max(dims.L, dims.W), 0x999999);
+    planeHelper.visible = false; // helper oculto, solo efecto visual de corte
+    scene.add(planeHelper);
+
+    // Marcadores
+    const markersGroup = new Group();
+    scene.add(markersGroup);
+    markersGroupRef.current = markersGroup;
+
+    // Resize
+    const onResize = () => {
+      if (!containerRef.current) return;
+      camera.aspect = containerRef.current.clientWidth / containerRef.current.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(containerRef.current.clientWidth, containerRef.current.clientHeight);
+    };
+    window.addEventListener("resize", onResize);
+
+    // Render loop
+    let raf = 0;
+    const animate = () => {
+      raf = requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    };
+    animate();
+
+    sceneRef.current = scene;
+    cameraRef.current = camera;
+    rendererRef.current = renderer;
+    controlsRef.current = controls;
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", onResize);
+      try {
+        renderer.dispose();
+      } catch {}
+      scene.clear();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // solo una vez
+  }, [three, dims.L, dims.W, dims.H]);
 
-  // redibuja caja alambre cuando cambie box
-  const rebuildBoxEdges = useCallback(() => {
-    const THREE = threeRef.current;
-    if (!THREE || !sceneRef.current) return;
-    if (boxEdgesRef.current) {
-      sceneRef.current.remove(boxEdgesRef.current);
-      boxEdgesRef.current.geometry.dispose();
-    }
-
-    const { length: L, width: W, height: H } = box; // ejes: X=length, Y=width, Z=height
-    const geom = new THREE.BoxGeometry(L, W, H);
-    const edges = new THREE.EdgesGeometry(geom);
-    const mat = new THREE.LineBasicMaterial({ color: 0x1976d2 });
-    const wire = new THREE.LineSegments(edges, mat);
-    // centramos la caja en el origen
-    wire.position.set(0, 0, H / 2);
-    boxEdgesRef.current = wire;
-    sceneRef.current.add(wire);
-  }, [box]);
-
-  useEffect(() => { rebuildBoxEdges(); }, [rebuildBoxEdges]);
-
-  // ajusta cámara a caja
-  const fitCameraToBox = useCallback(() => {
-    const THREE = threeRef.current;
-    if (!THREE || !cameraRef.current || !controlsRef.current) return;
-    const { length: L, width: W, height: H } = box;
-    const maxDim = Math.max(L, W, H);
-    const dist = maxDim * 1.8;
-
-    const cam = cameraRef.current;
-    cam.position.set(dist, dist, dist);
-    cam.near = 0.1;
-    cam.far = dist * 10;
-    cam.updateProjectionMatrix();
-
-    controlsRef.current.target.set(0, 0, H / 2);
-    controlsRef.current.update();
-  }, [box]);
-
-  // ejes / bloqueo
+  // Dibuja marcadores (bolitas)
   useEffect(() => {
-    if (!controlsRef.current) return;
-    const c = controlsRef.current;
-    c.enableRotate = true;
-    c.enablePan = true;
+    if (!three || !markersGroupRef.current) return;
+    const g = markersGroupRef.current as any;
+    // limpiar anteriores
+    for (let i = g.children.length - 1; i >= 0; i--) g.remove(g.children[i]);
 
-    if (axisLock === "x") {
-      c.minPolarAngle = Math.PI / 2; // vista plana
-      c.maxPolarAngle = Math.PI / 2;
-      c.enableRotate = false;
-      cameraRef.current.position.set(500, 0, box.height/2);
-    } else if (axisLock === "y") {
-      c.minPolarAngle = Math.PI / 2;
-      c.maxPolarAngle = Math.PI / 2;
-      c.enableRotate = false;
-      cameraRef.current.position.set(0, 500, box.height/2);
-    } else if (axisLock === "z") {
-      c.minPolarAngle = 0.0001;
-      c.maxPolarAngle = 0.0001;
-      c.enableRotate = false;
-      cameraRef.current.position.set(0, 0, box.height * 2);
-    } else {
-      // libre
-      c.minPolarAngle = 0;
-      c.maxPolarAngle = Math.PI;
-    }
-    c.update();
-  }, [axisLock, box.height]);
+    const { SphereGeometry, MeshBasicMaterial, Mesh } = three;
+    const sph = new SphereGeometry( (Math.max(1, (markers[0]?.d_mm ?? 5)) / 2) * 0.6, 16, 16 );
 
-  // clipping plane (mapea 0..1 a 0..H)
+    markers.forEach((m) => {
+      const mesh = new Mesh(
+        sph,
+        new MeshBasicMaterial({ color: 0x3b82f6 })
+      );
+      // Nota: X=longitud, Y=centrado, Z=altura; nuestra cara superior está en Z=H
+      mesh.position.set(m.x_mm - dims.L / 2, 0, m.z_mm);
+      g.add(mesh);
+    });
+  }, [three, markers, dims.L]);
+
+  // Raycast ALT+click para añadir marcador
   useEffect(() => {
-    const THREE = threeRef.current;
-    if (!THREE || !clipPlaneRef.current) return;
-    const z = box.height * clipValue;
-    // ecuación: n·p + d = 0. Con normal (0,0,-1) para “cortar desde arriba”
-    clipPlaneRef.current.set(new THREE.Vector3(0,0,-1), z);
-  }, [box.height, clipValue]);
+    if (!three || !rendererRef.current || !cameraRef.current || !meshRef.current) return;
+    const renderer = rendererRef.current as any;
+    const camera = cameraRef.current as any;
+    const mesh = meshRef.current as any;
 
-  // redibuja marcadores
+    const onClick = (ev: MouseEvent) => {
+      if (!holesEnabled || !ev.altKey) return;
+      const rect = renderer.domElement.getBoundingClientRect();
+      const ndc = new three.Vector2(
+        ((ev.clientX - rect.left) / rect.width) * 2 - 1,
+        -(((ev.clientY - rect.top) / rect.height) * 2 - 1)
+      );
+      const raycaster = new three.Raycaster();
+      raycaster.setFromCamera(ndc, camera);
+
+      // Intersecta con el plano Z=H (cara superior)
+      const plane = new three.Plane(new three.Vector3(0, 0, -1), - (mesh.position.z + dims.H / 2));
+      const hit = new three.Vector3();
+      raycaster.ray.intersectPlane(plane, hit);
+
+      if (!hit) return;
+
+      // Convertimos world -> local del mesh caja
+      const local = mesh.worldToLocal(hit.clone());
+
+      // local.x ∈ [-L/2, L/2], local.y ∈ [-W/2, W/2], local.z ≈  H/2
+      let x = local.x + dims.L / 2;  // a coordenada mm [0..L]
+      let z = dims.H;                // cara superior en Z = H
+
+      // snap
+      const s = Math.max(0.1, snapMM);
+      x = Math.round(x / s) * s;
+
+      // límites dentro de la tapa superior con un margen mínimo
+      const margin = Math.max(0.5, (holeDiameter / 2) + 0.5);
+      x = Math.max(margin, Math.min(dims.L - margin, x));
+
+      const newMarker: Marker = { x_mm: x, z_mm: z, d_mm: holeDiameter };
+      const next = [...markers, newMarker];
+      onMarkersChange?.(next);
+    };
+
+    renderer.domElement.addEventListener("click", onClick);
+    return () => {
+      renderer.domElement.removeEventListener("click", onClick);
+    };
+  }, [three, holesEnabled, holeDiameter, snapMM, markers, onMarkersChange, dims.H, dims.L]);
+
+  // UI local: cámara locks + clipping slider
+  const [camLock, setCamLock] = useState<"free" | "x" | "y" | "z">("free");
+  const [clip, setClip] = useState<number>(0);
+
   useEffect(() => {
-    const THREE = threeRef.current;
-    if (!THREE || !dotsGroupRef.current) return;
-    const group = dotsGroupRef.current as any;
+    if (!controlsRef.current || !cameraRef.current) return;
+    const controls = controlsRef.current as any;
+    const cam = cameraRef.current as any;
 
-    // limpia
-    while (group.children.length) {
-      const c = group.children.pop();
-      if (c.geometry) c.geometry.dispose();
-      if (c.material) c.material.dispose();
-    }
+    const setLock = (mode: typeof camLock) => {
+      if (mode === "free") {
+        controls.enableRotate = true;
+        return;
+      }
+      // Bloquea órbita moviendo la cámara a un plano fijo
+      const r = Math.max(dims.L, dims.W, dims.H) * 1.8;
+      if (mode === "x") cam.position.set(r, 0, dims.H * 0.8);
+      if (mode === "y") cam.position.set(0, -r, dims.H * 0.8);
+      if (mode === "z") cam.position.set(0, 0, r);
+      controls.update();
+      controls.enableRotate = mode === "free";
+    };
+    setLock(camLock);
+  }, [camLock, dims.L, dims.W, dims.H]);
 
-    const mat = new THREE.MeshBasicMaterial({ color: 0x1e88e5 });
-    const geo = new THREE.SphereGeometry(1.6, 12, 12);
-
-    for (const m of markers) {
-      const dot = new THREE.Mesh(geo, mat);
-      dot.position.set(m.x_mm, m.y_mm ?? 0, m.z_mm);
-      group.add(dot);
-    }
-  }, [markers]);
-
-  // panel agujeros (edición)
-  const updateHole = (i: number, patch: Partial<Marker>) => {
-    const next = markers.map((m, idx) => idx === i ? { ...m, ...patch } : m);
-    onMarkersChange(next);
-  };
-  const removeHole = (i: number) => {
-    const next = markers.filter((_, idx) => idx !== i);
-    onMarkersChange(next);
-  };
+  useEffect(() => {
+    if (!rendererRef.current || !clipPlaneRef.current) return;
+    const plane = clipPlaneRef.current as any;
+    // clip: 0..1 → recorta desde Z=0 hasta Z=H
+    const d = Math.max(0, Math.min(1, clip)) * dims.H;
+    plane.constant = d; // secciona desde la base hacia arriba
+  }, [clip, dims.H]);
 
   return (
-    <div className={`relative h-[calc(100svh-160px)] w-full rounded-2xl border border-gray-200 bg-white shadow-sm ${className || ""}`}>
-      {/* Barra superior */}
-      <div className="pointer-events-auto absolute left-3 top-3 z-20 flex items-center gap-2 rounded-xl bg-white/90 p-2 shadow">
-        <span className="text-sm text-gray-600">Cámara:</span>
-        <div className="flex gap-1">
-          {(["free","x","y","z"] as const).map(k => (
-            <button
-              key={k}
-              onClick={() => setAxisLock(k)}
-              className={`rounded-md border px-2 py-1 text-xs ${axisLock===k ? "bg-black text-white" : "hover:bg-gray-50"}`}
-              title={k==="free" ? "Libre" : k.toUpperCase()}
-            >
-              {k==="free"?"Libre":k.toUpperCase()}
-            </button>
-          ))}
+    <div className={className ?? ""}>
+      <div className="mb-2 flex items-center gap-2 text-sm">
+        <span className="opacity-70">Alt + clic = agujero</span>
+        <div className="ml-4">Cámara:</div>
+        <div className="inline-flex rounded-md border border-gray-300 overflow-hidden">
+          <button className={`px-2 py-1 ${camLock==="free"?"bg-gray-900 text-white":"bg-white"}`} onClick={() => setCamLock("free")}>Libre</button>
+          <button className={`px-2 py-1 ${camLock==="x"?"bg-gray-900 text-white":"bg-white"}`} onClick={() => setCamLock("x")}>X</button>
+          <button className={`px-2 py-1 ${camLock==="y"?"bg-gray-900 text-white":"bg-white"}`} onClick={() => setCamLock("y")}>Y</button>
+          <button className={`px-2 py-1 ${camLock==="z"?"bg-gray-900 text-white":"bg-white"}`} onClick={() => setCamLock("z")}>Z</button>
         </div>
-
-        <div className="mx-3 h-5 w-px bg-gray-200" />
-
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={clipping} onChange={(e)=>setClipping(e.target.checked)} />
-          Clipping
+        <button className="px-2 py-1 rounded-md border border-gray-300" onClick={() => setCamLock("free")}>Reset</button>
+        <label className="ml-4 flex items-center gap-2">
+          <input type="checkbox" checked={clip>0} onChange={(e)=>setClip(e.target.checked?0.5:0)} />
+          <span>Clipping</span>
         </label>
-        <input
-          type="range" min={0} max={1} step={0.01}
-          className="w-36"
-          value={clipValue}
-          onChange={e=>setClipValue(Number(e.target.value))}
-          disabled={!clipping}
-        />
-
-        <div className="mx-3 h-5 w-px bg-gray-200" />
-
-        <div className="text-sm text-gray-600">
-          <b>ALT</b>+clic = agujero · Ø def: {holeDiameter} mm · Snap: {snapMM} mm
-        </div>
-
-        <div className="mx-3 h-5 w-px bg-gray-200" />
-        <button onClick={fitCameraToBox} className="rounded-md border px-2 py-1 text-xs hover:bg-gray-50" title="Encajar a pieza">
-          Centrar
-        </button>
-
-        <button
-          onClick={()=>setHolesOpen(v=>!v)}
-          className="ml-2 rounded-md border px-2 py-1 text-xs hover:bg-gray-50"
-          title="Mostrar/ocultar lista de agujeros"
-        >
-          {holesOpen ? "Ocultar agujeros" : "Agujeros (lista)"}
-        </button>
       </div>
-
-      {/* lienzo three */}
-      <div ref={containerRef} className="absolute inset-0 rounded-2xl" />
-
-      {/* Panel agujeros (flotante, plegable) */}
-      {holesOpen && (
-        <div
-          data-holes-panel
-          className="pointer-events-auto absolute right-3 top-3 z-30 max-h-[80%] w-[360px] overflow-auto rounded-xl border border-gray-200 bg-white/95 p-3 shadow-lg backdrop-blur"
-        >
-          <div className="mb-2 flex items-center justify-between">
-            <b className="text-sm">Agujeros ({markers.length})</b>
-            <button onClick={()=>setHolesOpen(false)} className="rounded-md border px-2 py-1 text-xs hover:bg-gray-50">Cerrar</button>
-          </div>
-
-          {markers.length===0 && <p className="text-sm text-gray-600">No hay agujeros.</p>}
-
-          <div className="grid gap-2">
-            {markers.map((m, i) => (
-              <div key={i} className="rounded-lg border p-2">
-                <div className="mb-1 text-xs text-gray-500">#{i+1}</div>
-                <div className="grid grid-cols-4 items-end gap-2">
-                  <label className="text-xs">
-                    X (mm)
-                    <input
-                      type="number" step={snapMM||1} value={m.x_mm}
-                      onChange={e=>updateHole(i, { x_mm: Number(e.target.value) })}
-                      className="mt-1 w-full rounded border px-2 py-1 text-sm"
-                    />
-                  </label>
-                  <label className="text-xs">
-                    Y (mm)
-                    <input
-                      type="number" step={snapMM||1} value={m.y_mm ?? 0}
-                      onChange={e=>updateHole(i, { y_mm: Number(e.target.value) })}
-                      className="mt-1 w-full rounded border px-2 py-1 text-sm"
-                    />
-                  </label>
-                  <label className="text-xs">
-                    Z (mm)
-                    <input
-                      type="number" step={snapMM||1} value={m.z_mm}
-                      onChange={e=>updateHole(i, { z_mm: Number(e.target.value) })}
-                      className="mt-1 w-full rounded border px-2 py-1 text-sm"
-                    />
-                  </label>
-                  <label className="text-xs">
-                    Ø (mm)
-                    <input
-                      type="number" step={0.5} min={1} value={m.d_mm ?? holeDiameter}
-                      onChange={e=>updateHole(i, { d_mm: Number(e.target.value) })}
-                      className="mt-1 w-full rounded border px-2 py-1 text-sm"
-                    />
-                  </label>
-                </div>
-                <div className="mt-2 text-right">
-                  <button onClick={()=>removeHole(i)} className="rounded-md border px-2 py-1 text-xs hover:bg-gray-50">
-                    Eliminar
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      <div ref={containerRef} style={{ width: "100%", height: "520px", borderRadius: 12, overflow: "hidden", background: "#fff" }} />
     </div>
   );
-}
+};
+
+export default STLViewerPro;
