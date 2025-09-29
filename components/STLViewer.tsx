@@ -65,7 +65,7 @@ export default function STLViewer({
   const [clipping, setClipping] = useState<boolean>(defaultClipping);
   const [clipMM, setClipMM] = useState<number>(defaultClipMM);
 
-  // Estado interno (evitamos tipos THREE.* aquí para no romper el build)
+  // Estado interno (sin tipos THREE.* para no romper el build en Vercel)
   const state = useMemo(
     () => ({
       renderer: null as any,
@@ -172,7 +172,7 @@ export default function STLViewer({
 
   /** Centra cámara en pieza/caja y guarda offset */
   const fitToTarget = useCallback(() => {
-    let bb: THREE.Box3 | null = null;
+    let bb: any = null;
 
     if (state.model) {
       (state.model.geometry as any).computeBoundingBox?.();
@@ -290,7 +290,7 @@ export default function STLViewer({
       state.raycaster.setFromCamera(state.pointer, state.camera);
 
       // 1) Intentamos intersectar con el modelo
-      let hitPoint: THREE.Vector3 | null = null;
+      let hitPoint: any = null;
 
       if (state.model) {
         const hits = state.raycaster.intersectObject(state.model, true);
