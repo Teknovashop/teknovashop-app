@@ -15,36 +15,34 @@ export default function ForgeForm({ onGenerated }: ForgeFormProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Usa tu variable EXISTENTE en Vercel
+  const base =
+    (process.env.NEXT_PUBLIC_BACKEND_URL as string | undefined) || "/forge-api";
+
   async function handleGenerate() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(
-        process.env.NEXT_PUBLIC_API_URL + "/generate",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model,
-            params: {
-              length_mm: length,
-              width_mm: width,
-              height_mm: height,
-              thickness_mm: thickness,
-            },
-            holes: [], // en el futuro se pasa la lista de agujeros
-          }),
-        }
-      );
+      const res = await fetch(`${base}/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model,
+          params: {
+            length_mm: length,
+            width_mm: width,
+            height_mm: height,
+            thickness_mm: thickness,
+          },
+          holes: [],
+        }),
+      });
 
       if (!res.ok) {
         throw new Error(`Error ${res.status}: ${res.statusText}`);
       }
 
       const data = await res.json();
-      console.log("STL generado:", data);
-
-      // Avisar al padre (ForgePage) con la URL
       onGenerated?.(data.stl_url);
     } catch (err: any) {
       console.error("Error generando STL", err);
@@ -60,7 +58,6 @@ export default function ForgeForm({ onGenerated }: ForgeFormProps) {
         Configuración del modelo
       </h2>
 
-      {/* Modelo */}
       <div className="space-y-1">
         <label className="block text-sm text-neutral-400">Modelo</label>
         <select
@@ -74,12 +71,9 @@ export default function ForgeForm({ onGenerated }: ForgeFormProps) {
         </select>
       </div>
 
-      {/* Parámetros */}
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm text-neutral-400">
-            Largo (mm)
-          </label>
+          <label className="block text-sm text-neutral-400">Largo (mm)</label>
           <input
             type="number"
             value={length}
@@ -88,9 +82,7 @@ export default function ForgeForm({ onGenerated }: ForgeFormProps) {
           />
         </div>
         <div>
-          <label className="block text-sm text-neutral-400">
-            Ancho (mm)
-          </label>
+          <label className="block text-sm text-neutral-400">Ancho (mm)</label>
           <input
             type="number"
             value={width}
@@ -99,9 +91,7 @@ export default function ForgeForm({ onGenerated }: ForgeFormProps) {
           />
         </div>
         <div>
-          <label className="block text-sm text-neutral-400">
-            Alto (mm)
-          </label>
+          <label className="block text-sm text-neutral-400">Alto (mm)</label>
           <input
             type="number"
             value={height}
@@ -110,9 +100,7 @@ export default function ForgeForm({ onGenerated }: ForgeFormProps) {
           />
         </div>
         <div>
-          <label className="block text-sm text-neutral-400">
-            Grosor (mm)
-          </label>
+          <label className="block text-sm text-neutral-400">Grosor (mm)</label>
           <input
             type="number"
             value={thickness}
@@ -122,7 +110,6 @@ export default function ForgeForm({ onGenerated }: ForgeFormProps) {
         </div>
       </div>
 
-      {/* Botón generar */}
       <button
         onClick={handleGenerate}
         disabled={loading}
@@ -131,12 +118,7 @@ export default function ForgeForm({ onGenerated }: ForgeFormProps) {
         {loading ? "Generando..." : "Generar STL"}
       </button>
 
-      {/* Error */}
-      {error && (
-        <div className="text-red-400 text-sm mt-2">
-          {error}
-        </div>
-      )}
+      {error && <div className="text-red-400 text-sm mt-2">Error {error}</div>}
     </div>
   );
 }
