@@ -65,16 +65,14 @@ export default function STLViewer({
   const [clipping, setClipping] = useState<boolean>(defaultClipping);
   const [clipMM, setClipMM] = useState<number>(defaultClipMM);
 
-  // Estado interno
+  // Estado interno (sin tipos THREE en posiciones de tipo para que compile en Next 14)
   const state = useMemo(
     () => ({
-      renderer: null as any as THREE.WebGLRenderer,
+      renderer: null as any,
       scene: new THREE.Scene(),
       camera: new THREE.PerspectiveCamera(45, width / height, 0.1, 8000),
-      model: null as any as THREE.Mesh | null,
-
-      // Placeholder (cuando no hay STL)
-      boxMesh: null as any as THREE.Mesh | null,
+      model: null as any,       // Mesh
+      boxMesh: null as any,     // Mesh
 
       markerGroup: new THREE.Group(),
       raycaster: new THREE.Raycaster(),
@@ -172,7 +170,7 @@ export default function STLViewer({
 
   /** Centra cámara en pieza/caja y guarda offset */
   const fitToTarget = useCallback(() => {
-    let bb: THREE.Box3 | null = null;
+    let bb: any | null = null;
 
     if (state.model) {
       (state.model.geometry as any).computeBoundingBox?.();
@@ -191,7 +189,7 @@ export default function STLViewer({
 
     // guardamos el offset con el que “centramos” todo
     state.scene.position.set(-center.x, -center.y, -center.z);
-    state.sceneOffset.copy(state.scene.position); // <- será negativo
+    state.sceneOffset.copy(state.scene.position); // <- es negativo
 
     const maxDim = Math.max(size.x, size.y, size.z);
     const dist = Math.max(100, maxDim * 2.2);
@@ -290,7 +288,7 @@ export default function STLViewer({
       state.raycaster.setFromCamera(state.pointer, state.camera);
 
       // Intersección con malla si existe; si no, plano superior Y = box.height/2; si tampoco hay box, suelo Y=0.
-      let hitPoint: THREE.Vector3 | null = null;
+      let hitPoint: any = null;
 
       if (state.model) {
         const hits = state.raycaster.intersectObject(state.model, true);
@@ -326,7 +324,7 @@ export default function STLViewer({
         const geo = new THREE.SphereGeometry(r, 16, 16);
         const mat = new THREE.MeshStandardMaterial({ color: 0x1f77ff, metalness: 0.1, roughness: 0.35, transparent: false });
         const sphere = new THREE.Mesh(geo, mat);
-        // ¡OJO! Para que el punto se vea en el lugar correcto, lo colocamos en mundo con el offset aplicado:
+        // Para que el punto se vea en el lugar correcto, lo colocamos en mundo con el offset aplicado:
         const worldPos = new THREE.Vector3(marker.x_mm, marker.y_mm ?? 0, marker.z_mm).add(state.sceneOffset);
         sphere.position.copy(worldPos);
         state.markerGroup.add(sphere);
@@ -392,7 +390,7 @@ export default function STLViewer({
       renderer.dispose();
       if (mountRef.current) mountRef.current.removeChild(renderer.domElement);
     };
-  }, [background, height, holesMode, addDiameter, onAddMarker, onMeasure, snapStep, width, axisMode, state]);
+  }, [background, height, holesMode, addDiameter, onAddMarker, onMeasure, snapStep, width, axisMode, state, box]);
 
   /** Placeholder sólido cuando no hay STL */
   useEffect(() => {
@@ -436,7 +434,7 @@ export default function STLViewer({
           color: 0xf5f5f5,
           metalness: 0.1,
           roughness: 0.55,
-          transparent: false, // <- OPACO
+          transparent: false, // OPACO
         });
 
         if (state.model) {
