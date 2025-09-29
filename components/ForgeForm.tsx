@@ -1,106 +1,142 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
-import STLViewerPro from "@/components/STLViewerPro";
+import { useState } from "react";
 
-type Hole = { x_mm: number; z_mm: number; d_mm: number };
+type ForgeFormProps = {
+  onGenerated?: (url: string) => void;
+};
 
-const ForgeForm: React.FC = () => {
-  // Estado de ejemplo; ajusta a tu esquema real de modelo seleccionado
-  const [width, setWidth] = useState(60);
-  const [height, setHeight] = useState(25);
-  const [length, setLength] = useState(180);
+export default function ForgeForm({ onGenerated }: ForgeFormProps) {
+  const [model, setModel] = useState("cable-tray");
+  const [length, setLength] = useState(200);
+  const [width, setWidth] = useState(100);
+  const [height, setHeight] = useState(60);
   const [thickness, setThickness] = useState(3);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const [holesMode, setHolesMode] = useState(true);
-  const [holeDiameter, setHoleDiameter] = useState(5);
-  const [snapStep, setSnapStep] = useState(1);
+  async function handleGenerate() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        process.env.NEXT_PUBLIC_API_URL + "/generate",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model,
+            params: {
+              length_mm: length,
+              width_mm: width,
+              height_mm: height,
+              thickness_mm: thickness,
+            },
+            holes: [], // en el futuro se pasa la lista de agujeros
+          }),
+        }
+      );
 
-  const [markers, setMarkers] = useState<Hole[]>([]);
+      if (!res.ok) {
+        throw new Error(`Error ${res.status}: ${res.statusText}`);
+      }
 
-  const box = useMemo(
-    () => ({ length, width, height, thickness }),
-    [length, width, height, thickness]
-  );
+      const data = await res.json();
+      console.log("STL generado:", data);
 
-  const onGenerate = async () => {
-    const payload = {
-      model: "cable_tray",
-      params: { length_mm: length, width_mm: width, height_mm: height, thickness_mm: thickness },
-      holes: markers, // [{x_mm,z_mm,d_mm}]
-    };
-
-    const res = await fetch("/api/forge/generate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const t = await res.text();
-      alert(`Error: ${t}`);
-      return;
+      // Avisar al padre (ForgePage) con la URL
+      onGenerated?.(data.stl_url);
+    } catch (err: any) {
+      console.error("Error generando STL", err);
+      setError(err.message || "Error desconocido");
+    } finally {
+      setLoading(false);
     }
-    const data = await res.json();
-    // data.stl_url es firmado o público
-    window.open(data.stl_url, "_blank");
-  };
+  }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-6">
-      <div className="rounded-xl bg-white p-4 shadow">
-        <h3 className="font-semibold mb-3">Configuración · Cable Tray</h3>
-        <div className="space-y-3 text-sm">
-          <label className="flex items-center justify-between gap-3">
-            <span>Ancho (mm)</span>
-            <input type="range" min={40} max={120} value={width} onChange={(e)=>setWidth(parseInt(e.target.value))} className="w-48" />
-          </label>
-          <label className="flex items-center justify-between gap-3">
-            <span>Alto (mm)</span>
-            <input type="range" min={10} max={60} value={height} onChange={(e)=>setHeight(parseInt(e.target.value))} className="w-48" />
-          </label>
-          <label className="flex items-center justify-between gap-3">
-            <span>Longitud (mm)</span>
-            <input type="range" min={80} max={300} value={length} onChange={(e)=>setLength(parseInt(e.target.value))} className="w-48" />
-          </label>
-          <label className="flex items-center justify-between gap-3">
-            <span>Espesor (mm)</span>
-            <input type="range" min={2} max={8} value={thickness} onChange={(e)=>setThickness(parseInt(e.target.value))} className="w-48" />
-          </label>
+    <div className="bg-neutral-900 p-6 rounded-2xl shadow-lg space-y-6">
+      <h2 className="text-xl font-semibold text-white mb-4">
+        Configuración del modelo
+      </h2>
 
-          <div className="pt-2 border-t">
-            <label className="flex items-center gap-2">
-              <input type="checkbox" checked={holesMode} onChange={(e)=>setHolesMode(e.target.checked)} />
-              <span>Modo agujeros (usa Alt + clic)</span>
-            </label>
-            <label className="mt-2 flex items-center justify-between gap-3">
-              <span>Diámetro (mm)</span>
-              <input type="range" min={3} max={12} value={holeDiameter} onChange={(e)=>setHoleDiameter(parseInt(e.target.value))} className="w-48" />
-            </label>
-            <label className="flex items-center justify-between gap-3">
-              <span>Snap (mm)</span>
-              <input type="range" min={1} max={10} value={snapStep} onChange={(e)=>setSnapStep(parseInt(e.target.value))} className="w-48" />
-            </label>
-          </div>
+      {/* Modelo */}
+      <div className="space-y-1">
+        <label className="block text-sm text-neutral-400">Modelo</label>
+        <select
+          value={model}
+          onChange={(e) => setModel(e.target.value)}
+          className="w-full rounded-md bg-neutral-800 text-white p-2"
+        >
+          <option value="cable-tray">Cable Tray</option>
+          <option value="vesa-adapter">VESA Adapter</option>
+          <option value="router-mount">Router Mount</option>
+        </select>
+      </div>
 
-          <button onClick={onGenerate} className="mt-4 w-full rounded-lg bg-black text-white py-2">
-            Generar STL
-          </button>
+      {/* Parámetros */}
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm text-neutral-400">
+            Largo (mm)
+          </label>
+          <input
+            type="number"
+            value={length}
+            onChange={(e) => setLength(Number(e.target.value))}
+            className="w-full rounded-md bg-neutral-800 text-white p-2"
+          />
+        </div>
+        <div>
+          <label className="block text-sm text-neutral-400">
+            Ancho (mm)
+          </label>
+          <input
+            type="number"
+            value={width}
+            onChange={(e) => setWidth(Number(e.target.value))}
+            className="w-full rounded-md bg-neutral-800 text-white p-2"
+          />
+        </div>
+        <div>
+          <label className="block text-sm text-neutral-400">
+            Alto (mm)
+          </label>
+          <input
+            type="number"
+            value={height}
+            onChange={(e) => setHeight(Number(e.target.value))}
+            className="w-full rounded-md bg-neutral-800 text-white p-2"
+          />
+        </div>
+        <div>
+          <label className="block text-sm text-neutral-400">
+            Grosor (mm)
+          </label>
+          <input
+            type="number"
+            value={thickness}
+            onChange={(e) => setThickness(Number(e.target.value))}
+            className="w-full rounded-md bg-neutral-800 text-white p-2"
+          />
         </div>
       </div>
 
-      <div className="rounded-xl bg-white p-4 shadow">
-        <STLViewerPro
-          className=""
-          box={box}
-          holesEnabled={holesMode}
-          holeDiameter={holeDiameter}
-          snapMM={snapStep}
-          markers={markers}
-          onMarkersChange={setMarkers}
-        />
-      </div>
+      {/* Botón generar */}
+      <button
+        onClick={handleGenerate}
+        disabled={loading}
+        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg"
+      >
+        {loading ? "Generando..." : "Generar STL"}
+      </button>
+
+      {/* Error */}
+      {error && (
+        <div className="text-red-400 text-sm mt-2">
+          {error}
+        </div>
+      )}
     </div>
   );
-};
-
-export default ForgeForm;
+}
