@@ -5,11 +5,11 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 
-/** Marcador que viaja al backend (en coords LOCALES del modelo) */
+/** Marcador visible en el visor y que puede viajar al backend */
 export type Marker = {
-  x_mm: number;        // local X (mm)
-  y_mm?: number;       // local Y (mm) – casi siempre 0 para placas
-  z_mm: number;        // local Z (mm)
+  x_mm: number;
+  y_mm?: number;
+  z_mm: number;
   d_mm: number;
   side?: "left" | "right" | "top" | "bottom";
 };
@@ -17,18 +17,19 @@ export type Marker = {
 type Box = { length: number; width: number; height: number; thickness?: number };
 
 type STLViewerProps = {
-  stlUrl?: string;
+  stlUrl?: string;              // URL firmada o blob
   box?: Box;
 
   width?: number;
   height?: number;
 
   markers?: Marker[];
+
   onMeasure?(mm: number): void;
 
-  /** UX */
+  /** === Opcionales UX === */
   background?: string | null;
-  holesMode?: boolean;      // solo Alt+click añade agujero
+  holesMode?: boolean;      // Alt + click añade agujero
   addDiameter?: number;
   snapStep?: number;
   onAddMarker?(m: Marker): void;
@@ -64,37 +65,42 @@ export default function STLViewer({
   const [clipping, setClipping] = useState<boolean>(defaultClipping);
   const [clipMM, setClipMM] = useState<number>(defaultClipMM);
 
-  // Estado interno (evitamos tipos de THREE en anotaciones para compilar en Vercel)
+  // Estado interno
   const state = useMemo(
     () => ({
-      renderer: null as any,
+      renderer: null as any as THREE.WebGLRenderer,
       scene: new THREE.Scene(),
       camera: new THREE.PerspectiveCamera(45, width / height, 0.1, 8000),
-      model: null as any,          // Mesh
-      boxMesh: null as any,        // LineSegments
+      model: null as any as THREE.Mesh | null,
+
+      // Placeholder (cuando no hay STL)
+      boxMesh: null as any as THREE.Mesh | null,
+
       markerGroup: new THREE.Group(),
       raycaster: new THREE.Raycaster(),
       pointer: new THREE.Vector2(),
       grid: null as any,
       axes: null as any,
       labelsGroup: new THREE.Group(),
-      clippingPlane: new THREE.Plane(new THREE.Vector3(0, 0, -1), 0),
+      clippingPlane: new THREE.Plane(new THREE.Vector3(0, 0, -1), 0), // z+
       lightHemi: null as any,
       lightDir: null as any,
       isDragging: false,
+      dragLocked: false, // bloqueo de drag con Alt
       last: { x: 0, y: 0 },
       needsRender: true,
-      // para convertir a local cuando no hay STL: un Object3D centrado a la caja
-      virtualBoxOrigin: new THREE.Object3D(),
+
+      // offset usado para centrar la pieza; IMPORTANTÍSIMO para volver a coords locales
+      sceneOffset: new THREE.Vector3(0, 0, 0),
     }),
     [width, height]
   );
 
   const needRender = useCallback(() => {
-    state.needsRender = true;
+    (state as any).needsRender = true;
   }, [state]);
 
-  /** Sprites de texto (reglas) */
+  /** Texto como Sprite (para reglas) */
   const makeTextSprite = useCallback((text: string) => {
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d")!;
@@ -117,12 +123,12 @@ export default function STLViewer({
     return sprite;
   }, []);
 
-  /** Reglas 3D */
+  /** Reglas 3D con ticks y texto */
   const buildRulers = useCallback(
     (range: number) => {
       state.labelsGroup.clear();
 
-      const tickMat = new THREE.LineBasicMaterial({ transparent: true, opacity: 0.55 });
+      const tickMat = new THREE.LineBasicMaterial({ transparent: true, opacity: 0.7 });
       const tickGeo = new THREE.BufferGeometry();
       const verts: number[] = [];
 
@@ -164,15 +170,18 @@ export default function STLViewer({
     [makeTextSprite, needRender, state]
   );
 
-  /** Encadrar cámara y centrar la scene en el centro del modelo/caja */
+  /** Centra cámara en pieza/caja y guarda offset */
   const fitToTarget = useCallback(() => {
-    let bb: any = null;
+    let bb: THREE.Box3 | null = null;
 
     if (state.model) {
       (state.model.geometry as any).computeBoundingBox?.();
       bb = (state.model.geometry as any).boundingBox?.clone?.() ?? null;
     } else if (box) {
-      bb = new THREE.Box3(new THREE.Vector3(0, 0, 0), new THREE.Vector3(box.length, box.height, box.width));
+      bb = new THREE.Box3(
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(box.length, box.height, box.width)
+      );
     }
 
     if (!bb) return;
@@ -180,15 +189,9 @@ export default function STLViewer({
     const size = new THREE.Vector3().subVectors(bb.max, bb.min);
     const center = new THREE.Vector3().addVectors(bb.min, bb.max).multiplyScalar(0.5);
 
-    // movemos TODO para que el centro del modelo quede en (0,0,0)
+    // guardamos el offset con el que “centramos” todo
     state.scene.position.set(-center.x, -center.y, -center.z);
-
-    // y para el caso "sin STL" damos a virtualBoxOrigin la misma traslación que tendría una Box centrada
-    state.virtualBoxOrigin.position.set(
-      -(box ? box.length / 2 : 0),
-      -(box ? box.height / 2 : 0),
-      -(box ? box.width / 2 : 0)
-    );
+    state.sceneOffset.copy(state.scene.position); // <- será negativo
 
     const maxDim = Math.max(size.x, size.y, size.z);
     const dist = Math.max(100, maxDim * 2.2);
@@ -210,7 +213,7 @@ export default function STLViewer({
     needRender();
   }, [axisMode, box, buildRulers, needRender, state]);
 
-  /** Init */
+  /** Inicialización */
   useEffect(() => {
     if (!mountRef.current) return;
 
@@ -226,14 +229,14 @@ export default function STLViewer({
     state.camera.aspect = width / height;
     (state.camera as any).updateProjectionMatrix?.();
 
-    state.lightHemi = new THREE.HemisphereLight(0xffffff, 0x666666, 1.1);
+    state.lightHemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1.0);
     state.lightHemi.position.set(0, 200, 0);
     state.lightDir = new THREE.DirectionalLight(0xffffff, 0.95);
-    state.lightDir.position.set(180, 240, 160);
+    state.lightDir.position.set(160, 200, 120);
     state.scene.add(state.lightHemi, state.lightDir);
 
-    state.grid = new THREE.GridHelper(1000, 100);
-    (state.grid.material as any).opacity = 0.25;
+    state.grid = new THREE.GridHelper(2000, 200);
+    (state.grid.material as any).opacity = 0.35;
     (state.grid.material as any).transparent = true;
     state.scene.add(state.grid);
 
@@ -243,13 +246,9 @@ export default function STLViewer({
     state.markerGroup.name = "markers";
     state.scene.add(state.markerGroup);
 
-    // Controles cámara (drag/zoom)
+    // Controles de cámara (drag/zoom)
     const el = renderer.domElement;
     const rotSpeed = 0.005;
-
-    const updateCursor = () => {
-      el.style.cursor = holesMode ? "crosshair" : state.isDragging ? "grabbing" : "grab";
-    };
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
@@ -258,11 +257,10 @@ export default function STLViewer({
       needRender();
     };
     const onDown = (e: MouseEvent) => {
-      // si estás en modo agujeros y pulsas ALT para poner uno, NO empezamos drag
-      if (holesMode && e.altKey) return;
-      state.isDragging = true;
+      // Si mantienes Alt, bloqueamos el drag para permitir añadir agujero sin “tirón”
+      state.dragLocked = e.altKey && holesMode;
+      state.isDragging = !state.dragLocked;
       state.last = { x: e.clientX, y: e.clientY };
-      updateCursor();
     };
     const onMove = (e: MouseEvent) => {
       if (!state.isDragging || axisMode !== "free") return;
@@ -275,16 +273,15 @@ export default function STLViewer({
     };
     const onUp = () => {
       state.isDragging = false;
-      updateCursor();
+      state.dragLocked = false;
     };
 
     el.addEventListener("wheel", onWheel, { passive: false });
     el.addEventListener("mousedown", onDown);
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
-    updateCursor();
 
-    // Clicks: medir o añadir agujeros
+    // Clicks: medir (2 clicks) y añadir agujeros con **Alt**
     const tempPts: any[] = [];
     const onClick = (e: MouseEvent) => {
       const rect = el.getBoundingClientRect();
@@ -292,8 +289,8 @@ export default function STLViewer({
       state.pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
       state.raycaster.setFromCamera(state.pointer, state.camera);
 
-      // Intersección contra malla si existe, si no, plano Y=0
-      let hitPoint: any = null;
+      // Intersección con malla si existe; si no, plano superior Y = box.height/2; si tampoco hay box, suelo Y=0.
+      let hitPoint: THREE.Vector3 | null = null;
 
       if (state.model) {
         const hits = state.raycaster.intersectObject(state.model, true);
@@ -301,19 +298,18 @@ export default function STLViewer({
       }
 
       if (!hitPoint) {
-        const ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+        const yPlane =
+          box ? new THREE.Plane(new THREE.Vector3(0, 1, 0), -(box.height / 2)) : new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
         const p = new THREE.Vector3();
-        const ok = state.raycaster.ray.intersectPlane(ground, p);
+        const ok = state.raycaster.ray.intersectPlane(yPlane, p);
         if (ok && Number.isFinite(p.x)) hitPoint = p.clone();
       }
       if (!hitPoint) return;
 
-      // === SOLO ALT + click añade agujero ===
+      // === Añadir agujero: SOLO Alt+click ===
       if (holesMode && e.altKey) {
-        // Pasar a coordenadas LOCALES del target
-        const target: any = state.model ?? state.virtualBoxOrigin;
-        const local = target.worldToLocal(hitPoint.clone());
-
+        // Convertimos de mundo -> local del modelo sumando el offset que restamos al centrar la escena
+        const local = hitPoint.clone().sub(state.sceneOffset); // sceneOffset es negativo; restar = sumar centro
         const snap = Math.max(0, snapStep || 0);
         const sx = snap ? Math.round(local.x / snap) * snap : local.x;
         const sz = snap ? Math.round(local.z / snap) * snap : local.z;
@@ -325,12 +321,14 @@ export default function STLViewer({
           d_mm: addDiameter || 5,
         };
 
-        // esfera de preview en MUNDO (donde has hecho click)
-        const r = Math.max(0.6, Math.min(2.5, marker.d_mm / 6));
+        // Visual: esfera opaca donde clicas
+        const r = Math.max(0.8, Math.min(2.5, marker.d_mm / 5.5));
         const geo = new THREE.SphereGeometry(r, 16, 16);
-        const mat = new THREE.MeshStandardMaterial({ color: 0x3b82f6, opacity: 0.95, transparent: true });
+        const mat = new THREE.MeshStandardMaterial({ color: 0x1f77ff, metalness: 0.1, roughness: 0.35, transparent: false });
         const sphere = new THREE.Mesh(geo, mat);
-        sphere.position.copy(hitPoint);
+        // ¡OJO! Para que el punto se vea en el lugar correcto, lo colocamos en mundo con el offset aplicado:
+        const worldPos = new THREE.Vector3(marker.x_mm, marker.y_mm ?? 0, marker.z_mm).add(state.sceneOffset);
+        sphere.position.copy(worldPos);
         state.markerGroup.add(sphere);
 
         onAddMarker?.(marker);
@@ -338,7 +336,7 @@ export default function STLViewer({
         return;
       }
 
-      // Medir (dos clicks normales) si no estamos añadiendo agujeros
+      // Medición (dos clicks normales) si no estamos añadiendo agujeros
       if (!holesMode) {
         tempPts.push(hitPoint.clone());
         if (tempPts.length === 2) {
@@ -363,18 +361,18 @@ export default function STLViewer({
     };
     el.addEventListener("click", onClick);
 
-    // Render loop (sólo si hay cambios)
+    // Render loop (solo si hay cambios)
     let raf = 0;
     const tick = () => {
-      if (state.needsRender) {
+      if ((state as any).needsRender) {
         renderer.render(state.scene, state.camera);
-        state.needsRender = false;
+        (state as any).needsRender = false;
       }
       raf = requestAnimationFrame(tick);
     };
     tick();
 
-    // Cleanup
+    // Limpieza
     return () => {
       cancelAnimationFrame(raf);
       el.removeEventListener("wheel", onWheel);
@@ -382,12 +380,21 @@ export default function STLViewer({
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
       el.removeEventListener("click", onClick);
+
+      // limpiar escena para evitar “fantasmas”
+      state.scene.traverse(obj => {
+        // @ts-ignore
+        if (obj.geometry) (obj as any).geometry.dispose?.();
+        // @ts-ignore
+        if (obj.material) (obj as any).material.dispose?.();
+      });
+
       renderer.dispose();
       if (mountRef.current) mountRef.current.removeChild(renderer.domElement);
     };
   }, [background, height, holesMode, addDiameter, onAddMarker, onMeasure, snapStep, width, axisMode, state]);
 
-  /** Caja guía si no hay STL */
+  /** Placeholder sólido cuando no hay STL */
   useEffect(() => {
     if (!state.renderer) return;
 
@@ -398,24 +405,27 @@ export default function STLViewer({
       state.boxMesh = null;
     }
     if (box && !stlUrl) {
-      const geo = new THREE.EdgesGeometry(new THREE.BoxGeometry(box.length, box.height, box.width));
-      const mat = new THREE.LineBasicMaterial({ color: 0x93c5fd, transparent: true, opacity: 0.9 });
-      const edges = new THREE.LineSegments(geo, mat);
-      edges.position.set(box.length / 2, box.height / 2, box.width / 2);
-      state.scene.add(edges);
-      state.boxMesh = edges;
+      const geo = new THREE.BoxGeometry(box.length, box.height, box.width);
+      const mat = new THREE.MeshStandardMaterial({ color: 0xeeeeee, metalness: 0.05, roughness: 0.8, transparent: false });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(box.length / 2, box.height / 2, box.width / 2);
+      state.scene.add(mesh);
+      state.boxMesh = mesh;
     }
     fitToTarget();
   }, [box, stlUrl, fitToTarget, state]);
 
   /** Carga/recarga STL */
   useEffect(() => {
-    if (!state.renderer || !stlUrl) {
+    if (!state.renderer) {
+      return;
+    }
+    if (!stlUrl) {
       fitToTarget();
       return;
     }
-    const loader = new STLLoader();
 
+    const loader = new STLLoader();
     loader.load(
       stlUrl,
       (geometry) => {
@@ -423,9 +433,10 @@ export default function STLViewer({
         (geometry as any).computeVertexNormals?.();
 
         const material = new THREE.MeshStandardMaterial({
-          color: 0xdedede,
-          metalness: 0.0,
-          roughness: 0.9,
+          color: 0xf5f5f5,
+          metalness: 0.1,
+          roughness: 0.55,
+          transparent: false, // <- OPACO
         });
 
         if (state.model) {
@@ -436,10 +447,18 @@ export default function STLViewer({
         }
 
         const mesh = new THREE.Mesh(geometry, material);
-        mesh.castShadow = false;
-        mesh.receiveShadow = false;
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
         state.scene.add(mesh);
         state.model = mesh;
+
+        // quita placeholder si sigue por ahí
+        if (state.boxMesh) {
+          state.scene.remove(state.boxMesh);
+          (state.boxMesh.geometry as any)?.dispose?.();
+          (state.boxMesh.material as any)?.dispose?.();
+          state.boxMesh = null;
+        }
 
         fitToTarget();
         needRender();
@@ -449,7 +468,7 @@ export default function STLViewer({
     );
   }, [stlUrl, state, fitToTarget, needRender]);
 
-  /** Pintar marcadores desde props (en MUNDO; se convierten desde local) */
+  /** Pintar marcadores que vengan por props */
   useEffect(() => {
     if (!state.renderer) return;
     state.markerGroup.clear();
@@ -457,19 +476,13 @@ export default function STLViewer({
       needRender();
       return;
     }
-
-    const target: any = state.model ?? state.virtualBoxOrigin;
-
     for (const m of markers) {
-      // pasar de local -> mundo para dibujar
-      const local = new THREE.Vector3(m.x_mm, m.y_mm ?? 0, m.z_mm);
-      const world = target.localToWorld(local.clone());
-
-      const r = Math.max(0.6, Math.min(2.5, (m.d_mm ?? addDiameter) / 6));
+      const r = Math.max(0.8, Math.min(2.5, (m.d_mm ?? addDiameter) / 5.5));
       const geo = new THREE.SphereGeometry(r, 16, 16);
-      const mat = new THREE.MeshStandardMaterial({ color: 0x3b82f6, opacity: 0.95, transparent: true });
+      const mat = new THREE.MeshStandardMaterial({ color: 0x1f77ff, metalness: 0.1, roughness: 0.35, transparent: false });
+      const worldPos = new THREE.Vector3(m.x_mm, m.y_mm ?? 0, m.z_mm).add(state.sceneOffset);
       const sphere = new THREE.Mesh(geo, mat);
-      sphere.position.copy(world);
+      sphere.position.copy(worldPos);
       state.markerGroup.add(sphere);
     }
     needRender();
@@ -489,13 +502,13 @@ export default function STLViewer({
     needRender();
   }, [clipping, clipMM, needRender, state]);
 
-  /** Reencuadre al cambiar modo de cámara */
+  /** Cuando cambia el modo de cámara, reencuadra */
   useEffect(() => {
     if (!state.renderer) return;
     fitToTarget();
   }, [axisMode, fitToTarget, state]);
 
-  /** Reset cámara */
+  /** Reset cámara (libre) */
   const resetView = () => {
     setAxisMode("free");
     fitToTarget();
@@ -503,15 +516,15 @@ export default function STLViewer({
 
   return (
     <div className="relative rounded-2xl border bg-white/60 shadow-sm" style={{ width, height }}>
-      <div ref={mountRef} className="h-full w-full" />
+      <div ref={mountRef} className="h-full w-full select-none" />
 
-      {/* HUD superior-izquierda */}
+      {/* HUD superior-izquierda: modo/ayudas */}
       <div className="pointer-events-none absolute left-2 top-2 rounded bg-white/85 px-2 py-1 text-xs">
-        {distanceMM ? `Medida: ${distanceMM.toFixed(1)} mm` : holesMode ? "Alt + click = agujero" : "Click x2 = medir"}
+        {distanceMM ? `Medida: ${distanceMM.toFixed(1)} mm` : "Alt + clic = agujero"}
       </div>
 
       {/* Controles de cámara */}
-      <div className="absolute left-2 top-10 flex items-center gap-2 rounded bg-white/85 p-1 text-xs">
+      <div className="absolute left-2 top-10 z-10 flex items-center gap-2 rounded bg-white/85 p-1 text-xs">
         <span className="px-1">Cámara:</span>
         {(["free", "x", "y", "z"] as const).map((m) => (
           <button
@@ -527,7 +540,7 @@ export default function STLViewer({
       </div>
 
       {/* Clipping */}
-      <div className="absolute left-2 top-20 flex items-center gap-2 rounded bg-white/85 p-2 text-xs">
+      <div className="absolute left-2 top-20 z-10 flex items-center gap-2 rounded bg-white/85 p-2 text-xs">
         <label className="inline-flex items-center gap-1">
           <input type="checkbox" checked={clipping} onChange={(e) => setClipping(e.target.checked)} />
           Clipping
