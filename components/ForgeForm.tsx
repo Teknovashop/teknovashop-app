@@ -42,8 +42,11 @@ export default function ForgeForm({ onGenerated }: ForgeFormProps) {
   const base =
     (process.env.NEXT_PUBLIC_BACKEND_URL as string | undefined) || "/forge-api";
 
-  // Normalizador por si llega “legacy” con guiones (lo dejamos aquí por compat)
-  const normalizedModel = useMemo(() => model.replaceAll("-", "_"), [model]);
+  // Normalizador por si llega “legacy” con guiones (sin usar replaceAll)
+  const normalizedModel = useMemo(
+    () => model.split("-").join("_"),
+    [model]
+  );
 
   function addHole() {
     setHoles((prev) => [
@@ -82,7 +85,6 @@ export default function ForgeForm({ onGenerated }: ForgeFormProps) {
           width_mm: width || undefined,
           height_mm: height || undefined,
           thickness_mm: thickness || undefined,
-          // extra: {} // si en el futuro algún modelo requiere parámetros específicos
         },
         ops: {
           round_radius_mm: roundRadius || 0,
