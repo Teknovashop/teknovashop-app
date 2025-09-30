@@ -20,7 +20,7 @@ export default function STLViewerPro({ url, className }: Props) {
   const [clipping, setClipping] = useState(false);
   const [lightBg, setLightBg] = useState(false); // fondo claro
 
-  // ✅ Tipado que no depende de los .d.ts: usamos el constructor como valor
+  // Tipado que no depende de los .d.ts: usamos el constructor como valor
   const currentMeshRef = useRef<InstanceType<typeof THREE.Mesh> | null>(null);
 
   const three = useMemo(() => {
@@ -52,7 +52,7 @@ export default function STLViewerPro({ url, className }: Props) {
 
     // Rejilla + ejes
     const grid = new THREE.GridHelper(1000, 40, 0x333333, 0x202020);
-    setGridOpacity(grid, 0.35);
+    setGridOpacity(grid as any, 0.35);
     scene.add(grid);
 
     const axes = new THREE.AxesHelper(80);
@@ -300,8 +300,8 @@ export default function STLViewerPro({ url, className }: Props) {
   );
 }
 
-/* util rejilla */
-function setGridOpacity(grid: THREE.GridHelper, opacity: number) {
+/* util rejilla — sin depender de tipos de three para no romper el build */
+function setGridOpacity(grid: any, opacity: number) {
   const m: any = grid.material;
   if (Array.isArray(m)) {
     m.forEach((mm) => {
