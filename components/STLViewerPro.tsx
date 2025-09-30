@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+import type { Mesh as ThreeMesh, Material as ThreeMaterial, Object3D as ThreeObject3D } from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
@@ -14,18 +15,15 @@ type Props = {
 export default function STLViewerPro({ url, className }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
 
+  // Referencia al mesh actual para actualizar material sin recargar STL
+  const currentMeshRef = useRef<ThreeMesh | null>(null);
+
+  // UI state
   const [shadows, setShadows] = useState(true);
   const [tone, setTone] = useState(1.0);
   const [preset, setPreset] = useState<"studio" | "neutral" | "night">("studio");
   const [clipping, setClipping] = useState(false);
-
-  // Material PBR en vivo
-  const [matColor, setMatColor] = useState("#9ea2a7");
-  const [metalness, setMetalness] = useState(0.1);
-  const [roughness, setRoughness] = useState(0.6);
-
-  // Referencia al mesh actual para actualizar material sin recargar STL
-  const currentMeshRef = useRef<THREE.Mesh | null>(null);
+  const [matPreset, setMatPreset] = useState<"pvc" | "abs" | "aluminum" | "nylon">("pvc");
 
   const three = useMemo(() => {
     const scene = new THREE.Scene();
@@ -41,7 +39,7 @@ export default function STLViewerPro({ url, className }: Props) {
     renderer.physicallyCorrectLights = true;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    renderer.setPixelRatio(Math.min(2, typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1));
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
@@ -50,7 +48,7 @@ export default function STLViewerPro({ url, className }: Props) {
     const group = new THREE.Group();
     scene.add(group);
 
-    // Rejilla + ejes
+    // Rejilla + ejes (sin tipos duros en el material)
     const grid = new THREE.GridHelper(1000, 40, 0x333333, 0x202020);
     const applyMatProps = (matLike: unknown) => {
       const setProps = (m: any) => {
@@ -68,7 +66,7 @@ export default function STLViewerPro({ url, className }: Props) {
     axes.position.set(-120, 0, -120);
     scene.add(axes);
 
-    // Ambiente HDRI (constructor sin args en r157)
+    // Ambiente HDRI
     const pmrem = new THREE.PMREMGenerator(renderer);
     const envStudio = pmrem.fromScene(new RoomEnvironment(), 0.7).texture;
     scene.environment = envStudio;
@@ -83,7 +81,7 @@ export default function STLViewerPro({ url, className }: Props) {
     dir.shadow.mapSize.set(2048, 2048);
     scene.add(dir);
 
-    // Plano receptor
+    // Plano receptor de sombras
     const plane = new THREE.Mesh(
       new THREE.PlaneGeometry(2000, 2000),
       new THREE.ShadowMaterial({ opacity: 0.25 })
@@ -93,7 +91,7 @@ export default function STLViewerPro({ url, className }: Props) {
     plane.receiveShadow = true;
     scene.add(plane);
 
-    // Clipping
+    // Clipping planes
     const planes = [
       new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0),
       new THREE.Plane(new THREE.Vector3(0, -1, 0), 0),
@@ -137,7 +135,6 @@ export default function STLViewerPro({ url, className }: Props) {
     };
   }, [three]);
 
-  // Toggles/tonemapping
   useEffect(() => {
     three.renderer.shadowMap.enabled = shadows;
     three.dir.castShadow = shadows;
@@ -173,41 +170,54 @@ export default function STLViewerPro({ url, className }: Props) {
     three.renderer.clippingPlanes = clipping ? three.planes : [];
   }, [clipping, three]);
 
+  // Helper: material presets PBR
+  function makeMaterial(kind: typeof matPreset): ThreeMaterial {
+    switch (kind) {
+      case "abs":
+        return new THREE.MeshStandardMaterial({ color: 0x9aa3a9, roughness: 0.7, metalness: 0.02 });
+      case "aluminum":
+        return new THREE.MeshStandardMaterial({ color: 0xbfc4c9, roughness: 0.25, metalness: 1.0 });
+      case "nylon":
+        return new THREE.MeshStandardMaterial({ color: 0xe6e6e6, roughness: 0.9, metalness: 0.0 });
+      case "pvc":
+      default:
+        return new THREE.MeshStandardMaterial({ color: 0x6ea8ff, roughness: 0.85, metalness: 0.05 });
+    }
+  }
+
   // Carga STL
   useEffect(() => {
     const { group, scene, camera, controls, renderer } = three;
     group.clear();
     currentMeshRef.current = null;
 
-    if (!url) return;
+    if (!url) {
+      renderer.render(scene, camera);
+      return;
+    }
 
     const loader = new STLLoader();
     loader.load(
       url,
       (geometry) => {
-        const material = new THREE.MeshStandardMaterial({
-          color: new THREE.Color(matColor),
-          roughness,
-          metalness,
-        });
-
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.castShadow = true;
-
         geometry.computeVertexNormals();
         geometry.center();
 
+        const material = makeMaterial(matPreset);
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.castShadow = true;
+
+        // Acomodar sobre el plano
         const box = new THREE.Box3().setFromObject(mesh);
         const size = new THREE.Vector3();
         box.getSize(size);
         const radius = size.length() * 0.5 || 1;
-
-        const minY = box.min.y;
-        mesh.position.y -= minY;
+        mesh.position.y -= box.min.y;
 
         group.add(mesh);
         currentMeshRef.current = mesh;
 
+        // Enfoque cámara
         const fov = camera.fov * (Math.PI / 180);
         const dist = radius / Math.sin(fov / 2);
         camera.near = Math.max(0.1, dist * 0.01);
@@ -225,19 +235,18 @@ export default function STLViewerPro({ url, className }: Props) {
         console.error("Error cargando STL:", err);
       }
     );
-  }, [url, three]); // mat* no aquí: se actualizan en el efecto de material abajo
+  }, [url, three]); // matPreset lo aplicamos en un efecto aparte
 
-  // Actualiza material PBR en caliente sin recargar STL
+  // Reaplicar material sin recargar geometría
   useEffect(() => {
     const mesh = currentMeshRef.current;
     if (!mesh) return;
-    const mat = mesh.material as THREE.MeshStandardMaterial;
-    if (!mat) return;
-    mat.color = new THREE.Color(matColor);
-    mat.metalness = metalness;
-    mat.roughness = roughness;
-    mat.needsUpdate = true;
-  }, [matColor, metalness, roughness]);
+    const newMat = makeMaterial(matPreset);
+    // liberar el material previo
+    const oldMat = mesh.material as ThreeMaterial;
+    mesh.material = newMat;
+    oldMat?.dispose?.();
+  }, [matPreset]);
 
   return (
     <div ref={mountRef} className={className ?? "h-[70vh] w-full relative rounded-xl overflow-hidden bg-black"}>
@@ -277,29 +286,16 @@ export default function STLViewerPro({ url, className }: Props) {
           <input type="checkbox" checked={clipping} onChange={(e) => setClipping(e.target.checked)} />
         </label>
 
-        {/* Controles de material */}
-        <div className="flex items-center gap-2 bg-neutral-800 border border-neutral-700 px-2 py-1 rounded-md">
-          <span className="text-neutral-300">Color</span>
-          <input type="color" value={matColor} onChange={(e) => setMatColor(e.target.value)} />
-          <label className="ml-2">Met</label>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.05}
-            value={metalness}
-            onChange={(e) => setMetalness(parseFloat(e.target.value))}
-          />
-          <label className="ml-2">Rough</label>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.05}
-            value={roughness}
-            onChange={(e) => setRoughness(parseFloat(e.target.value))}
-          />
-        </div>
+        <select
+          value={matPreset}
+          onChange={(e) => setMatPreset(e.target.value as any)}
+          className="bg-neutral-800 text-neutral-100 border border-neutral-700 rounded-md px-2 py-1"
+        >
+          <option value="pvc">PVC (azul)</option>
+          <option value="abs">ABS gris</option>
+          <option value="aluminum">Aluminio</option>
+          <option value="nylon">Nylon blanco</option>
+        </select>
       </div>
     </div>
   );
