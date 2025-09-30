@@ -1,259 +1,273 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import {
-  OrbitControls,
-  Environment,
-  ContactShadows,
-  GizmoHelper,
-  GizmoViewport,
-  Html,
-  StatsGl,
-} from "@react-three/drei";
+import * as THREE from "three";
+import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 
-// Utilidad: cargar BufferGeometry desde un STL en runtime (opcional)
-async function loadSTLGeometry(url: string): Promise<any> {
-  const { STLLoader } = await import("three/examples/jsm/loaders/STLLoader.js");
-  const loader: any = new (STLLoader as any)();
-  return new Promise((resolve, reject) => {
-    loader.load(url, (geom: any) => resolve(geom), undefined, reject);
-  });
-}
-
-type ViewerProps = {
-  // O pasas una geometry ya construida…
-  geometry?: any;
-  // …o pasas una URL STL para previsualizar:
-  stlUrl?: string;
-  //
-  metalness?: number;
-  roughness?: number;
-  showShadows?: boolean;
-  envPreset?: "studio" | "city" | "sunset" | "warehouse" | "forest" | "apartment";
+type Props = {
+  url?: string | null;       // URL del STL (firmada o pública)
+  className?: string;
 };
 
-function Rig() {
-  const controls = useRef<any>(null);
-  useFrame(() => {
-    if (controls.current) controls.current.update();
-  });
-  return <OrbitControls ref={controls} enableDamping dampingFactor={0.08} rotateSpeed={0.6} />;
-}
+export default function STLViewerPro({ url, className }: Props) {
+  const mountRef = useRef<HTMLDivElement>(null);
 
-function ClippingController({ active, constant, planeRef }: { active: boolean; constant: number; planeRef: any }) {
-  const { gl } = useThree();
-  useEffect(() => {
-    gl.localClippingEnabled = active;
-    return () => {
-      gl.localClippingEnabled = false;
-    };
-  }, [active, gl]);
-  // planeRef.current = new THREE.Plane(new THREE.Vector3(0, 0, -1), constant)
-  useEffect(() => {
-    if (!planeRef.current) {
-      const THREE: any = (globalThis as any).THREE;
-      planeRef.current = new THREE.Plane(new THREE.Vector3(0, 0, -1), constant);
-    } else {
-      planeRef.current.constant = constant;
-    }
-  }, [constant, planeRef]);
-  return null;
-}
+  // UI state
+  const [shadows, setShadows] = useState(true);
+  const [tone, setTone] = useState(1.0); // exposure
+  const [preset, setPreset] = useState<"studio" | "neutral" | "night">("studio");
+  const [clipping, setClipping] = useState(false);
 
-function ModelMesh({
-  geometry,
-  planeRef,
-  metalness,
-  roughness,
-  showShadows,
-}: {
-  geometry: any;
-  planeRef: any;
-  metalness: number;
-  roughness: number;
-  showShadows: boolean;
-}) {
-  const matProps: any = useMemo(
-    () => ({
-      metalness,
-      roughness,
-      color: "#c9c9c9",
-      clippingPlanes: planeRef.current ? [planeRef.current] : [],
-    }),
-    [metalness, roughness, planeRef]
-  );
+  // mantener instancia entre renders
+  const three = useMemo(() => {
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0b0b0b);
 
-  // Centrar y escalar dentro de escena (auto-fit)
-  const meshRef = useRef<any>(null);
-  useEffect(() => {
-    if (!meshRef.current || !geometry?.boundingBox) return;
-    geometry.computeBoundingBox?.();
-    const bb = geometry.boundingBox;
-    const size = new (window as any).THREE.Vector3();
-    bb.getSize(size);
-    const maxDim = Math.max(size.x, size.y, size.z) || 1;
-    const scale = 1.5 / maxDim; // encaja en ~3 unidades
-    meshRef.current.scale.setScalar(scale);
-    // centra
-    const center = new (window as any).THREE.Vector3();
-    bb.getCenter(center).multiplyScalar(-1);
-    meshRef.current.position.set(center.x * scale, center.y * scale, center.z * scale);
-  }, [geometry]);
+    const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 2000);
+    camera.position.set(220, 180, 220);
 
-  return (
-    <mesh ref={meshRef} geometry={geometry} castShadow receiveShadow={showShadows}>
-      <meshStandardMaterial {...matProps} />
-    </mesh>
-  );
-}
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    // Color y luces físicas “bien” para PBR
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
+    renderer.physicallyCorrectLights = true;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
 
-function STLOrGeometry({ stlUrl, geometry, ...rest }: any) {
-  const [geo, setGeo] = useState<any>(geometry || null);
-  useEffect(() => {
-    let mounted = true;
-    if (geometry) {
-      setGeo(geometry);
-      return;
-    }
-    if (stlUrl) {
-      loadSTLGeometry(stlUrl).then((g) => mounted && setGeo(g));
-    }
-    return () => {
-      mounted = false;
-    };
-  }, [stlUrl, geometry]);
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.rotateSpeed = 0.8;
+    controls.zoomSpeed = 0.8;
+    controls.panSpeed = 0.8;
 
-  if (!geo) {
-    return (
-      <Html center>
-        <div className="px-3 py-1 rounded bg-black/60 text-white text-sm">Cargando geometría…</div>
-      </Html>
+    const group = new THREE.Group(); // aquí va el mesh
+    scene.add(group);
+
+    // Rejilla + ejes (sutiles)
+    const grid = new THREE.GridHelper(1000, 40, 0x333333, 0x202020);
+    grid.material.opacity = 0.35;
+    (grid.material as THREE.Material).transparent = true;
+    scene.add(grid);
+
+    const axes = new THREE.AxesHelper(80);
+    axes.position.set(-120, 0, -120);
+    scene.add(axes);
+
+    // Ambiente
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const envStudio = pmrem.fromScene(new RoomEnvironment({}), 0.7).texture; // HDR uniforme
+    scene.environment = envStudio;
+
+    // Luces
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x1a1a1a, 0.7);
+    scene.add(hemi);
+
+    const dir = new THREE.DirectionalLight(0xffffff, 1.4);
+    dir.position.set(2.5, 5, 2.5).multiplyScalar(80);
+    dir.castShadow = true;
+    dir.shadow.mapSize.set(2048, 2048);
+    dir.shadow.camera.near = 1;
+    dir.shadow.camera.far = 2000;
+    scene.add(dir);
+
+    // Plano receptor de sombras
+    const plane = new THREE.Mesh(
+      new THREE.PlaneGeometry(2000, 2000),
+      new THREE.ShadowMaterial({ opacity: 0.25 })
     );
-  }
-  return <ModelMesh geometry={geo} {...rest} />;
-}
+    plane.rotation.x = -Math.PI / 2;
+    plane.position.y = -0.001;
+    plane.receiveShadow = true;
+    scene.add(plane);
 
-export default function ViewerPro({
-  geometry,
-  stlUrl,
-  metalness = 0.1,
-  roughness = 0.6,
-  showShadows = true,
-  envPreset = "studio",
-}: ViewerProps) {
-  const [shadows, setShadows] = useState(showShadows);
-  const [tone, setTone] = useState(1.0);
-  const [env, setEnv] = useState(envPreset);
-  const [clipOn, setClipOn] = useState(false);
-  const [clip, setClip] = useState(0); // distancia del plano
-  const clipPlaneRef = useRef<any>(null);
+    // Clipping planes (inicialmente off)
+    const planes = [
+      new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0),
+      new THREE.Plane(new THREE.Vector3(0, -1, 0), 0),
+      new THREE.Plane(new THREE.Vector3(0, 0, -1), 0),
+    ];
+    renderer.clippingPlanes = [];
+
+    return { scene, camera, renderer, controls, group, dir, hemi, envStudio, planes, pmrem, plane };
+  }, []);
+
+  // resize
+  useEffect(() => {
+    const mount = mountRef.current!;
+    if (!mount) return;
+
+    const { renderer, camera, controls } = three;
+    mount.appendChild(renderer.domElement);
+
+    const onResize = () => {
+      const w = mount.clientWidth || 800;
+      const h = mount.clientHeight || 600;
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    };
+    onResize();
+    const ro = new ResizeObserver(onResize);
+    ro.observe(mount);
+
+    let raf = 0;
+    const loop = () => {
+      raf = requestAnimationFrame(loop);
+      controls.update();
+      renderer.render(three.scene, camera);
+    };
+    loop();
+
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+      mount.removeChild(renderer.domElement);
+      renderer.dispose();
+      three.pmrem.dispose();
+    };
+  }, [three]);
+
+  // UI: sombras on/off
+  useEffect(() => {
+    three.renderer.shadowMap.enabled = shadows;
+    three.dir.castShadow = shadows;
+    three.plane.visible = shadows;
+  }, [shadows, three]);
+
+  // UI: exposure / tone
+  useEffect(() => {
+    three.renderer.toneMappingExposure = tone;
+  }, [tone, three]);
+
+  // UI: preset de iluminación
+  useEffect(() => {
+    switch (preset) {
+      case "studio":
+        three.hemi.intensity = 0.7;
+        three.dir.intensity = 1.4;
+        three.scene.background = new THREE.Color(0x0b0b0b);
+        break;
+      case "neutral":
+        three.hemi.intensity = 0.5;
+        three.dir.intensity = 1.0;
+        three.scene.background = new THREE.Color(0x111111);
+        break;
+      case "night":
+        three.hemi.intensity = 0.25;
+        three.dir.intensity = 0.6;
+        three.scene.background = new THREE.Color(0x000000);
+        break;
+    }
+  }, [preset, three]);
+
+  // UI: clipping
+  useEffect(() => {
+    three.renderer.localClippingEnabled = clipping;
+    three.renderer.clippingPlanes = clipping ? three.planes : [];
+  }, [clipping, three]);
+
+  // carga del STL
+  useEffect(() => {
+    const { group, scene, camera, controls, renderer } = three;
+    group.clear();
+
+    if (!url) return;
+
+    const loader = new STLLoader();
+    loader.setCrossOrigin("anonymous");
+
+    loader.load(
+      url,
+      (geometry) => {
+        // material por defecto: gris claro PBR
+        const material = new THREE.MeshStandardMaterial({
+          color: 0x9ea2a7,
+          roughness: 0.85,
+          metalness: 0.05,
+        });
+
+        // STL suele venir en mm: escala 1:1 suficiente para visor
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.castShadow = true;
+        mesh.receiveShadow = false;
+
+        // centrar y auto-fit
+        geometry.computeVertexNormals();
+        geometry.center();
+
+        // Bounding box para encuadre
+        const box = new THREE.Box3().setFromObject(mesh);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const radius = size.length() * 0.5 || 1;
+
+        // posicionar un poco encima del plano
+        const minY = box.min.y;
+        mesh.position.y -= minY; // apoya en Y=0
+
+        group.add(mesh);
+
+        // encuadre de cámara
+        const fov = camera.fov * (Math.PI / 180);
+        const dist = radius / Math.sin(fov / 2);
+        camera.near = Math.max(0.1, dist * 0.01);
+        camera.far = dist * 10 + radius * 2;
+        camera.updateProjectionMatrix();
+
+        const target = new THREE.Vector3();
+        group.getWorldPosition(target);
+        controls.target.copy(new THREE.Vector3(0, size.y * 0.5, 0));
+        camera.position.set(dist, dist * 0.6, dist);
+        controls.update();
+
+        renderer.render(scene, camera);
+      },
+      undefined,
+      (err) => {
+        console.error("Error cargando STL:", err);
+      }
+    );
+  }, [url, three]);
 
   return (
-    <div className="w-full h-[650px] rounded-2xl overflow-hidden relative bg-neutral-950">
-      {/* Toolbar */}
-      <div className="absolute z-10 top-3 left-3 flex gap-2 bg-black/30 backdrop-blur px-3 py-2 rounded-xl text-white text-sm">
-        <button onClick={() => setShadows((s) => !s)} className="px-2 py-1 rounded bg-white/10 hover:bg-white/20">
+    <div ref={mountRef} className={className ?? "h-[70vh] w-full relative rounded-xl overflow-hidden bg-black"}>
+      {/* HUD */}
+      <div className="pointer-events-auto absolute top-3 left-3 z-10 flex items-center gap-3 text-xs">
+        <button
+          onClick={() => setShadows(s => !s)}
+          className="px-2 py-1 rounded-md bg-neutral-800 text-neutral-100 border border-neutral-700"
+        >
           Sombras: {shadows ? "ON" : "OFF"}
         </button>
-        <label className="flex items-center gap-2">
-          Tone
+
+        <div className="flex items-center gap-2 bg-neutral-800 border border-neutral-700 px-2 py-1 rounded-md">
+          <span className="text-neutral-300">Tone</span>
           <input
-            type="range"
-            min={0.5}
-            max={1.5}
-            step={0.01}
-            value={tone}
-            onChange={(e) => setTone(parseFloat(e.target.value))}
+            type="range" min={0.3} max={1.8} step={0.05}
+            value={tone} onChange={(e) => setTone(parseFloat(e.target.value))}
           />
-        </label>
+        </div>
+
         <select
-          className="px-2 py-1 rounded bg-white/10 hover:bg-white/20"
-          value={env}
-          onChange={(e) => setEnv(e.target.value as any)}
+          value={preset}
+          onChange={(e) => setPreset(e.target.value as any)}
+          className="bg-neutral-800 text-neutral-100 border border-neutral-700 rounded-md px-2 py-1"
         >
           <option value="studio">studio</option>
-          <option value="city">city</option>
-          <option value="sunset">sunset</option>
-          <option value="warehouse">warehouse</option>
-          <option value="forest">forest</option>
-          <option value="apartment">apartment</option>
+          <option value="neutral">neutral</option>
+          <option value="night">night</option>
         </select>
-        <label className="flex items-center gap-2">
-          Clipping
-          <input type="checkbox" checked={clipOn} onChange={(e) => setClipOn(e.target.checked)} />
+
+        <label className="bg-neutral-800 text-neutral-100 border border-neutral-700 rounded-md px-2 py-1 flex items-center gap-2">
+          <span>Clipping</span>
+          <input type="checkbox" checked={clipping} onChange={(e) => setClipping(e.target.checked)} />
         </label>
-        {clipOn && (
-          <input
-            type="range"
-            min={-2}
-            max={2}
-            step={0.01}
-            value={clip}
-            onChange={(e) => setClip(parseFloat(e.target.value))}
-          />
-        )}
       </div>
-
-      <Canvas
-        shadows={shadows}
-        dpr={[1, 2]}
-        camera={{ position: [2.5, 1.6, 2.5], fov: 45 }}
-        onCreated={({ gl }) => {
-          const THREE: any = (globalThis as any).THREE;
-          gl.outputColorSpace = THREE.SRGBColorSpace;
-          gl.toneMapping = THREE.ACESFilmicToneMapping;
-          gl.toneMappingExposure = tone;
-        }}
-      >
-        {/* tone mapping live */}
-        <ToneMapper value={tone} />
-        <Rig />
-
-        {/* Luces físicas */}
-        <ambientLight intensity={0.5} />
-        <directionalLight
-          position={[3, 4, 2]}
-          intensity={1.2}
-          castShadow={shadows}
-          shadow-mapSize={[1024, 1024] as any}
-        />
-        <Environment preset={env as any} />
-
-        {/* Clipping */}
-        <ClippingController active={clipOn} constant={clip} planeRef={clipPlaneRef} />
-
-        {/* Modelo */}
-        <STLOrGeometry
-          stlUrl={stlUrl}
-          geometry={geometry}
-          planeRef={clipPlaneRef}
-          metalness={metalness}
-          roughness={roughness}
-          showShadows={shadows}
-        />
-
-        {/* Suelo / sombras de contacto */}
-        {shadows && <ContactShadows opacity={0.45} scale={10} blur={2.2} far={3.5} resolution={1024} />}
-
-        {/* Mini-gizmo */}
-        <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
-          <GizmoViewport axisColors={["red", "green", "blue"]} labelColor="white" />
-        </GizmoHelper>
-
-        {/* FPS/Stats opcional */}
-        {/* <StatsGl /> */}
-      </Canvas>
     </div>
   );
-}
-
-function ToneMapper({ value }: { value: number }) {
-  const { gl } = useThree();
-  useEffect(() => {
-    const THREE: any = (globalThis as any).THREE;
-    gl.toneMappingExposure = value;
-    gl.toneMapping = THREE.ACESFilmicToneMapping;
-  }, [gl, value]);
-  return null;
 }
