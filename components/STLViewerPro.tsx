@@ -171,8 +171,6 @@ export default function STLViewerPro({ url, className }: Props) {
     if (!url) return;
 
     const loader = new STLLoader();
-    loader.setCrossOrigin("anonymous");
-
     loader.load(
       url,
       (geometry) => {
