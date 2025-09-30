@@ -44,8 +44,6 @@ export default function STLViewerPro({ url, className }: Props) {
 
     // Rejilla + ejes
     const grid = new THREE.GridHelper(1000, 40, 0x333333, 0x202020);
-
-    // GridHelper.material puede ser Material o Material[] o incluso variar según la versión.
     const applyMatProps = (matLike: unknown) => {
       const setProps = (m: any) => {
         if (m && typeof m === "object") {
@@ -53,11 +51,7 @@ export default function STLViewerPro({ url, className }: Props) {
           if ("opacity" in m) m.opacity = 0.35;
         }
       };
-      if (Array.isArray(matLike)) {
-        matLike.forEach(setProps);
-      } else {
-        setProps(matLike as any);
-      }
+      Array.isArray(matLike) ? matLike.forEach(setProps) : setProps(matLike as any);
     };
     applyMatProps(grid.material);
     scene.add(grid);
@@ -66,9 +60,9 @@ export default function STLViewerPro({ url, className }: Props) {
     axes.position.set(-120, 0, -120);
     scene.add(axes);
 
-    // Ambiente HDRI
+    // Ambiente HDRI (constructor sin args en r157)
     const pmrem = new THREE.PMREMGenerator(renderer);
-    const envStudio = pmrem.fromScene(new RoomEnvironment({}), 0.7).texture;
+    const envStudio = pmrem.fromScene(new RoomEnvironment(), 0.7).texture;
     scene.environment = envStudio;
 
     // Luces físicas
