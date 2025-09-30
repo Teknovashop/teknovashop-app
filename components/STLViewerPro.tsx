@@ -19,6 +19,14 @@ export default function STLViewerPro({ url, className }: Props) {
   const [preset, setPreset] = useState<"studio" | "neutral" | "night">("studio");
   const [clipping, setClipping] = useState(false);
 
+  // Material PBR en vivo
+  const [matColor, setMatColor] = useState("#9ea2a7");
+  const [metalness, setMetalness] = useState(0.1);
+  const [roughness, setRoughness] = useState(0.6);
+
+  // Referencia al mesh actual para actualizar material sin recargar STL
+  const currentMeshRef = useRef<THREE.Mesh | null>(null);
+
   const three = useMemo(() => {
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0b0b0b);
@@ -129,6 +137,7 @@ export default function STLViewerPro({ url, className }: Props) {
     };
   }, [three]);
 
+  // Toggles/tonemapping
   useEffect(() => {
     three.renderer.shadowMap.enabled = shadows;
     three.dir.castShadow = shadows;
@@ -168,6 +177,8 @@ export default function STLViewerPro({ url, className }: Props) {
   useEffect(() => {
     const { group, scene, camera, controls, renderer } = three;
     group.clear();
+    currentMeshRef.current = null;
+
     if (!url) return;
 
     const loader = new STLLoader();
@@ -175,9 +186,9 @@ export default function STLViewerPro({ url, className }: Props) {
       url,
       (geometry) => {
         const material = new THREE.MeshStandardMaterial({
-          color: 0x9ea2a7,
-          roughness: 0.85,
-          metalness: 0.05,
+          color: new THREE.Color(matColor),
+          roughness,
+          metalness,
         });
 
         const mesh = new THREE.Mesh(geometry, material);
@@ -195,6 +206,7 @@ export default function STLViewerPro({ url, className }: Props) {
         mesh.position.y -= minY;
 
         group.add(mesh);
+        currentMeshRef.current = mesh;
 
         const fov = camera.fov * (Math.PI / 180);
         const dist = radius / Math.sin(fov / 2);
@@ -213,14 +225,26 @@ export default function STLViewerPro({ url, className }: Props) {
         console.error("Error cargando STL:", err);
       }
     );
-  }, [url, three]);
+  }, [url, three]); // mat* no aquí: se actualizan en el efecto de material abajo
+
+  // Actualiza material PBR en caliente sin recargar STL
+  useEffect(() => {
+    const mesh = currentMeshRef.current;
+    if (!mesh) return;
+    const mat = mesh.material as THREE.MeshStandardMaterial;
+    if (!mat) return;
+    mat.color = new THREE.Color(matColor);
+    mat.metalness = metalness;
+    mat.roughness = roughness;
+    mat.needsUpdate = true;
+  }, [matColor, metalness, roughness]);
 
   return (
     <div ref={mountRef} className={className ?? "h-[70vh] w-full relative rounded-xl overflow-hidden bg-black"}>
       {/* HUD */}
-      <div className="pointer-events-auto absolute top-3 left-3 z-10 flex items-center gap-3 text-xs">
+      <div className="pointer-events-auto absolute top-3 left-3 z-10 flex flex-wrap items-center gap-3 text-xs">
         <button
-          onClick={() => setShadows(s => !s)}
+          onClick={() => setShadows((s) => !s)}
           className="px-2 py-1 rounded-md bg-neutral-800 text-neutral-100 border border-neutral-700"
         >
           Sombras: {shadows ? "ON" : "OFF"}
@@ -229,8 +253,12 @@ export default function STLViewerPro({ url, className }: Props) {
         <div className="flex items-center gap-2 bg-neutral-800 border border-neutral-700 px-2 py-1 rounded-md">
           <span className="text-neutral-300">Tone</span>
           <input
-            type="range" min={0.3} max={1.8} step={0.05}
-            value={tone} onChange={(e) => setTone(parseFloat(e.target.value))}
+            type="range"
+            min={0.3}
+            max={1.8}
+            step={0.05}
+            value={tone}
+            onChange={(e) => setTone(parseFloat(e.target.value))}
           />
         </div>
 
@@ -248,6 +276,30 @@ export default function STLViewerPro({ url, className }: Props) {
           <span>Clipping</span>
           <input type="checkbox" checked={clipping} onChange={(e) => setClipping(e.target.checked)} />
         </label>
+
+        {/* Controles de material */}
+        <div className="flex items-center gap-2 bg-neutral-800 border border-neutral-700 px-2 py-1 rounded-md">
+          <span className="text-neutral-300">Color</span>
+          <input type="color" value={matColor} onChange={(e) => setMatColor(e.target.value)} />
+          <label className="ml-2">Met</label>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={metalness}
+            onChange={(e) => setMetalness(parseFloat(e.target.value))}
+          />
+          <label className="ml-2">Rough</label>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={roughness}
+            onChange={(e) => setRoughness(parseFloat(e.target.value))}
+          />
+        </div>
       </div>
     </div>
   );
