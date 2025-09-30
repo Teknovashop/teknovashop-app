@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+import type { Mesh } from "three"; // <-- IMPORTAMOS EL TIPO
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
@@ -18,10 +19,10 @@ export default function STLViewerPro({ url, className }: Props) {
   const [tone, setTone] = useState(1.0);
   const [preset, setPreset] = useState<"studio" | "neutral" | "night">("studio");
   const [clipping, setClipping] = useState(false);
-  const [lightBg, setLightBg] = useState(false); // <--- fondo claro
+  const [lightBg, setLightBg] = useState(false); // fondo claro
 
   // guardamos el mesh para poder cambiar material sin recargar
-  const currentMeshRef = useRef<THREE.Mesh | null>(null);
+  const currentMeshRef = useRef<Mesh | null>(null); // <-- USAMOS EL TIPO Mesh
 
   const three = useMemo(() => {
     const scene = new THREE.Scene();
@@ -175,7 +176,7 @@ export default function STLViewerPro({ url, className }: Props) {
   // fondo claro/oscuro + colores rejilla
   useEffect(() => {
     if (lightBg) {
-      three.scene.background = new THREE.Color(0xf3f4f6); // gris muy claro
+      three.scene.background = new THREE.Color(0xf3f4f6);
       (three.grid.material as any).color?.set?.(0xbfc4cb);
       (three.grid.material as any).opacity = 0.6;
       (three.axes.material as any).color?.set?.(0x666666);
