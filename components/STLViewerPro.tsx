@@ -18,9 +18,8 @@ export default function STLViewerPro({ url, className }: Props) {
   const [tone, setTone] = useState(1.0);
   const [preset, setPreset] = useState<"studio" | "neutral" | "night">("studio");
   const [clipping, setClipping] = useState(false);
-  const [lightBg, setLightBg] = useState(false); // fondo claro
+  const [lightBg, setLightBg] = useState(false);
 
-  // Tipado que no depende de los .d.ts: usamos el constructor como valor
   const currentMeshRef = useRef<InstanceType<typeof THREE.Mesh> | null>(null);
 
   const three = useMemo(() => {
@@ -30,11 +29,7 @@ export default function STLViewerPro({ url, className }: Props) {
     const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 2000);
     camera.position.set(220, 180, 220);
 
-    const renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      powerPreference: "high-performance",
-      alpha: false,
-    });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
@@ -50,21 +45,18 @@ export default function STLViewerPro({ url, className }: Props) {
     const group = new THREE.Group();
     scene.add(group);
 
-    // Rejilla + ejes
-    const grid = new THREE.GridHelper(1000, 40, 0x333333, 0x202020);
-    setGridOpacity(grid as any, 0.35);
+    const grid = new THREE.GridHelper(1000, 40, 0x333333, 0x202020) as any;
+    setGridOpacity(grid, 0.35);
     scene.add(grid);
 
-    const axes = new THREE.AxesHelper(80);
+    const axes = new THREE.AxesHelper(80) as any;
     axes.position.set(-120, 0, -120);
     scene.add(axes);
 
-    // Ambiente HDRI
     const pmrem = new THREE.PMREMGenerator(renderer);
     const envStudio = pmrem.fromScene(new RoomEnvironment(), 0.7).texture;
     scene.environment = envStudio;
 
-    // Luces físicas
     const hemi = new THREE.HemisphereLight(0xffffff, 0x1a1a1a, 0.7);
     scene.add(hemi);
 
@@ -74,7 +66,6 @@ export default function STLViewerPro({ url, className }: Props) {
     dir.shadow.mapSize.set(2048, 2048);
     scene.add(dir);
 
-    // Plano receptor
     const plane = new THREE.Mesh(
       new THREE.PlaneGeometry(2000, 2000),
       new THREE.ShadowMaterial({ opacity: 0.25 })
@@ -84,7 +75,6 @@ export default function STLViewerPro({ url, className }: Props) {
     plane.receiveShadow = true;
     scene.add(plane);
 
-    // Clipping
     const planes = [
       new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0),
       new THREE.Plane(new THREE.Vector3(0, -1, 0), 0),
@@ -92,21 +82,7 @@ export default function STLViewerPro({ url, className }: Props) {
     ];
     renderer.clippingPlanes = [];
 
-    return {
-      scene,
-      camera,
-      renderer,
-      controls,
-      group,
-      dir,
-      hemi,
-      envStudio,
-      planes,
-      pmrem,
-      plane,
-      grid,
-      axes,
-    };
+    return { scene, camera, renderer, controls, group, dir, hemi, envStudio, planes, pmrem, plane, grid, axes };
   }, []);
 
   useEffect(() => {
@@ -169,18 +145,14 @@ export default function STLViewerPro({ url, className }: Props) {
     }
   }, [preset, three]);
 
-  // fondo claro/oscuro
   useEffect(() => {
+    // fondo
     if (lightBg) {
       three.scene.background = new THREE.Color(0xf3f4f6);
-      (three.grid.material as any).color?.set?.(0xbfc4cb);
       (three.grid.material as any).opacity = 0.6;
-      (three.axes.material as any).color?.set?.(0x666666);
     } else {
       three.scene.background = new THREE.Color(0x0b0b0b);
-      (three.grid.material as any).color?.set?.(0x202020);
       (three.grid.material as any).opacity = 0.35;
-      (three.axes.material as any).color?.set?.(0xffffff);
     }
   }, [lightBg, three]);
 
@@ -243,14 +215,11 @@ export default function STLViewerPro({ url, className }: Props) {
   }, [url, three]);
 
   return (
-    <div
-      ref={mountRef}
-      className={className ?? "h-[70vh] w-full relative rounded-xl overflow-hidden bg-black"}
-    >
+    <div ref={mountRef} className={className ?? "h-[70vh] w-full relative rounded-xl overflow-hidden bg-black"}>
       {/* HUD */}
       <div className="pointer-events-auto absolute top-3 left-3 z-10 flex flex-wrap items-center gap-3 text-xs">
         <button
-          onClick={() => setShadows((s) => !s)}
+          onClick={() => setShadows(s => !s)}
           className="px-2 py-1 rounded-md bg-neutral-800 text-neutral-100 border border-neutral-700"
         >
           Sombras: {shadows ? "ON" : "OFF"}
@@ -259,12 +228,8 @@ export default function STLViewerPro({ url, className }: Props) {
         <div className="flex items-center gap-2 bg-neutral-800 border border-neutral-700 px-2 py-1 rounded-md">
           <span className="text-neutral-300">Tone</span>
           <input
-            type="range"
-            min={0.3}
-            max={1.8}
-            step={0.05}
-            value={tone}
-            onChange={(e) => setTone(parseFloat(e.target.value))}
+            type="range" min={0.3} max={1.8} step={0.05}
+            value={tone} onChange={(e) => setTone(parseFloat(e.target.value))}
           />
         </div>
 
@@ -280,36 +245,21 @@ export default function STLViewerPro({ url, className }: Props) {
 
         <label className="bg-neutral-800 text-neutral-100 border border-neutral-700 rounded-md px-2 py-1 flex items-center gap-2">
           <span>Clipping</span>
-          <input
-            type="checkbox"
-            checked={clipping}
-            onChange={(e) => setClipping(e.target.checked)}
-          />
+          <input type="checkbox" checked={clipping} onChange={(e) => setClipping(e.target.checked)} />
         </label>
 
         <label className="bg-neutral-800 text-neutral-100 border border-neutral-700 rounded-md px-2 py-1 flex items-center gap-2">
           <span>Fondo claro</span>
-          <input
-            type="checkbox"
-            checked={lightBg}
-            onChange={(e) => setLightBg(e.target.checked)}
-          />
+          <input type="checkbox" checked={lightBg} onChange={(e) => setLightBg(e.target.checked)} />
         </label>
       </div>
     </div>
   );
 }
 
-/* util rejilla — sin depender de tipos de three para no romper el build */
+/* util rejilla (evitamos tipos para no romper build) */
 function setGridOpacity(grid: any, opacity: number) {
   const m: any = grid.material;
-  if (Array.isArray(m)) {
-    m.forEach((mm) => {
-      mm.transparent = true;
-      mm.opacity = opacity;
-    });
-  } else if (m) {
-    m.transparent = true;
-    m.opacity = opacity;
-  }
+  if (Array.isArray(m)) m.forEach((mm) => { mm.transparent = true; mm.opacity = opacity; });
+  else if (m) { m.transparent = true; m.opacity = opacity; }
 }
