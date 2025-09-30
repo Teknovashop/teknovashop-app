@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import type { Mesh as ThreeMesh, Material as ThreeMaterial, Object3D as ThreeObject3D } from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
@@ -15,8 +14,8 @@ type Props = {
 export default function STLViewerPro({ url, className }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
 
-  // Referencia al mesh actual para actualizar material sin recargar STL
-  const currentMeshRef = useRef<ThreeMesh | null>(null);
+  // Referencia al mesh actual (sin tipos para máxima compat)
+  const currentMeshRef = useRef<any>(null);
 
   // UI state
   const [shadows, setShadows] = useState(true);
@@ -48,7 +47,7 @@ export default function STLViewerPro({ url, className }: Props) {
     const group = new THREE.Group();
     scene.add(group);
 
-    // Rejilla + ejes (sin tipos duros en el material)
+    // Rejilla + ejes
     const grid = new THREE.GridHelper(1000, 40, 0x333333, 0x202020);
     const applyMatProps = (matLike: unknown) => {
       const setProps = (m: any) => {
@@ -57,7 +56,7 @@ export default function STLViewerPro({ url, className }: Props) {
           if ("opacity" in m) m.opacity = 0.35;
         }
       };
-      Array.isArray(matLike) ? matLike.forEach(setProps) : setProps(matLike as any);
+      Array.isArray(matLike) ? (matLike as any[]).forEach(setProps) : setProps(matLike as any);
     };
     applyMatProps(grid.material);
     scene.add(grid);
@@ -170,8 +169,8 @@ export default function STLViewerPro({ url, className }: Props) {
     three.renderer.clippingPlanes = clipping ? three.planes : [];
   }, [clipping, three]);
 
-  // Helper: material presets PBR
-  function makeMaterial(kind: typeof matPreset): ThreeMaterial {
+  // Material presets PBR
+  function makeMaterial(kind: typeof matPreset) {
     switch (kind) {
       case "abs":
         return new THREE.MeshStandardMaterial({ color: 0x9aa3a9, roughness: 0.7, metalness: 0.02 });
@@ -235,17 +234,15 @@ export default function STLViewerPro({ url, className }: Props) {
         console.error("Error cargando STL:", err);
       }
     );
-  }, [url, three]); // matPreset lo aplicamos en un efecto aparte
+  }, [url, three]); // matPreset se aplica abajo sin recargar
 
   // Reaplicar material sin recargar geometría
   useEffect(() => {
     const mesh = currentMeshRef.current;
     if (!mesh) return;
-    const newMat = makeMaterial(matPreset);
-    // liberar el material previo
-    const oldMat = mesh.material as ThreeMaterial;
-    mesh.material = newMat;
-    oldMat?.dispose?.();
+    const prev = mesh.material;
+    mesh.material = makeMaterial(matPreset);
+    if (prev && typeof prev.dispose === "function") prev.dispose();
   }, [matPreset]);
 
   return (
