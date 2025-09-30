@@ -2,25 +2,24 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+import type { Material } from "three"; // <- tipos desde el módulo, no desde el namespace
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 
 type Props = {
-  url?: string | null;       // URL del STL (firmada o pública)
+  url?: string | null;
   className?: string;
 };
 
 export default function STLViewerPro({ url, className }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
 
-  // UI state
   const [shadows, setShadows] = useState(true);
-  const [tone, setTone] = useState(1.0); // exposure
+  const [tone, setTone] = useState(1.0);
   const [preset, setPreset] = useState<"studio" | "neutral" | "night">("studio");
   const [clipping, setClipping] = useState(false);
 
-  // mantener instancia entre renders
   const three = useMemo(() => {
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0b0b0b);
@@ -40,29 +39,33 @@ export default function STLViewerPro({ url, className }: Props) {
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
-    controls.rotateSpeed = 0.8;
-    controls.zoomSpeed = 0.8;
-    controls.panSpeed = 0.8;
 
-    const group = new THREE.Group(); // aquí va el mesh
+    const group = new THREE.Group();
     scene.add(group);
 
-    // Rejilla + ejes (sutiles)
+    // Rejilla + ejes
     const grid = new THREE.GridHelper(1000, 40, 0x333333, 0x202020);
-    (grid.material as THREE.LineBasicMaterial).opacity = 0.35;
-    (grid.material as THREE.LineBasicMaterial).transparent = true; // <- fix de tipos
+    // GridHelper.material puede ser Material o Material[]
+    const setGridMaterialProps = (mat: Material | Material[]) => {
+      const apply = (m: Material) => {
+        m.transparent = true;
+        (m as any).opacity = 0.35; // opacity existe en Material, el cast evita que TS se queje en algunos setups
+      };
+      Array.isArray(mat) ? mat.forEach(apply) : apply(mat);
+    };
+    setGridMaterialProps(grid.material as unknown as Material | Material[]);
     scene.add(grid);
 
     const axes = new THREE.AxesHelper(80);
     axes.position.set(-120, 0, -120);
     scene.add(axes);
 
-    // Ambiente
+    // Ambiente HDRI
     const pmrem = new THREE.PMREMGenerator(renderer);
     const envStudio = pmrem.fromScene(new RoomEnvironment({}), 0.7).texture;
     scene.environment = envStudio;
 
-    // Luces
+    // Luces físicas
     const hemi = new THREE.HemisphereLight(0xffffff, 0x1a1a1a, 0.7);
     scene.add(hemi);
 
@@ -70,11 +73,9 @@ export default function STLViewerPro({ url, className }: Props) {
     dir.position.set(2.5, 5, 2.5).multiplyScalar(80);
     dir.castShadow = true;
     dir.shadow.mapSize.set(2048, 2048);
-    dir.shadow.camera.near = 1;
-    dir.shadow.camera.far = 2000;
     scene.add(dir);
 
-    // Plano receptor de sombras
+    // Plano receptor
     const plane = new THREE.Mesh(
       new THREE.PlaneGeometry(2000, 2000),
       new THREE.ShadowMaterial({ opacity: 0.25 })
@@ -84,7 +85,7 @@ export default function STLViewerPro({ url, className }: Props) {
     plane.receiveShadow = true;
     scene.add(plane);
 
-    // Clipping planes (inicialmente off)
+    // Clipping
     const planes = [
       new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0),
       new THREE.Plane(new THREE.Vector3(0, -1, 0), 0),
@@ -95,11 +96,8 @@ export default function STLViewerPro({ url, className }: Props) {
     return { scene, camera, renderer, controls, group, dir, hemi, envStudio, planes, pmrem, plane };
   }, []);
 
-  // resize
   useEffect(() => {
     const mount = mountRef.current!;
-    if (!mount) return;
-
     const { renderer, camera, controls } = three;
     mount.appendChild(renderer.domElement);
 
@@ -131,19 +129,16 @@ export default function STLViewerPro({ url, className }: Props) {
     };
   }, [three]);
 
-  // UI: sombras on/off
   useEffect(() => {
     three.renderer.shadowMap.enabled = shadows;
     three.dir.castShadow = shadows;
     three.plane.visible = shadows;
   }, [shadows, three]);
 
-  // UI: exposure / tone
   useEffect(() => {
     three.renderer.toneMappingExposure = tone;
   }, [tone, three]);
 
-  // UI: preset de iluminación
   useEffect(() => {
     switch (preset) {
       case "studio":
@@ -164,17 +159,15 @@ export default function STLViewerPro({ url, className }: Props) {
     }
   }, [preset, three]);
 
-  // UI: clipping
   useEffect(() => {
     three.renderer.localClippingEnabled = clipping;
     three.renderer.clippingPlanes = clipping ? three.planes : [];
   }, [clipping, three]);
 
-  // carga del STL
+  // Carga STL
   useEffect(() => {
     const { group, scene, camera, controls, renderer } = three;
     group.clear();
-
     if (!url) return;
 
     const loader = new STLLoader();
@@ -191,7 +184,6 @@ export default function STLViewerPro({ url, className }: Props) {
 
         const mesh = new THREE.Mesh(geometry, material);
         mesh.castShadow = true;
-        mesh.receiveShadow = false;
 
         geometry.computeVertexNormals();
         geometry.center();
@@ -212,9 +204,7 @@ export default function STLViewerPro({ url, className }: Props) {
         camera.far = dist * 10 + radius * 2;
         camera.updateProjectionMatrix();
 
-        const target = new THREE.Vector3();
-        group.getWorldPosition(target);
-        controls.target.copy(new THREE.Vector3(0, size.y * 0.5, 0));
+        controls.target.set(0, size.y * 0.5, 0);
         camera.position.set(dist, dist * 0.6, dist);
         controls.update();
 
