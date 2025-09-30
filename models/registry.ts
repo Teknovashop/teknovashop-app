@@ -1,6 +1,6 @@
 // models/registry.ts
 
-// ——— Tipos base
+// ——— Tipos base// models/registry.ts
 export type ModelId =
   | "cable_tray"
   | "vesa_adapter"
@@ -9,7 +9,10 @@ export type ModelId =
   | "qr_plate"
   | "enclosure_ip65"
   | "cable_clip"
-  | "vesa_shelf"; // NUEVO
+  | "vesa_shelf"; // y cualquier otro que veas en /models del backend
+
+// … (estructura de sliders/defaults como ya la tienes)
+
 
 export type SliderDef = {
   key: string;
