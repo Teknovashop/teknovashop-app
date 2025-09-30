@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import type { Mesh } from "three"; // <-- IMPORTAMOS EL TIPO
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
@@ -21,8 +20,8 @@ export default function STLViewerPro({ url, className }: Props) {
   const [clipping, setClipping] = useState(false);
   const [lightBg, setLightBg] = useState(false); // fondo claro
 
-  // guardamos el mesh para poder cambiar material sin recargar
-  const currentMeshRef = useRef<Mesh | null>(null); // <-- USAMOS EL TIPO Mesh
+  // ✅ Tipado que no depende de los .d.ts: usamos el constructor como valor
+  const currentMeshRef = useRef<InstanceType<typeof THREE.Mesh> | null>(null);
 
   const three = useMemo(() => {
     const scene = new THREE.Scene();
@@ -143,19 +142,16 @@ export default function STLViewerPro({ url, className }: Props) {
     };
   }, [three]);
 
-  // sombras
   useEffect(() => {
     three.renderer.shadowMap.enabled = shadows;
     three.dir.castShadow = shadows;
     three.plane.visible = shadows;
   }, [shadows, three]);
 
-  // exposición
   useEffect(() => {
     three.renderer.toneMappingExposure = tone;
   }, [tone, three]);
 
-  // presets de iluminación
   useEffect(() => {
     switch (preset) {
       case "studio":
@@ -173,7 +169,7 @@ export default function STLViewerPro({ url, className }: Props) {
     }
   }, [preset, three]);
 
-  // fondo claro/oscuro + colores rejilla
+  // fondo claro/oscuro
   useEffect(() => {
     if (lightBg) {
       three.scene.background = new THREE.Color(0xf3f4f6);
@@ -188,7 +184,6 @@ export default function STLViewerPro({ url, className }: Props) {
     }
   }, [lightBg, three]);
 
-  // clipping
   useEffect(() => {
     three.renderer.localClippingEnabled = clipping;
     three.renderer.clippingPlanes = clipping ? three.planes : [];
@@ -206,7 +201,7 @@ export default function STLViewerPro({ url, className }: Props) {
       url,
       (geometry) => {
         const material = new THREE.MeshStandardMaterial({
-          color: 0x9bb8ff, // azul suave
+          color: 0x9bb8ff,
           roughness: 0.8,
           metalness: 0.05,
         });
