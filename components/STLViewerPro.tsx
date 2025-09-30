@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import type { Material } from "three"; // <- tipos desde el módulo, no desde el namespace
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
@@ -45,15 +44,22 @@ export default function STLViewerPro({ url, className }: Props) {
 
     // Rejilla + ejes
     const grid = new THREE.GridHelper(1000, 40, 0x333333, 0x202020);
-    // GridHelper.material puede ser Material o Material[]
-    const setGridMaterialProps = (mat: Material | Material[]) => {
-      const apply = (m: Material) => {
-        m.transparent = true;
-        (m as any).opacity = 0.35; // opacity existe en Material, el cast evita que TS se queje en algunos setups
+
+    // GridHelper.material puede ser Material o Material[] o incluso variar según la versión.
+    const applyMatProps = (matLike: unknown) => {
+      const setProps = (m: any) => {
+        if (m && typeof m === "object") {
+          m.transparent = true;
+          if ("opacity" in m) m.opacity = 0.35;
+        }
       };
-      Array.isArray(mat) ? mat.forEach(apply) : apply(mat);
+      if (Array.isArray(matLike)) {
+        matLike.forEach(setProps);
+      } else {
+        setProps(matLike as any);
+      }
     };
-    setGridMaterialProps(grid.material as unknown as Material | Material[]);
+    applyMatProps(grid.material);
     scene.add(grid);
 
     const axes = new THREE.AxesHelper(80);
