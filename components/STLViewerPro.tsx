@@ -29,7 +29,6 @@ export default function STLViewerPro({ url, className }: Props) {
     camera.position.set(220, 180, 220);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-    // Color y luces físicas “bien” para PBR
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
@@ -50,8 +49,8 @@ export default function STLViewerPro({ url, className }: Props) {
 
     // Rejilla + ejes (sutiles)
     const grid = new THREE.GridHelper(1000, 40, 0x333333, 0x202020);
-    grid.material.opacity = 0.35;
-    (grid.material as THREE.Material).transparent = true;
+    (grid.material as THREE.LineBasicMaterial).opacity = 0.35;
+    (grid.material as THREE.LineBasicMaterial).transparent = true; // <- fix de tipos
     scene.add(grid);
 
     const axes = new THREE.AxesHelper(80);
@@ -60,7 +59,7 @@ export default function STLViewerPro({ url, className }: Props) {
 
     // Ambiente
     const pmrem = new THREE.PMREMGenerator(renderer);
-    const envStudio = pmrem.fromScene(new RoomEnvironment({}), 0.7).texture; // HDR uniforme
+    const envStudio = pmrem.fromScene(new RoomEnvironment({}), 0.7).texture;
     scene.environment = envStudio;
 
     // Luces
@@ -184,35 +183,29 @@ export default function STLViewerPro({ url, className }: Props) {
     loader.load(
       url,
       (geometry) => {
-        // material por defecto: gris claro PBR
         const material = new THREE.MeshStandardMaterial({
           color: 0x9ea2a7,
           roughness: 0.85,
           metalness: 0.05,
         });
 
-        // STL suele venir en mm: escala 1:1 suficiente para visor
         const mesh = new THREE.Mesh(geometry, material);
         mesh.castShadow = true;
         mesh.receiveShadow = false;
 
-        // centrar y auto-fit
         geometry.computeVertexNormals();
         geometry.center();
 
-        // Bounding box para encuadre
         const box = new THREE.Box3().setFromObject(mesh);
         const size = new THREE.Vector3();
         box.getSize(size);
         const radius = size.length() * 0.5 || 1;
 
-        // posicionar un poco encima del plano
         const minY = box.min.y;
-        mesh.position.y -= minY; // apoya en Y=0
+        mesh.position.y -= minY;
 
         group.add(mesh);
 
-        // encuadre de cámara
         const fov = camera.fov * (Math.PI / 180);
         const dist = radius / Math.sin(fov / 2);
         camera.near = Math.max(0.1, dist * 0.01);
