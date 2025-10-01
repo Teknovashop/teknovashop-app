@@ -17,17 +17,25 @@ type ModelKey =
   | "desk_hook"
   | "fan_guard";
 
-/**
- * Nota ALT + clic:
- * Este formulario publica window.__forgeAltClickX(x_mm:number)
- * para que tu visor (STLViewerPro) pueda llamar y añadir agujeros.
- * Diámetro por defecto: 4 mm (luego editable).
- */
-declare global {
-  interface Window {
-    __forgeAltClickX?: (x_mm: number) => void;
-  }
-}
+const MODEL_KEY_MAP: Record<string, ModelKey> = {
+  cable_tray: "cable_tray",
+  "cable-tray": "cable_tray",
+
+  vesa_adapter: "vesa_adapter",
+  "vesa-adapter": "vesa_adapter",
+
+  router_mount: "router_mount",
+  "router-mount": "router_mount",
+
+  wall_bracket: "wall_bracket",
+  "wall-bracket": "wall_bracket",
+
+  desk_hook: "desk_hook",
+  "desk-hook": "desk_hook",
+
+  fan_guard: "fan_guard",
+  "fan-guard": "fan_guard",
+};
 
 export default function ForgeForm({ onGenerated, onGeneratedTheme }: ForgeFormProps) {
   const [model, setModel] = useState<ModelKey>("cable_tray");
@@ -35,7 +43,7 @@ export default function ForgeForm({ onGenerated, onGeneratedTheme }: ForgeFormPr
   const [width, setWidth] = useState(100);
   const [height, setHeight] = useState(60);
   const [thickness, setThickness] = useState(3);
-  const [filletR, setFilletR] = useState(0); // mm
+  const [filletR, setFilletR] = useState(0);
   const [holes, setHoles] = useState<Hole[]>([]);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
 
@@ -43,30 +51,40 @@ export default function ForgeForm({ onGenerated, onGeneratedTheme }: ForgeFormPr
   const [error, setError] = useState<string | null>(null);
   const [lastUrl, setLastUrl] = useState<string | null>(null);
 
-  // Usa tu variable EXISTENTE en Vercel (o el proxy local /forge-api)
-  const base =
-    (process.env.NEXT_PUBLIC_BACKEND_URL as string | undefined) || "/forge-api";
+  const base = (process.env.NEXT_PUBLIC_BACKEND_URL as string | undefined) || "/forge-api";
 
+  // normaliza SIEMPRE a guion_bajo
   const normalizedModel: ModelKey = useMemo(() => {
-    // Acepta “cable-tray” o “cable_tray” indistintamente
-    const m = (model as string).replace("-", "_") as ModelKey;
-    return m;
+    const raw = String(model).toLowerCase();
+    return MODEL_KEY_MAP[raw] ?? (raw.replace("-", "_") as ModelKey);
   }, [model]);
 
   function addHole() {
-    setHoles((prev) => [
-      ...prev,
-      { x_mm: Math.round(length / 2), d_mm: 5 },
-    ]);
+    setHoles((prev) => [...prev, { x_mm: Math.round(length / 2), d_mm: 4 }]);
   }
-
   function updateHole(idx: number, patch: Partial<Hole>) {
     setHoles((prev) => prev.map((h, i) => (i === idx ? { ...h, ...patch } : h)));
   }
-
   function removeHole(idx: number) {
     setHoles((prev) => prev.filter((_, i) => i !== idx));
   }
+
+  // ALT + clic (evento emitido por el visor)
+  useEffect(() => {
+    const handler = (ev: Event) => {
+      const detail = (ev as CustomEvent).detail as Partial<Hole> | undefined;
+      if (!detail) return;
+      setHoles((prev) => [
+        ...prev,
+        {
+          x_mm: Math.max(0, Math.min(Number(detail.x_mm ?? length / 2), length)),
+          d_mm: Number(detail.d_mm ?? 4),
+        },
+      ]);
+    };
+    window.addEventListener("forge:add-hole", handler as EventListener);
+    return () => window.removeEventListener("forge:add-hole", handler as EventListener);
+  }, [length]);
 
   async function handleGenerate(downloadAfter = false) {
     setLoading(true);
@@ -76,7 +94,7 @@ export default function ForgeForm({ onGenerated, onGeneratedTheme }: ForgeFormPr
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: normalizedModel, // el backend ya normaliza underscores/guiones
+          model: normalizedModel,
           params: {
             length_mm: length,
             width_mm: width,
@@ -84,13 +102,11 @@ export default function ForgeForm({ onGenerated, onGeneratedTheme }: ForgeFormPr
             thickness_mm: thickness,
             fillet_r_mm: filletR,
           },
-          holes, // [{x_mm, d_mm}, ...]
+          holes, // [{x_mm, d_mm}]
         }),
       });
 
-      if (!res.ok) {
-        throw new Error(`Error ${res.status}: ${res.statusText}`);
-      }
+      if (!res.ok) throw new Error(`Error ${res.status}: ${res.statusText}`);
 
       const data: { stl_url: string } = await res.json();
       setLastUrl(data.stl_url);
@@ -98,7 +114,6 @@ export default function ForgeForm({ onGenerated, onGeneratedTheme }: ForgeFormPr
       onGeneratedTheme?.(theme);
 
       if (downloadAfter && data.stl_url) {
-        // nombre de archivo legible, sin replaceAll
         const name = `${String(normalizedModel).replace("_", "-")}-${length}x${width}x${height}.stl`;
         const a = document.createElement("a");
         a.href = data.stl_url;
@@ -115,30 +130,11 @@ export default function ForgeForm({ onGenerated, onGeneratedTheme }: ForgeFormPr
     }
   }
 
-  // -----------------------------
-  // ALT + clic (handler global)
-  // -----------------------------
-  useEffect(() => {
-    // Publicamos un handler global para que el visor lo invoque.
-    window.__forgeAltClickX = (x_mm: number) => {
-      if (!Number.isFinite(x_mm)) return;
-      // Clamp a [0..length] por seguridad
-      const x = Math.max(0, Math.min(length, Math.round(x_mm)));
-      setHoles((prev) => [...prev, { x_mm: x, d_mm: 4 }]);
-    };
-    // Limpieza al desmontar
-    return () => {
-      if (window.__forgeAltClickX) delete window.__forgeAltClickX;
-    };
-  }, [length]);
-
   return (
     <div className="bg-neutral-900 p-6 rounded-2xl shadow-lg space-y-6">
-      <h2 className="text-xl font-semibold text-white mb-2">
-        Configuración del modelo
-      </h2>
+      <h2 className="text-xl font-semibold text-white mb-2">Configuración del modelo</h2>
 
-      {/* Tema del visor */}
+      {/* Tema del visor y modelo */}
       <div className="flex items-center justify-between gap-4">
         <div className="space-y-1 w-full">
           <label className="block text-sm text-neutral-400">Tema del visor</label>
@@ -169,6 +165,7 @@ export default function ForgeForm({ onGenerated, onGeneratedTheme }: ForgeFormPr
         </div>
       </div>
 
+      {/* Parámetros */}
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-sm text-neutral-400">Largo (mm)</label>
@@ -212,9 +209,7 @@ export default function ForgeForm({ onGenerated, onGeneratedTheme }: ForgeFormPr
           />
         </div>
         <div>
-          <label className="block text-sm text-neutral-400">
-            Redondeo bordes (mm)
-          </label>
+          <label className="block text-sm text-neutral-400">Redondeo bordes (mm)</label>
           <input
             type="number"
             value={filletR}
@@ -226,7 +221,7 @@ export default function ForgeForm({ onGenerated, onGeneratedTheme }: ForgeFormPr
         </div>
       </div>
 
-      {/* Agujeros (x, d) */}
+      {/* Agujeros */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <label className="text-sm text-neutral-400">Agujeros (vista superior)</label>
@@ -240,14 +235,12 @@ export default function ForgeForm({ onGenerated, onGeneratedTheme }: ForgeFormPr
         </div>
 
         <p className="text-xs text-neutral-500">
-          Consejo: en el visor, pulsa <kbd className="px-1 py-0.5 bg-neutral-800 rounded">ALT</kbd> + clic para
-          añadir un agujero en esa X (se usará Ø 4 mm por defecto).
+          Consejo: en el visor, pulsa <kbd className="px-1 py-0.5 bg-neutral-800 rounded">ALT</kbd> + clic para añadir
+          un agujero en esa <strong>X</strong> (se usará Ø 4 mm por defecto).
         </p>
 
         {holes.length === 0 ? (
-          <div className="text-neutral-500 text-sm">
-            No hay agujeros. Pulsa “+ Añadir agujero” o usa ALT+clic en el visor.
-          </div>
+          <div className="text-neutral-500 text-sm">No hay agujeros. Pulsa “+ Añadir agujero” o usa ALT+clic en el visor.</div>
         ) : (
           <div className="space-y-2">
             {holes.map((h, idx) => (
