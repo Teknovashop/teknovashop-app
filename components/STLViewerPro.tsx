@@ -10,9 +10,8 @@ type Props = { url?: string | null; className?: string };
 
 export default function STLViewerPro({ url, className }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
-  // Evitamos tipos de THREE para no romper el build en Vercel
-  const currentMeshRef = useRef<any>(null);
-  const bboxSizeXRef = useRef<number>(0); // ancho (mm) de la pieza para ALT+clic
+  const currentMeshRef = useRef<THREE.Mesh | null>(null);
+  const lastSizeRef = useRef<THREE.Vector3 | null>(null); // dimensiones del STL centrado
 
   const [shadows, setShadows] = useState(true);
   const [tone, setTone] = useState(1.0);
@@ -27,17 +26,15 @@ export default function STLViewerPro({ url, className }: Props) {
     const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 2000);
     camera.position.set(220, 180, 220);
 
-    const renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      powerPreference: "high-performance",
-    });
-    (renderer as any).outputColorSpace = THREE.SRGBColorSpace;
-    (renderer as any).toneMapping = THREE.ACESFilmicToneMapping;
-    (renderer as any).toneMappingExposure = 1.0;
-    (renderer as any).physicallyCorrectLights = true;
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
+    // @ts-expect-error legacy flag
+    renderer.physicallyCorrectLights = true;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.setPixelRatio(Math.min(2, (window as any).devicePixelRatio || 1));
+    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
@@ -81,7 +78,6 @@ export default function STLViewerPro({ url, className }: Props) {
     plane.receiveShadow = true;
     scene.add(plane);
 
-    // Planos de clipping opcionales
     const planes = [
       new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0),
       new THREE.Plane(new THREE.Vector3(0, -1, 0), 0),
@@ -89,28 +85,9 @@ export default function STLViewerPro({ url, className }: Props) {
     ];
     renderer.clippingPlanes = [];
 
-    // Plano Y=0 para ALT+clic (picking)
-    const pickPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0); // y = 0
-
-    return {
-      scene,
-      camera,
-      renderer,
-      controls,
-      group,
-      dir,
-      hemi,
-      envStudio,
-      planes,
-      pmrem,
-      plane,
-      grid,
-      axes,
-      pickPlane,
-    };
+    return { scene, camera, renderer, controls, group, dir, hemi, envStudio, planes, pmrem, plane, grid, axes };
   }, []);
 
-  // Render loop + resize
   useEffect(() => {
     const mount = mountRef.current!;
     const { renderer, camera, controls } = three;
@@ -124,19 +101,19 @@ export default function STLViewerPro({ url, className }: Props) {
       camera.updateProjectionMatrix();
     };
     onResize();
-    const ro = new (window as any).ResizeObserver(onResize);
+    const ro = new ResizeObserver(onResize);
     ro.observe(mount);
 
     let raf = 0;
     const loop = () => {
-      raf = (window as any).requestAnimationFrame(loop);
+      raf = requestAnimationFrame(loop);
       controls.update();
       renderer.render(three.scene, camera);
     };
     loop();
 
     return () => {
-      (window as any).cancelAnimationFrame(raf);
+      cancelAnimationFrame(raf);
       ro.disconnect();
       mount.removeChild(renderer.domElement);
       renderer.dispose();
@@ -144,7 +121,6 @@ export default function STLViewerPro({ url, className }: Props) {
     };
   }, [three]);
 
-  // Toggles
   useEffect(() => {
     three.renderer.shadowMap.enabled = shadows;
     (three.dir as any).castShadow = shadows;
@@ -152,7 +128,7 @@ export default function STLViewerPro({ url, className }: Props) {
   }, [shadows, three]);
 
   useEffect(() => {
-    (three.renderer as any).toneMappingExposure = tone;
+    three.renderer.toneMappingExposure = tone;
   }, [tone, three]);
 
   useEffect(() => {
@@ -176,42 +152,45 @@ export default function STLViewerPro({ url, className }: Props) {
   }, [preset, bgLight, three]);
 
   useEffect(() => {
-    (three.renderer as any).localClippingEnabled = clipping;
+    three.renderer.localClippingEnabled = clipping;
     three.renderer.clippingPlanes = clipping ? three.planes : [];
   }, [clipping, three]);
 
-  // Carga STL
+  // --- Carga STL con fetch + parse (evita CORS raros de URLs firmadas) ---
   useEffect(() => {
     const { group, scene, camera, controls, renderer } = three;
     group.clear();
     currentMeshRef.current = null;
-    bboxSizeXRef.current = 0;
+    lastSizeRef.current = null;
     if (!url) return;
 
     const loader = new STLLoader();
-    loader.load(
-      url,
-      (geometry) => {
+    let aborted = false;
+
+    (async () => {
+      try {
+        const res = await fetch(url, { mode: "cors" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const buf = await res.arrayBuffer();
+        if (aborted) return;
+
+        const geometry = loader.parse(buf);
         const material = new THREE.MeshStandardMaterial({
           color: 0x9ea2a7,
           roughness: 0.85,
           metalness: 0.05,
         });
-
         const mesh = new THREE.Mesh(geometry, material);
-        (mesh as any).castShadow = true;
+        mesh.castShadow = true;
 
         geometry.computeVertexNormals();
         geometry.center();
 
-        // reposiciona sobre suelo
+        // Colocar sobre suelo
         const box3 = new THREE.Box3().setFromObject(mesh);
         const size = new THREE.Vector3();
         box3.getSize(size);
-        const radius = size.length() * 0.5 || 1;
-
-        // Guardamos tamaño X (mm) para ALT+clic -> convertir worldX a [0..L]
-        bboxSizeXRef.current = size.x;
+        lastSizeRef.current = size.clone();
 
         const minY = box3.min.y;
         mesh.position.y -= minY;
@@ -219,7 +198,9 @@ export default function STLViewerPro({ url, className }: Props) {
         group.add(mesh);
         currentMeshRef.current = mesh;
 
-        const fov = (camera.fov as number) * (Math.PI / 180);
+        // Framing de cámara
+        const radius = size.length() * 0.5 || 1;
+        const fov = camera.fov * (Math.PI / 180);
         const dist = radius / Math.sin(fov / 2);
         camera.near = Math.max(0.1, dist * 0.01);
         camera.far = dist * 10 + radius * 2;
@@ -230,55 +211,57 @@ export default function STLViewerPro({ url, className }: Props) {
         controls.update();
 
         renderer.render(scene, camera);
-      },
-      undefined,
-      (err) => {
-        console.error("Error cargando STL:", err);
+      } catch (e) {
+        console.error("Error cargando STL:", e);
+        // No lanzamos nada: la UI ya enseña el error del fetch original si procede
       }
-    );
+    })();
+
+    return () => {
+      aborted = true;
+    };
   }, [url, three]);
 
-  // ALT + clic: proyecta al plano Y=0 y convierte X a mm según el bbox de la pieza
+  // --- ALT + clic: calcular X (mm) en coordenadas del modelo y avisar al formulario ---
   useEffect(() => {
-    const { renderer, camera, pickPlane } = three;
-    const el = renderer.domElement;
+    const el = mountRef.current;
+    if (!el) return;
+
     const raycaster = new THREE.Raycaster();
-    const ndc = new THREE.Vector2();
-    const hitPoint = new THREE.Vector3();
+    const mouse = new THREE.Vector2();
 
-    const onPointerDown = (ev: PointerEvent) => {
-      if (!ev.altKey) return; // solo ALT + clic
-      if (!currentMeshRef.current) return;
+    const onClick = (ev: MouseEvent) => {
+      if (!ev.altKey) return;
+      const mesh = currentMeshRef.current;
+      const size = lastSizeRef.current;
+      if (!mesh || !size) return;
 
-      // NDC
       const rect = el.getBoundingClientRect();
-      const x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
-      const y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
-      ndc.set(x, y);
+      mouse.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
 
-      raycaster.setFromCamera(ndc, camera);
-      const ok = raycaster.ray.intersectPlane(pickPlane, hitPoint);
-      if (!ok) return;
+      raycaster.setFromCamera(mouse, three.camera);
+      const intersects = raycaster.intersectObject(mesh, true);
+      if (!intersects.length) return;
 
-      const worldX = hitPoint.x; // porque la pieza está centrada en X
-      const L = bboxSizeXRef.current || 0;
-      if (L <= 0) return;
+      const p = intersects[0].point.clone();
+      // El STL está centrado; X va de -size.x/2 a +size.x/2
+      const x_mm = (p.x + size.x / 2) * 1; // factor 1: unidades ya en mm
 
-      // Convertimos a [0..L] en mm
-      const x_mm = Math.max(0, Math.min(L, Math.round(worldX + L / 2)));
-      // Avisamos al formulario (publicado por ForgeForm)
-      (window as any).__forgeAltClickX?.(x_mm);
+      // Disparar evento global que escucha el formulario
+      window.dispatchEvent(
+        new CustomEvent("forge:add-hole", {
+          detail: { x_mm: Math.max(0, Math.min(x_mm, size.x)), d_mm: 4 },
+        })
+      );
     };
 
-    el.addEventListener("pointerdown", onPointerDown);
-    return () => el.removeEventListener("pointerdown", onPointerDown);
+    el.addEventListener("click", onClick);
+    return () => el.removeEventListener("click", onClick);
   }, [three]);
 
   return (
-    <div
-      ref={mountRef}
-      className={className ?? "h-[70vh] w-full relative rounded-xl overflow-hidden bg-black"}
-    >
+    <div ref={mountRef} className={className ?? "h-[70vh] w-full relative rounded-xl overflow-hidden bg-black"}>
       {/* HUD */}
       <div className="pointer-events-auto absolute top-3 left-3 z-10 flex items-center gap-3 text-xs">
         <button
@@ -312,20 +295,12 @@ export default function STLViewerPro({ url, className }: Props) {
 
         <label className="bg-neutral-800 text-neutral-100 border border-neutral-700 rounded-md px-2 py-1 flex items-center gap-2">
           <span>Clipping</span>
-          <input
-            type="checkbox"
-            checked={clipping}
-            onChange={(e) => setClipping(e.target.checked)}
-          />
+          <input type="checkbox" checked={clipping} onChange={(e) => setClipping(e.target.checked)} />
         </label>
 
         <label className="bg-neutral-800 text-neutral-100 border border-neutral-700 rounded-md px-2 py-1 flex items-center gap-2">
           <span>Fondo claro</span>
-          <input
-            type="checkbox"
-            checked={bgLight}
-            onChange={(e) => setBgLight(e.target.checked)}
-          />
+          <input type="checkbox" checked={bgLight} onChange={(e) => setBgLight(e.target.checked)} />
         </label>
       </div>
     </div>
