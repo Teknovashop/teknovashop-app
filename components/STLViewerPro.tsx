@@ -6,17 +6,45 @@ import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 
-type Props = { url?: string | null; className?: string };
+type Props = {
+  url?: string | null;
+  className?: string;
 
-export default function STLViewerPro({ url, className }: Props) {
+  /** Largo del modelo en mm (si no se pasa, se infiere del STL). */
+  modelLengthMM?: number;
+  /** Alto del modelo en mm (si no se pasa, se infiere del STL). */
+  modelHeightMM?: number;
+
+  /** Callback cuando el usuario ALT+clic en la cara superior. Recibe X en mm [0..L]. */
+  onAltClickX?: (x_mm: number) => void;
+
+  /** Si true, coloca un marcador visual donde se hace ALT+clic. */
+  showClickMarkers?: boolean;
+};
+
+export default function STLViewerPro({
+  url,
+  className,
+  modelLengthMM,
+  modelHeightMM,
+  onAltClickX,
+  showClickMarkers = true,
+}: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
-  const currentMeshRef = useRef<any>(null);
+  const currentMeshRef = useRef<THREE.Mesh | null>(null);
 
   const [shadows, setShadows] = useState(true);
   const [tone, setTone] = useState(1.0);
   const [preset, setPreset] = useState<"studio" | "neutral" | "night">("studio");
   const [clipping, setClipping] = useState(false);
   const [bgLight, setBgLight] = useState(true);
+
+  /** Medidas inferidas del STL (mm) por si no vienen por props */
+  const inferredLenRef = useRef<number>(200);
+  const inferredHeiRef = useRef<number>(60);
+
+  /** Grupo donde añadimos “pins” de clicks ALT */
+  const markersRef = useRef<THREE.Group | null>(null);
 
   const three = useMemo(() => {
     const scene = new THREE.Scene();
@@ -25,11 +53,15 @@ export default function STLViewerPro({ url, className }: Props) {
     const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 2000);
     camera.position.set(220, 180, 220);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      powerPreference: "high-performance",
+    });
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
-    (renderer as any).physicallyCorrectLights = true;
+    // @ts-expect-error: prop histórica de three
+    renderer.physicallyCorrectLights = true;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
@@ -44,7 +76,10 @@ export default function STLViewerPro({ url, className }: Props) {
     const grid = new THREE.GridHelper(1000, 40, 0x333333, 0x202020);
     const gm: any = (grid as any).material;
     if (Array.isArray(gm)) gm.forEach((m: any) => ((m.transparent = true), (m.opacity = 0.35)));
-    else gm.transparent = true, (gm.opacity = 0.35);
+    else {
+      gm.transparent = true;
+      gm.opacity = 0.35;
+    }
     scene.add(grid);
 
     const axes = new THREE.AxesHelper(80);
@@ -80,8 +115,16 @@ export default function STLViewerPro({ url, className }: Props) {
     ];
     renderer.clippingPlanes = [];
 
-    return { scene, camera, renderer, controls, group, dir, hemi, envStudio, planes, pmrem, plane, grid, axes };
+    // Grupo para marcadores
+    const markers = new THREE.Group();
+    scene.add(markers);
+
+    return { scene, camera, renderer, controls, group, dir, hemi, envStudio, planes, pmrem, plane, grid, axes, markers };
   }, []);
+
+  useEffect(() => {
+    markersRef.current = three.markers;
+  }, [three]);
 
   useEffect(() => {
     const mount = mountRef.current!;
@@ -118,7 +161,7 @@ export default function STLViewerPro({ url, className }: Props) {
 
   useEffect(() => {
     three.renderer.shadowMap.enabled = shadows;
-    (three.dir as any).castShadow = shadows;
+    three.dir.castShadow = shadows;
     three.plane.visible = shadows;
   }, [shadows, three]);
 
@@ -130,17 +173,17 @@ export default function STLViewerPro({ url, className }: Props) {
     switch (preset) {
       case "studio":
         three.hemi.intensity = 0.7;
-        (three.dir as any).intensity = 1.4;
+        three.dir.intensity = 1.4;
         three.scene.background = new THREE.Color(bgLight ? 0xf5f5f5 : 0x0b0b0b);
         break;
       case "neutral":
         three.hemi.intensity = 0.5;
-        (three.dir as any).intensity = 1.0;
+        three.dir.intensity = 1.0;
         three.scene.background = new THREE.Color(bgLight ? 0xffffff : 0x111111);
         break;
       case "night":
         three.hemi.intensity = 0.25;
-        (three.dir as any).intensity = 0.6;
+        three.dir.intensity = 0.6;
         three.scene.background = new THREE.Color(bgLight ? 0xdddddd : 0x000000);
         break;
     }
@@ -151,10 +194,13 @@ export default function STLViewerPro({ url, className }: Props) {
     three.renderer.clippingPlanes = clipping ? three.planes : [];
   }, [clipping, three]);
 
-  // Carga STL
+  // ----------------------------
+  // Carga STL y centra/escala
+  // ----------------------------
   useEffect(() => {
     const { group, scene, camera, controls, renderer } = three;
     group.clear();
+    markersRef.current?.clear();
     currentMeshRef.current = null;
     if (!url) return;
 
@@ -169,12 +215,12 @@ export default function STLViewerPro({ url, className }: Props) {
         });
 
         const mesh = new THREE.Mesh(geometry, material);
-        (mesh as any).castShadow = true;
+        mesh.castShadow = true;
 
         geometry.computeVertexNormals();
         geometry.center();
 
-        // reposiciona sobre suelo
+        // Reposiciona sobre el suelo (y=0)
         const box3 = new THREE.Box3().setFromObject(mesh);
         const size = new THREE.Vector3();
         box3.getSize(size);
@@ -183,9 +229,14 @@ export default function STLViewerPro({ url, className }: Props) {
         const minY = box3.min.y;
         mesh.position.y -= minY;
 
-        group.add(mesh);
+        // Guarda medidas inferidas (mm)
+        inferredLenRef.current = size.x;
+        inferredHeiRef.current = size.y;
+
+        three.group.add(mesh);
         currentMeshRef.current = mesh;
 
+        // Enfoque cámara
         const fov = camera.fov * (Math.PI / 180);
         const dist = radius / Math.sin(fov / 2);
         camera.near = Math.max(0.1, dist * 0.01);
@@ -205,10 +256,77 @@ export default function STLViewerPro({ url, className }: Props) {
     );
   }, [url, three]);
 
+  // -----------------------------------------
+  // ALT + clic: proyecta sobre cara superior
+  // -----------------------------------------
+  useEffect(() => {
+    const dom = three.renderer.domElement;
+    const raycaster = new THREE.Raycaster();
+    const ndc = new THREE.Vector2();
+
+    function getTopY(): number {
+      // Preferimos prop, si no, lo inferido del STL
+      return (modelHeightMM ?? inferredHeiRef.current) || 0;
+    }
+    function getLength(): number {
+      return (modelLengthMM ?? inferredLenRef.current) || 0;
+    }
+
+    function addMarkerAt(x: number, y: number, z: number) {
+      if (!showClickMarkers || !markersRef.current) return;
+      const g = new THREE.SphereGeometry(1.2, 12, 12);
+      const m = new THREE.MeshStandardMaterial({ color: 0x0077ff, metalness: 0.0, roughness: 0.2 });
+      const s = new THREE.Mesh(g, m);
+      s.position.set(x, y + 0.2, z);
+      s.castShadow = true;
+      markersRef.current.add(s);
+    }
+
+    function onPointerDown(e: PointerEvent) {
+      // ALT + botón izq
+      if (!e.altKey || e.button !== 0) return;
+
+      const rect = dom.getBoundingClientRect();
+      ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(ndc, three.camera);
+
+      const topY = getTopY();
+      if (!isFinite(topY)) return;
+
+      // Plano horizontal y = topY  → normal (0,1,0), constante = -topY
+      const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -topY);
+      const hit = new THREE.Vector3();
+      if (!raycaster.ray.intersectPlane(plane, hit)) return;
+
+      const L = getLength();
+      if (L <= 0) return;
+
+      // hit.x está en coords centradas (0 en el centro); convertimos a [0..L] mm
+      const x_mm = Math.min(L, Math.max(0, hit.x + L / 2));
+
+      // Marcador visual
+      addMarkerAt(hit.x, topY, hit.z);
+
+      // Dispara callback
+      onAltClickX?.(x_mm);
+    }
+
+    dom.addEventListener("pointerdown", onPointerDown);
+    return () => {
+      dom.removeEventListener("pointerdown", onPointerDown);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [three, onAltClickX, modelHeightMM, modelLengthMM, showClickMarkers]);
+
   return (
-    <div ref={mountRef} className={className ?? "h-[70vh] w-full relative rounded-xl overflow-hidden bg-black"}>
+    <div
+      ref={mountRef}
+      className={className ?? "h-[70vh] w-full relative rounded-xl overflow-hidden bg-black"}
+    >
       {/* HUD */}
-      <div className="pointer-events-auto absolute top-3 left-3 z-10 flex items-center gap-3 text-xs">
+      <div className="pointer-events-auto absolute top-3 left-3 z-10 flex flex-wrap items-center gap-3 text-xs">
         <button
           onClick={() => setShadows((s) => !s)}
           className="px-2 py-1 rounded-md bg-neutral-800 text-neutral-100 border border-neutral-700"
@@ -219,8 +337,12 @@ export default function STLViewerPro({ url, className }: Props) {
         <div className="flex items-center gap-2 bg-neutral-800 border border-neutral-700 px-2 py-1 rounded-md">
           <span className="text-neutral-300">Tone</span>
           <input
-            type="range" min={0.3} max={1.8} step={0.05}
-            value={tone} onChange={(e) => setTone(parseFloat(e.target.value))}
+            type="range"
+            min={0.3}
+            max={1.8}
+            step={0.05}
+            value={tone}
+            onChange={(e) => setTone(parseFloat(e.target.value))}
           />
         </div>
 
@@ -236,13 +358,25 @@ export default function STLViewerPro({ url, className }: Props) {
 
         <label className="bg-neutral-800 text-neutral-100 border border-neutral-700 rounded-md px-2 py-1 flex items-center gap-2">
           <span>Clipping</span>
-          <input type="checkbox" checked={clipping} onChange={(e) => setClipping(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={clipping}
+            onChange={(e) => setClipping(e.target.checked)}
+          />
         </label>
 
         <label className="bg-neutral-800 text-neutral-100 border border-neutral-700 rounded-md px-2 py-1 flex items-center gap-2">
           <span>Fondo claro</span>
-          <input type="checkbox" checked={bgLight} onChange={(e) => setBgLight(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={bgLight}
+            onChange={(e) => setBgLight(e.target.checked)}
+          />
         </label>
+
+        <span className="bg-neutral-800 text-neutral-100 border border-neutral-700 rounded-md px-2 py-1">
+          ALT + clic = agujero
+        </span>
       </div>
     </div>
   );
