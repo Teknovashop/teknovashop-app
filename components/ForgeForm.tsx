@@ -1,39 +1,46 @@
 // components/ForgeForm.tsx
 import React, { useMemo, useState } from "react";
-import { MODEL_OPTIONS, type ModelKey } from "@/lib/models";
 
 type HoleInput = { x_mm: number; y_mm: number; d_mm: number };
+
+// 🔹 Lista de modelos (sin imports externos)
+const MODEL_OPTIONS = [
+  { key: "cable_tray", label: "Cable Tray" },
+  { key: "vesa_adapter", label: "VESA Adapter" },
+  { key: "router_mount", label: "Router Mount" },
+  { key: "camera_mount", label: "Camera Mount" }, // NUEVO
+  { key: "wall_bracket", label: "Wall Bracket" }, // NUEVO
+] as const;
+
+type ModelKey = typeof MODEL_OPTIONS[number]["key"];
 
 type GenerateResponse = {
   stl_url: string;
   object_key: string;
 };
 
+// Usa tu var o el render por defecto
 const apiBase =
-  process.env.NEXT_PUBLIC_FORGE_API?.replace(/\/+$/, "") ||
+  (process.env.NEXT_PUBLIC_FORGE_API || "").replace(/\/+$/, "") ||
   "https://teknovashop-forge.onrender.com";
 
 export default function ForgeForm() {
   const [model, setModel] = useState<ModelKey>("cable_tray");
 
-  // Parámetros geométricos
   const [lenX, setLenX] = useState<number>(200);
   const [widY, setWidY] = useState<number>(100);
   const [heiZ, setHeiZ] = useState<number>(60);
   const [thickness, setThickness] = useState<number>(3);
   const [fillet, setFillet] = useState<number>(0);
 
-  // Agujeros
   const [holes, setHoles] = useState<HoleInput[]>([{ x_mm: 10, y_mm: 10, d_mm: 4 }]);
 
-  // Resultado / estado
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>("");
   const [lastUrl, setLastUrl] = useState<string>("");
 
-  // Normalizador de nombre “bonito” para archivo
   const normalizedModel = useMemo(() => {
-    // evitar replaceAll por compatibilidad TS/target; usamos split/join
+    // Evita replaceAll por compilers antiguos
     return (model as string).split("_").join("-");
   }, [model]);
 
@@ -58,7 +65,7 @@ export default function ForgeForm() {
           width_mm: Number(widY),
           height_mm: Number(heiZ),
           thickness_mm: Number(thickness),
-          fillet_mm: Number(fillet),
+          fillet_mm: Number(fillet), // ⚠️ para que el backend no casque cuando hay redondeo
         },
         holes: holes.map((h) => ({
           x_mm: Number(h.x_mm),
@@ -165,7 +172,7 @@ export default function ForgeForm() {
           className="w-full rounded-md bg-[#1a1a1a] border border-gray-700 p-2 outline-none"
         />
         <p className="text-xs text-gray-400 mt-1">
-          Se aplicará si el backend dispone de <code>manifold3d</code>. Si no, se ignora sin error.
+          Si el backend no soporta fillet, se ignora sin romper la generación.
         </p>
       </div>
 
@@ -265,7 +272,10 @@ export default function ForgeForm() {
       )}
       {lastUrl && (
         <p className="mt-3 text-xs text-gray-400 break-all">
-          Último STL: <a className="underline" href={lastUrl} target="_blank" rel="noreferrer">{lastUrl}</a>
+          Último STL:{" "}
+          <a className="underline" href={lastUrl} target="_blank" rel="noreferrer">
+            {lastUrl}
+          </a>
         </p>
       )}
     </div>
