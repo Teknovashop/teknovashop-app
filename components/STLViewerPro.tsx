@@ -11,41 +11,37 @@ type Props = {
   className?: string;
 };
 
-type MaterialPreset = "pvc-blue" | "pvc-gray" | "pvc-black";
-
 export default function STLViewerPro({ url, className }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
 
-  // HUD
+  // ← importante: sin tipos de three en genéricos (evita el error del build)
+  const currentMeshRef = useRef<any>(null);
+
   const [shadows, setShadows] = useState(true);
   const [tone, setTone] = useState(1.0);
-  const [preset, setPreset] = useState<"studio" | "neutral" | "night">(
-    "studio"
-  );
+  const [preset, setPreset] = useState<"studio" | "neutral" | "night">("studio");
   const [clipping, setClipping] = useState(false);
   const [lightBg, setLightBg] = useState(false);
-  const [matPreset, setMatPreset] = useState<MaterialPreset>("pvc-blue");
-
-  // guardamos el mesh para poder cambiar material sin recargar
-  const currentMeshRef = useRef<THREE.Object3D | null>(null);
 
   const three = useMemo(() => {
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0b0b0b);
 
-    const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 2000);
+    const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 5000);
     camera.position.set(220, 180, 220);
 
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
       powerPreference: "high-performance",
+      alpha: false,
     });
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
+    renderer.physicallyCorrectLights = true;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.setPixelRatio(Math.min(2, typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1));
+    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
@@ -54,22 +50,30 @@ export default function STLViewerPro({ url, className }: Props) {
     const group = new THREE.Group();
     scene.add(group);
 
-    // rejilla
-    const grid = new THREE.GridHelper(1200, 48, 0x333333, 0x202020);
-    setGridOpacity(grid, 0.35);
+    // Rejilla + ejes (material con opacidad)
+    const grid = new THREE.GridHelper(1000, 40, 0x333333, 0x202020) as any;
+    const makeTransparent = (matLike: any, opacity = 0.35) => {
+      const setProps = (m: any) => {
+        if (m && typeof m === "object") {
+          m.transparent = true;
+          if ("opacity" in m) m.opacity = opacity;
+        }
+      };
+      Array.isArray(matLike) ? matLike.forEach(setProps) : setProps(matLike);
+    };
+    makeTransparent(grid.material, 0.35);
     scene.add(grid);
 
-    // ejes
     const axes = new THREE.AxesHelper(80);
     axes.position.set(-120, 0, -120);
     scene.add(axes);
 
-    // HDR env
+    // Ambiente HDRI
     const pmrem = new THREE.PMREMGenerator(renderer);
     const envStudio = pmrem.fromScene(new RoomEnvironment()).texture;
     scene.environment = envStudio;
 
-    // luces
+    // Luces físicas
     const hemi = new THREE.HemisphereLight(0xffffff, 0x1a1a1a, 0.7);
     scene.add(hemi);
 
@@ -79,9 +83,9 @@ export default function STLViewerPro({ url, className }: Props) {
     dir.shadow.mapSize.set(2048, 2048);
     scene.add(dir);
 
-    // plano receptor de sombras
+    // Plano receptor de sombras
     const plane = new THREE.Mesh(
-      new THREE.PlaneGeometry(4000, 4000),
+      new THREE.PlaneGeometry(2000, 2000),
       new THREE.ShadowMaterial({ opacity: 0.25 })
     );
     plane.rotation.x = -Math.PI / 2;
@@ -89,7 +93,7 @@ export default function STLViewerPro({ url, className }: Props) {
     plane.receiveShadow = true;
     scene.add(plane);
 
-    // clipping planes
+    // Clipping planes
     const planes = [
       new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0),
       new THREE.Plane(new THREE.Vector3(0, -1, 0), 0),
@@ -97,10 +101,23 @@ export default function STLViewerPro({ url, className }: Props) {
     ];
     renderer.clippingPlanes = [];
 
-    return { scene, camera, renderer, controls, group, dir, hemi, envStudio, planes, pmrem, plane, grid };
+    return {
+      scene,
+      camera,
+      renderer,
+      controls,
+      group,
+      dir,
+      hemi,
+      envStudio,
+      planes,
+      pmrem,
+      plane,
+      grid,
+    };
   }, []);
 
-  // montaje y render loop
+  // Mount / resize / loop
   useEffect(() => {
     const mount = mountRef.current!;
     const { renderer, camera, controls } = three;
@@ -134,7 +151,7 @@ export default function STLViewerPro({ url, className }: Props) {
     };
   }, [three]);
 
-  // toggles
+  // Toggles
   useEffect(() => {
     three.renderer.shadowMap.enabled = shadows;
     three.dir.castShadow = shadows;
@@ -144,23 +161,6 @@ export default function STLViewerPro({ url, className }: Props) {
   useEffect(() => {
     three.renderer.toneMappingExposure = tone;
   }, [tone, three]);
-
-  useEffect(() => {
-    three.renderer.localClippingEnabled = clipping;
-    three.renderer.clippingPlanes = clipping ? three.planes : [];
-  }, [clipping, three]);
-
-  useEffect(() => {
-    if (lightBg) {
-      three.scene.background = new THREE.Color(0xf5f6f7);
-      setGridColors(three.grid, 0xbbbbbb, 0xdddddd);
-      setGridOpacity(three.grid, 0.45);
-    } else {
-      three.scene.background = new THREE.Color(0x0b0b0b);
-      setGridColors(three.grid, 0x333333, 0x202020);
-      setGridOpacity(three.grid, 0.35);
-    }
-  }, [lightBg, three]);
 
   useEffect(() => {
     switch (preset) {
@@ -179,7 +179,21 @@ export default function STLViewerPro({ url, className }: Props) {
     }
   }, [preset, three]);
 
-  // carga STL
+  useEffect(() => {
+    three.renderer.localClippingEnabled = clipping;
+    three.renderer.clippingPlanes = clipping ? three.planes : [];
+  }, [clipping, three]);
+
+  useEffect(() => {
+    // fondo claro/oscuro
+    three.scene.background = new THREE.Color(lightBg ? 0xf4f4f5 : 0x0b0b0b);
+    const mat = (three.grid as any).material;
+    const newOpacity = lightBg ? 0.2 : 0.35;
+    if (Array.isArray(mat)) mat.forEach((m: any) => (m.opacity = newOpacity));
+    else if (mat) mat.opacity = newOpacity;
+  }, [lightBg, three]);
+
+  // Carga STL
   useEffect(() => {
     const { group, scene, camera, controls, renderer } = three;
     group.clear();
@@ -190,29 +204,31 @@ export default function STLViewerPro({ url, className }: Props) {
     loader.load(
       url,
       (geometry) => {
-        // material por preset
-        const mat = makeMaterial(matPreset);
+        const material = new THREE.MeshStandardMaterial({
+          color: 0x9ea2a7,
+          roughness: 0.85,
+          metalness: 0.05,
+        });
 
-        const mesh = new THREE.Mesh(geometry, mat);
+        const mesh = new THREE.Mesh(geometry, material);
+        currentMeshRef.current = mesh;
+
         mesh.castShadow = true;
-
         geometry.computeVertexNormals();
         geometry.center();
 
-        // bbox para framing
+        // colocar en el plano
         const box = new THREE.Box3().setFromObject(mesh);
         const size = new THREE.Vector3();
         box.getSize(size);
         const radius = size.length() * 0.5 || 1;
 
-        // apoyar en el plano
         const minY = box.min.y;
         mesh.position.y -= minY;
 
         group.add(mesh);
-        currentMeshRef.current = mesh;
 
-        // framing
+        // encuadre
         const fov = camera.fov * (Math.PI / 180);
         const dist = radius / Math.sin(fov / 2);
         camera.near = Math.max(0.1, dist * 0.01);
@@ -230,15 +246,7 @@ export default function STLViewerPro({ url, className }: Props) {
         console.error("Error cargando STL:", err);
       }
     );
-  }, [url, three, matPreset]);
-
-  // si cambia el preset de material, actualizamos sin recargar STL
-  useEffect(() => {
-    const obj = currentMeshRef.current as unknown as THREE.Mesh | null;
-    if (!obj) return;
-    const newMat = makeMaterial(matPreset);
-    (obj as any).material = newMat;
-  }, [matPreset]);
+  }, [url, three]);
 
   return (
     <div
@@ -296,63 +304,7 @@ export default function STLViewerPro({ url, className }: Props) {
             onChange={(e) => setLightBg(e.target.checked)}
           />
         </label>
-
-        <select
-          value={matPreset}
-          onChange={(e) => setMatPreset(e.target.value as MaterialPreset)}
-          className="bg-neutral-800 text-neutral-100 border border-neutral-700 rounded-md px-2 py-1"
-        >
-          <option value="pvc-blue">PVC (azul)</option>
-          <option value="pvc-gray">PVC (gris)</option>
-          <option value="pvc-black">PVC (negro)</option>
-        </select>
       </div>
     </div>
   );
-}
-
-/* util rejilla */
-function setGridOpacity(grid: any, opacity: number) {
-  const m: any = grid.material;
-  if (Array.isArray(m)) {
-    m.forEach((mm) => {
-      mm.transparent = true;
-      mm.opacity = opacity;
-    });
-  } else if (m) {
-    m.transparent = true;
-    m.opacity = opacity;
-  }
-}
-function setGridColors(grid: any, c1: number, c2: number) {
-  // GridHelper expone 2 materiales en r157
-  const m: any = grid.material;
-  if (Array.isArray(m) && m.length >= 2) {
-    m[0].color = new THREE.Color(c1);
-    m[1].color = new THREE.Color(c2);
-  }
-}
-
-/* materiales simples */
-function makeMaterial(preset: MaterialPreset) {
-  switch (preset) {
-    case "pvc-blue":
-      return new THREE.MeshStandardMaterial({
-        color: 0x98b4e2,
-        roughness: 0.85,
-        metalness: 0.05,
-      });
-    case "pvc-gray":
-      return new THREE.MeshStandardMaterial({
-        color: 0xbec3c7,
-        roughness: 0.85,
-        metalness: 0.05,
-      });
-    case "pvc-black":
-      return new THREE.MeshStandardMaterial({
-        color: 0x333333,
-        roughness: 0.9,
-        metalness: 0.03,
-      });
-  }
 }
