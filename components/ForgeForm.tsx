@@ -12,7 +12,7 @@ type ModelKey =
   | "cable_tray"
   | "vesa_adapter"
   | "router_mount";
-// aquí podrás ir añadiendo más claves a medida que sumemos modelos.
+// añade aquí más claves cuando sumemos modelos
 
 const MODEL_LABELS: Record<ModelKey, string> = {
   cable_tray: "Cable Tray",
@@ -30,24 +30,24 @@ export default function ForgeForm({ onGenerated }: ForgeFormProps) {
   const [heiZ, setHeiZ] = useState(60);
   const [thk, setThk] = useState(3);
 
-  // opcional: redondeo/chaflán en mm (el backend puede ignorarlo si no lo soporta)
+  // opcional: redondeo/chaflán
   const [fillet, setFillet] = useState<number>(0);
 
   // agujeros
   const [holes, setHoles] = useState<Hole[]>([{ x_mm: 10, y_mm: 10, d_mm: 4 }]);
 
-  // URL resultante para descarga
+  // URL resultante
   const [stlUrl, setStlUrl] = useState<string | null>(null);
 
   // estado UI
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Base de API (usa tu var pública en Vercel o el proxy /forge-api)
+  // Base de API
   const base =
     (process.env.NEXT_PUBLIC_BACKEND_URL as string | undefined) || "/forge-api";
 
-  const normalizedModel = useMemo(() => model, [model]); // ya trabajamos con guiones bajos
+  const normalizedModel = useMemo(() => model, [model]); // ya usamos guiones_bajos
 
   const handleAddHole = useCallback(() => {
     setHoles((prev) => [...prev, { x_mm: 10, y_mm: 10, d_mm: 4 }]);
@@ -57,14 +57,9 @@ export default function ForgeForm({ onGenerated }: ForgeFormProps) {
     setHoles((prev) => prev.filter((_, i) => i !== idx));
   }, []);
 
-  const handleChangeHole = useCallback(
-    (idx: number, patch: Partial<Hole>) => {
-      setHoles((prev) =>
-        prev.map((h, i) => (i === idx ? { ...h, ...patch } : h))
-      );
-    },
-    []
-  );
+  const handleChangeHole = useCallback((idx: number, patch: Partial<Hole>) => {
+    setHoles((prev) => prev.map((h, i) => (i === idx ? { ...h, ...patch } : h)));
+  }, []);
 
   async function generate(kind: "preview" | "download") {
     setLoading(true);
@@ -102,13 +97,13 @@ export default function ForgeForm({ onGenerated }: ForgeFormProps) {
       onGenerated?.(url);
 
       if (kind === "download") {
-        // descarga directa (respetando CORS, usa el Content-Disposition del backend si lo pusimos)
+        // slug seguro sin replaceAll (TS friendly)
+        const modelSlug = String(normalizedModel).replace(/_/g, "-");
+        const fileName = `${modelSlug}-${lenX}x${widY}x${heiZ}.stl`;
+
         const a = document.createElement("a");
         a.href = url;
-        // nombre orientativo con dimensiones
-        const name =
-          `${normalizedModel.replaceAll("_", "-")}-${lenX}x${widY}x${heiZ}.stl`;
-        a.download = name;
+        a.download = fileName; // si el backend define Content-Disposition, prevalece ese nombre
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -185,7 +180,7 @@ export default function ForgeForm({ onGenerated }: ForgeFormProps) {
         </div>
       </div>
 
-      {/* redondeo / chaflán */}
+      {/* redondeo/chaflán */}
       <div>
         <label className="block text-sm text-neutral-400">
           Redondeo/Chaflán (mm)
@@ -207,7 +202,9 @@ export default function ForgeForm({ onGenerated }: ForgeFormProps) {
           </span>
           <button
             type="button"
-            onClick={handleAddHole}
+            onClick={() =>
+              setHoles((prev) => [...prev, { x_mm: 10, y_mm: 10, d_mm: 4 }])
+            }
             className="text-xs bg-neutral-700 hover:bg-neutral-600 text-white px-2 py-1 rounded-md"
           >
             + Añadir agujero
@@ -222,7 +219,11 @@ export default function ForgeForm({ onGenerated }: ForgeFormProps) {
                 type="number"
                 value={h.x_mm}
                 onChange={(e) =>
-                  handleChangeHole(idx, { x_mm: Number(e.target.value) })
+                  setHoles((prev) =>
+                    prev.map((hh, i) =>
+                      i === idx ? { ...hh, x_mm: Number(e.target.value) } : hh
+                    )
+                  )
                 }
                 className="w-full rounded-md bg-neutral-800 text-white p-2"
               />
@@ -233,7 +234,11 @@ export default function ForgeForm({ onGenerated }: ForgeFormProps) {
                 type="number"
                 value={h.y_mm}
                 onChange={(e) =>
-                  handleChangeHole(idx, { y_mm: Number(e.target.value) })
+                  setHoles((prev) =>
+                    prev.map((hh, i) =>
+                      i === idx ? { ...hh, y_mm: Number(e.target.value) } : hh
+                    )
+                  )
                 }
                 className="w-full rounded-md bg-neutral-800 text-white p-2"
               />
@@ -244,7 +249,11 @@ export default function ForgeForm({ onGenerated }: ForgeFormProps) {
                 type="number"
                 value={h.d_mm}
                 onChange={(e) =>
-                  handleChangeHole(idx, { d_mm: Number(e.target.value) })
+                  setHoles((prev) =>
+                    prev.map((hh, i) =>
+                      i === idx ? { ...hh, d_mm: Number(e.target.value) } : hh
+                    )
+                  )
                 }
                 className="w-full rounded-md bg-neutral-800 text-white p-2"
               />
@@ -252,7 +261,9 @@ export default function ForgeForm({ onGenerated }: ForgeFormProps) {
             <div className="col-span-1 flex">
               <button
                 type="button"
-                onClick={() => handleRemoveHole(idx)}
+                onClick={() =>
+                  setHoles((prev) => prev.filter((_, i) => i !== idx))
+                }
                 className="w-full bg-red-600 hover:bg-red-700 text-white text-sm px-2 rounded-md"
               >
                 Eliminar
@@ -283,7 +294,6 @@ export default function ForgeForm({ onGenerated }: ForgeFormProps) {
 
       {error && <div className="text-red-400 text-sm mt-2">Error: {error}</div>}
 
-      {/* hint monetización: si quieres, aquí podemos comprobar sesión/pagos y condicionar el botón de descargar */}
       {/* stlUrl actual: {stlUrl ?? "—"} */}
     </div>
   );
