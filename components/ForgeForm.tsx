@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type ForgeFormProps = {
   onGenerated?: (url: string) => void;
@@ -16,6 +16,18 @@ type ModelKey =
   | "wall_bracket"
   | "desk_hook"
   | "fan_guard";
+
+/**
+ * Nota ALT + clic:
+ * Este formulario publica window.__forgeAltClickX(x_mm:number)
+ * para que tu visor (STLViewerPro) pueda llamar y añadir agujeros.
+ * Diámetro por defecto: 4 mm (luego editable).
+ */
+declare global {
+  interface Window {
+    __forgeAltClickX?: (x_mm: number) => void;
+  }
+}
 
 export default function ForgeForm({ onGenerated, onGeneratedTheme }: ForgeFormProps) {
   const [model, setModel] = useState<ModelKey>("cable_tray");
@@ -102,6 +114,23 @@ export default function ForgeForm({ onGenerated, onGeneratedTheme }: ForgeFormPr
       setLoading(false);
     }
   }
+
+  // -----------------------------
+  // ALT + clic (handler global)
+  // -----------------------------
+  useEffect(() => {
+    // Publicamos un handler global para que el visor lo invoque.
+    window.__forgeAltClickX = (x_mm: number) => {
+      if (!Number.isFinite(x_mm)) return;
+      // Clamp a [0..length] por seguridad
+      const x = Math.max(0, Math.min(length, Math.round(x_mm)));
+      setHoles((prev) => [...prev, { x_mm: x, d_mm: 4 }]);
+    };
+    // Limpieza al desmontar
+    return () => {
+      if (window.__forgeAltClickX) delete window.__forgeAltClickX;
+    };
+  }, [length]);
 
   return (
     <div className="bg-neutral-900 p-6 rounded-2xl shadow-lg space-y-6">
@@ -210,9 +239,14 @@ export default function ForgeForm({ onGenerated, onGeneratedTheme }: ForgeFormPr
           </button>
         </div>
 
+        <p className="text-xs text-neutral-500">
+          Consejo: en el visor, pulsa <kbd className="px-1 py-0.5 bg-neutral-800 rounded">ALT</kbd> + clic para
+          añadir un agujero en esa X (se usará Ø 4 mm por defecto).
+        </p>
+
         {holes.length === 0 ? (
           <div className="text-neutral-500 text-sm">
-            No hay agujeros. Pulsa “+ Añadir agujero”.
+            No hay agujeros. Pulsa “+ Añadir agujero” o usa ALT+clic en el visor.
           </div>
         ) : (
           <div className="space-y-2">
@@ -276,7 +310,10 @@ export default function ForgeForm({ onGenerated, onGeneratedTheme }: ForgeFormPr
 
       {lastUrl && (
         <div className="text-xs text-neutral-400 break-all">
-          URL: <a className="underline" href={lastUrl} target="_blank" rel="noreferrer">{lastUrl}</a>
+          URL:{" "}
+          <a className="underline" href={lastUrl} target="_blank" rel="noreferrer">
+            {lastUrl}
+          </a>
         </div>
       )}
 
