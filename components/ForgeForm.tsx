@@ -1,207 +1,233 @@
-"use client";
+// components/ForgeForm.tsx
+import React, { useMemo, useState } from "react";
+import { MODEL_OPTIONS, type ModelKey } from "@/lib/models";
 
-import { useMemo, useState } from "react";
+type HoleInput = { x_mm: number; y_mm: number; d_mm: number };
 
-type ForgeFormProps = {
-  onGenerated?: (url: string) => void;
+type GenerateResponse = {
+  stl_url: string;
+  object_key: string;
 };
 
-type Hole = { x_mm: number; d_mm: number };
+const apiBase =
+  process.env.NEXT_PUBLIC_FORGE_API?.replace(/\/+$/, "") ||
+  "https://teknovashop-forge.onrender.com";
 
-const MODELS: { value: string; label: string }[] = [
-  { value: "cable_tray", label: "Cable Tray" },
-  { value: "vesa_adapter", label: "VESA Adapter" },
-  { value: "router_mount", label: "Router Mount" },
-  // nuevos
-  { value: "pcb_standoff", label: "PCB Standoff" },
-  { value: "wall_bracket", label: "Wall Bracket" },
-  { value: "duct_adapter", label: "Duct Adapter" },
-  { value: "fan_grill", label: "Fan Grill" },
-  { value: "raspberry_mount", label: "Raspberry Mount" },
-  { value: "camera_mount", label: "Camera Mount" },
-  { value: "cable_clip", label: "Cable Clip" },
-  { value: "hinge", label: "Hinge" },
-  { value: "knob", label: "Knob" },
-];
+export default function ForgeForm() {
+  const [model, setModel] = useState<ModelKey>("cable_tray");
 
-export default function ForgeForm({ onGenerated }: ForgeFormProps) {
-  const [model, setModel] = useState("cable_tray");
-  const [length, setLength] = useState(200);
-  const [width, setWidth] = useState(100);
-  const [height, setHeight] = useState(60);
-  const [thickness, setThickness] = useState(3);
-  const [fillet, setFillet] = useState(0);
-  const [holes, setHoles] = useState<Hole[]>([{ x_mm: 10, d_mm: 4 }]);
+  // Parámetros geométricos
+  const [lenX, setLenX] = useState<number>(200);
+  const [widY, setWidY] = useState<number>(100);
+  const [heiZ, setHeiZ] = useState<number>(60);
+  const [thickness, setThickness] = useState<number>(3);
+  const [fillet, setFillet] = useState<number>(0);
 
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [lastUrl, setLastUrl] = useState<string | null>(null);
+  // Agujeros
+  const [holes, setHoles] = useState<HoleInput[]>([{ x_mm: 10, y_mm: 10, d_mm: 4 }]);
 
-  // Usa tu variable EXISTENTE en Vercel
-  const base =
-    (process.env.NEXT_PUBLIC_BACKEND_URL as string | undefined) || "/forge-api";
+  // Resultado / estado
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [errorMsg, setErrorMsg] = useState<string>("");
+  const [lastUrl, setLastUrl] = useState<string>("");
 
-  const normalizedModel = useMemo(() => model.replace("-", "_"), [model]);
+  // Normalizador de nombre “bonito” para archivo
+  const normalizedModel = useMemo(() => {
+    // evitar replaceAll por compatibilidad TS/target; usamos split/join
+    return (model as string).split("_").join("-");
+  }, [model]);
 
   function addHole() {
-    setHoles((prev) => [...prev, { x_mm: 10, d_mm: 4 }]);
-  }
-  function updateHole(i: number, patch: Partial<Hole>) {
-    setHoles((prev) => prev.map((h, idx) => (idx === i ? { ...h, ...patch } : h)));
-  }
-  function removeHole(i: number) {
-    setHoles((prev) => prev.filter((_, idx) => idx !== i));
+    setHoles((prev) => [...prev, { x_mm: 10, y_mm: 10, d_mm: 4 }]);
   }
 
-  async function doGenerate(downloadAfter = false) {
-    setLoading(true);
-    setError(null);
+  function removeHole(idx: number) {
+    setHoles((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  async function handleGenerate() {
+    setErrorMsg("");
+    setIsLoading(true);
+    setLastUrl("");
+
     try {
-      const res = await fetch(`${base}/generate`, {
+      const body = {
+        model,
+        params: {
+          length_mm: Number(lenX),
+          width_mm: Number(widY),
+          height_mm: Number(heiZ),
+          thickness_mm: Number(thickness),
+          fillet_mm: Number(fillet),
+        },
+        holes: holes.map((h) => ({
+          x_mm: Number(h.x_mm),
+          y_mm: Number(h.y_mm),
+          d_mm: Number(h.d_mm),
+        })),
+      };
+
+      const res = await fetch(`${apiBase}/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: normalizedModel,
-          params: {
-            length_mm: length,
-            width_mm: width,
-            height_mm: height,
-            thickness_mm: thickness,
-            fillet_mm: fillet,
-          },
-          holes,
-        }),
+        body: JSON.stringify(body),
       });
 
-      if (!res.ok) throw new Error(`Error ${res.status}: ${res.statusText}`);
-
-      const data = await res.json();
-      setLastUrl(data.stl_url as string);
-      onGenerated?.(data.stl_url);
-
-      if (downloadAfter && data?.stl_url) {
-        const a = document.createElement("a");
-        // nombre descriptivo (evitamos replaceAll para compat)
-        const nice = normalizedModel.split("_").join("-");
-        a.href = data.stl_url;
-        a.download = `${nice}-${length}x${width}x${height}.stl`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(txt || `HTTP ${res.status}`);
       }
+
+      const data: GenerateResponse = await res.json();
+      setLastUrl(data.stl_url || "");
     } catch (err: any) {
-      console.error("Error generando STL", err);
-      setError(err?.message || "Error desconocido");
+      console.error(err);
+      setErrorMsg(err?.message || "Error desconocido");
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   }
 
+  function handleDownload() {
+    if (!lastUrl) return;
+    const a = document.createElement("a");
+    const name = `${normalizedModel}-${lenX}x${widY}x${heiZ}.stl`;
+    a.href = lastUrl;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
   return (
-    <div className="bg-neutral-900 p-6 rounded-2xl shadow-lg space-y-6">
-      <h2 className="text-xl font-semibold text-white mb-4">
-        Configuración del modelo
-      </h2>
+    <div className="w-full max-w-xl p-4 bg-[#111] text-gray-100 rounded-lg">
+      {/* MODELO */}
+      <label className="block mb-2 text-sm font-medium">Modelo</label>
+      <select
+        value={model}
+        onChange={(e) => setModel(e.target.value as ModelKey)}
+        className="w-full mb-4 rounded-md bg-[#1a1a1a] border border-gray-700 p-2 outline-none"
+      >
+        {MODEL_OPTIONS.map((opt) => (
+          <option key={opt.key} value={opt.key}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
 
-      <div className="space-y-1">
-        <label className="block text-sm text-neutral-400">Modelo</label>
-        <select
-          value={model}
-          onChange={(e) => setModel(e.target.value)}
-          className="w-full rounded-md bg-neutral-800 text-white p-2"
-        >
-          {MODELS.map((m) => (
-            <option key={m.value} value={m.value}>
-              {m.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
+      {/* Dimensiones */}
+      <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-sm text-neutral-400">Largo X (mm)</label>
+          <label className="block mb-1 text-sm">Largo X (mm)</label>
           <input
             type="number"
-            value={length}
-            onChange={(e) => setLength(Number(e.target.value))}
-            className="w-full rounded-md bg-neutral-800 text-white p-2"
+            value={lenX}
+            onChange={(e) => setLenX(Number(e.target.value))}
+            className="w-full rounded-md bg-[#1a1a1a] border border-gray-700 p-2 outline-none"
           />
         </div>
         <div>
-          <label className="block text-sm text-neutral-400">Ancho Y (mm)</label>
+          <label className="block mb-1 text-sm">Ancho Y (mm)</label>
           <input
             type="number"
-            value={width}
-            onChange={(e) => setWidth(Number(e.target.value))}
-            className="w-full rounded-md bg-neutral-800 text-white p-2"
+            value={widY}
+            onChange={(e) => setWidY(Number(e.target.value))}
+            className="w-full rounded-md bg-[#1a1a1a] border border-gray-700 p-2 outline-none"
           />
         </div>
         <div>
-          <label className="block text-sm text-neutral-400">Alto Z (mm)</label>
+          <label className="block mb-1 text-sm">Alto Z (mm)</label>
           <input
             type="number"
-            value={height}
-            onChange={(e) => setHeight(Number(e.target.value))}
-            className="w-full rounded-md bg-neutral-800 text-white p-2"
+            value={heiZ}
+            onChange={(e) => setHeiZ(Number(e.target.value))}
+            className="w-full rounded-md bg-[#1a1a1a] border border-gray-700 p-2 outline-none"
           />
         </div>
         <div>
-          <label className="block text-sm text-neutral-400">Grosor (mm)</label>
+          <label className="block mb-1 text-sm">Grosor (mm)</label>
           <input
             type="number"
             value={thickness}
             onChange={(e) => setThickness(Number(e.target.value))}
-            className="w-full rounded-md bg-neutral-800 text-white p-2"
-          />
-        </div>
-        <div className="col-span-2">
-          <label className="block text-sm text-neutral-400">Redondeo/Fillet (mm)</label>
-          <input
-            type="number"
-            value={fillet}
-            onChange={(e) => setFillet(Math.max(0, Number(e.target.value)))}
-            className="w-full rounded-md bg-neutral-800 text-white p-2"
+            className="w-full rounded-md bg-[#1a1a1a] border border-gray-700 p-2 outline-none"
           />
         </div>
       </div>
 
+      {/* Fillet / Redondeo */}
+      <div className="mt-3">
+        <label className="block mb-1 text-sm">Redondeo/Fillet (mm)</label>
+        <input
+          type="number"
+          value={fillet}
+          onChange={(e) => setFillet(Number(e.target.value))}
+          className="w-full rounded-md bg-[#1a1a1a] border border-gray-700 p-2 outline-none"
+        />
+        <p className="text-xs text-gray-400 mt-1">
+          Se aplicará si el backend dispone de <code>manifold3d</code>. Si no, se ignora sin error.
+        </p>
+      </div>
+
       {/* Agujeros */}
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <div className="text-neutral-300 text-sm">Agujeros (cara superior, pasantes)</div>
+      <div className="mt-4">
+        <div className="flex items-center justify-between">
+          <label className="text-sm font-medium">Agujeros (cara superior, pasantes)</label>
           <button
+            type="button"
+            className="text-sm px-2 py-1 rounded bg-gray-700 hover:bg-gray-600"
             onClick={addHole}
-            className="px-3 py-1 rounded bg-neutral-700 text-white text-sm"
           >
             + Añadir agujero
           </button>
         </div>
 
-        {holes.map((h, i) => (
-          <div key={i} className="grid grid-cols-7 gap-2 items-center mb-2">
-            <div className="col-span-2">
-              <label className="block text-xs text-neutral-500">X (mm)</label>
+        {holes.map((h, idx) => (
+          <div key={idx} className="grid grid-cols-4 gap-3 items-end mt-2">
+            <div>
+              <label className="block mb-1 text-xs">X (mm)</label>
               <input
                 type="number"
                 value={h.x_mm}
-                onChange={(e) => updateHole(i, { x_mm: Number(e.target.value) })}
-                className="w-full rounded-md bg-neutral-800 text-white p-2"
+                onChange={(e) =>
+                  setHoles((prev) =>
+                    prev.map((hh, i) => (i === idx ? { ...hh, x_mm: Number(e.target.value) } : hh))
+                  )
+                }
+                className="w-full rounded-md bg-[#1a1a1a] border border-gray-700 p-2 outline-none"
               />
             </div>
-            <div className="col-span-2">
-              <label className="block text-xs text-neutral-500">Ø (mm)</label>
+            <div>
+              <label className="block mb-1 text-xs">Y (mm)</label>
+              <input
+                type="number"
+                value={h.y_mm}
+                onChange={(e) =>
+                  setHoles((prev) =>
+                    prev.map((hh, i) => (i === idx ? { ...hh, y_mm: Number(e.target.value) } : hh))
+                  )
+                }
+                className="w-full rounded-md bg-[#1a1a1a] border border-gray-700 p-2 outline-none"
+              />
+            </div>
+            <div>
+              <label className="block mb-1 text-xs">Ø (mm)</label>
               <input
                 type="number"
                 value={h.d_mm}
-                onChange={(e) => updateHole(i, { d_mm: Math.max(0, Number(e.target.value)) })}
-                className="w-full rounded-md bg-neutral-800 text-white p-2"
+                onChange={(e) =>
+                  setHoles((prev) =>
+                    prev.map((hh, i) => (i === idx ? { ...hh, d_mm: Number(e.target.value) } : hh))
+                  )
+                }
+                className="w-full rounded-md bg-[#1a1a1a] border border-gray-700 p-2 outline-none"
               />
             </div>
-            <div className="col-span-3 flex items-end">
+            <div className="flex">
               <button
-                onClick={() => removeHole(i)}
-                className="px-3 py-2 rounded bg-red-600 text-white text-sm"
+                type="button"
+                onClick={() => removeHole(idx)}
+                className="ml-auto text-sm px-3 py-2 rounded bg-red-600 hover:bg-red-500"
               >
                 Eliminar
               </button>
@@ -210,30 +236,37 @@ export default function ForgeForm({ onGenerated }: ForgeFormProps) {
         ))}
       </div>
 
-      <div className="flex gap-3">
+      {/* Botones */}
+      <div className="flex gap-3 mt-6">
         <button
-          onClick={() => doGenerate(false)}
-          disabled={loading}
-          className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg"
+          type="button"
+          onClick={handleGenerate}
+          disabled={isLoading}
+          className="flex-1 py-3 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-60"
         >
-          {loading ? "Generando..." : "Generar STL"}
+          {isLoading ? "Generando..." : "Generar STL"}
         </button>
 
         <button
-          onClick={() => doGenerate(true)}
-          disabled={loading}
-          className="w-44 bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-lg"
+          type="button"
+          onClick={handleDownload}
+          disabled={!lastUrl}
+          className="w-44 py-3 rounded bg-green-600 hover:bg-green-500 disabled:opacity-60"
         >
           Descargar STL
         </button>
       </div>
 
-      {error && <div className="text-red-400 text-sm mt-2">Error: {error}</div>}
-
+      {/* Estado */}
+      {errorMsg && (
+        <p className="mt-3 text-sm text-red-400">
+          Error: {errorMsg}
+        </p>
+      )}
       {lastUrl && (
-        <div className="text-xs text-neutral-400">
-          Último STL: <a className="underline" href={lastUrl} target="_blank">{lastUrl}</a>
-        </div>
+        <p className="mt-3 text-xs text-gray-400 break-all">
+          Último STL: <a className="underline" href={lastUrl} target="_blank" rel="noreferrer">{lastUrl}</a>
+        </p>
       )}
     </div>
   );
