@@ -6,45 +6,19 @@ import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 
-type Props = {
-  url?: string | null;
-  className?: string;
+type Props = { url?: string | null; className?: string };
 
-  /** Largo del modelo en mm (si no se pasa, se infiere del STL). */
-  modelLengthMM?: number;
-  /** Alto del modelo en mm (si no se pasa, se infiere del STL). */
-  modelHeightMM?: number;
-
-  /** Callback cuando el usuario ALT+clic en la cara superior. Recibe X en mm [0..L]. */
-  onAltClickX?: (x_mm: number) => void;
-
-  /** Si true, coloca un marcador visual donde se hace ALT+clic. */
-  showClickMarkers?: boolean;
-};
-
-export default function STLViewerPro({
-  url,
-  className,
-  modelLengthMM,
-  modelHeightMM,
-  onAltClickX,
-  showClickMarkers = true,
-}: Props) {
+export default function STLViewerPro({ url, className }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
-  const currentMeshRef = useRef<THREE.Mesh | null>(null);
+  // Evitamos tipos de THREE para no romper el build en Vercel
+  const currentMeshRef = useRef<any>(null);
+  const bboxSizeXRef = useRef<number>(0); // ancho (mm) de la pieza para ALT+clic
 
   const [shadows, setShadows] = useState(true);
   const [tone, setTone] = useState(1.0);
   const [preset, setPreset] = useState<"studio" | "neutral" | "night">("studio");
   const [clipping, setClipping] = useState(false);
   const [bgLight, setBgLight] = useState(true);
-
-  /** Medidas inferidas del STL (mm) por si no vienen por props */
-  const inferredLenRef = useRef<number>(200);
-  const inferredHeiRef = useRef<number>(60);
-
-  /** Grupo donde añadimos “pins” de clicks ALT */
-  const markersRef = useRef<THREE.Group | null>(null);
 
   const three = useMemo(() => {
     const scene = new THREE.Scene();
@@ -57,14 +31,13 @@ export default function STLViewerPro({
       antialias: true,
       powerPreference: "high-performance",
     });
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.0;
-    // @ts-expect-error: prop histórica de three
-    renderer.physicallyCorrectLights = true;
+    (renderer as any).outputColorSpace = THREE.SRGBColorSpace;
+    (renderer as any).toneMapping = THREE.ACESFilmicToneMapping;
+    (renderer as any).toneMappingExposure = 1.0;
+    (renderer as any).physicallyCorrectLights = true;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    renderer.setPixelRatio(Math.min(2, (window as any).devicePixelRatio || 1));
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
@@ -108,6 +81,7 @@ export default function STLViewerPro({
     plane.receiveShadow = true;
     scene.add(plane);
 
+    // Planos de clipping opcionales
     const planes = [
       new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0),
       new THREE.Plane(new THREE.Vector3(0, -1, 0), 0),
@@ -115,17 +89,28 @@ export default function STLViewerPro({
     ];
     renderer.clippingPlanes = [];
 
-    // Grupo para marcadores
-    const markers = new THREE.Group();
-    scene.add(markers);
+    // Plano Y=0 para ALT+clic (picking)
+    const pickPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0); // y = 0
 
-    return { scene, camera, renderer, controls, group, dir, hemi, envStudio, planes, pmrem, plane, grid, axes, markers };
+    return {
+      scene,
+      camera,
+      renderer,
+      controls,
+      group,
+      dir,
+      hemi,
+      envStudio,
+      planes,
+      pmrem,
+      plane,
+      grid,
+      axes,
+      pickPlane,
+    };
   }, []);
 
-  useEffect(() => {
-    markersRef.current = three.markers;
-  }, [three]);
-
+  // Render loop + resize
   useEffect(() => {
     const mount = mountRef.current!;
     const { renderer, camera, controls } = three;
@@ -139,19 +124,19 @@ export default function STLViewerPro({
       camera.updateProjectionMatrix();
     };
     onResize();
-    const ro = new ResizeObserver(onResize);
+    const ro = new (window as any).ResizeObserver(onResize);
     ro.observe(mount);
 
     let raf = 0;
     const loop = () => {
-      raf = requestAnimationFrame(loop);
+      raf = (window as any).requestAnimationFrame(loop);
       controls.update();
       renderer.render(three.scene, camera);
     };
     loop();
 
     return () => {
-      cancelAnimationFrame(raf);
+      (window as any).cancelAnimationFrame(raf);
       ro.disconnect();
       mount.removeChild(renderer.domElement);
       renderer.dispose();
@@ -159,49 +144,48 @@ export default function STLViewerPro({
     };
   }, [three]);
 
+  // Toggles
   useEffect(() => {
     three.renderer.shadowMap.enabled = shadows;
-    three.dir.castShadow = shadows;
+    (three.dir as any).castShadow = shadows;
     three.plane.visible = shadows;
   }, [shadows, three]);
 
   useEffect(() => {
-    three.renderer.toneMappingExposure = tone;
+    (three.renderer as any).toneMappingExposure = tone;
   }, [tone, three]);
 
   useEffect(() => {
     switch (preset) {
       case "studio":
         three.hemi.intensity = 0.7;
-        three.dir.intensity = 1.4;
+        (three.dir as any).intensity = 1.4;
         three.scene.background = new THREE.Color(bgLight ? 0xf5f5f5 : 0x0b0b0b);
         break;
       case "neutral":
         three.hemi.intensity = 0.5;
-        three.dir.intensity = 1.0;
+        (three.dir as any).intensity = 1.0;
         three.scene.background = new THREE.Color(bgLight ? 0xffffff : 0x111111);
         break;
       case "night":
         three.hemi.intensity = 0.25;
-        three.dir.intensity = 0.6;
+        (three.dir as any).intensity = 0.6;
         three.scene.background = new THREE.Color(bgLight ? 0xdddddd : 0x000000);
         break;
     }
   }, [preset, bgLight, three]);
 
   useEffect(() => {
-    three.renderer.localClippingEnabled = clipping;
+    (three.renderer as any).localClippingEnabled = clipping;
     three.renderer.clippingPlanes = clipping ? three.planes : [];
   }, [clipping, three]);
 
-  // ----------------------------
-  // Carga STL y centra/escala
-  // ----------------------------
+  // Carga STL
   useEffect(() => {
     const { group, scene, camera, controls, renderer } = three;
     group.clear();
-    markersRef.current?.clear();
     currentMeshRef.current = null;
+    bboxSizeXRef.current = 0;
     if (!url) return;
 
     const loader = new STLLoader();
@@ -215,29 +199,27 @@ export default function STLViewerPro({
         });
 
         const mesh = new THREE.Mesh(geometry, material);
-        mesh.castShadow = true;
+        (mesh as any).castShadow = true;
 
         geometry.computeVertexNormals();
         geometry.center();
 
-        // Reposiciona sobre el suelo (y=0)
+        // reposiciona sobre suelo
         const box3 = new THREE.Box3().setFromObject(mesh);
         const size = new THREE.Vector3();
         box3.getSize(size);
         const radius = size.length() * 0.5 || 1;
 
+        // Guardamos tamaño X (mm) para ALT+clic -> convertir worldX a [0..L]
+        bboxSizeXRef.current = size.x;
+
         const minY = box3.min.y;
         mesh.position.y -= minY;
 
-        // Guarda medidas inferidas (mm)
-        inferredLenRef.current = size.x;
-        inferredHeiRef.current = size.y;
-
-        three.group.add(mesh);
+        group.add(mesh);
         currentMeshRef.current = mesh;
 
-        // Enfoque cámara
-        const fov = camera.fov * (Math.PI / 180);
+        const fov = (camera.fov as number) * (Math.PI / 180);
         const dist = radius / Math.sin(fov / 2);
         camera.near = Math.max(0.1, dist * 0.01);
         camera.far = dist * 10 + radius * 2;
@@ -256,69 +238,41 @@ export default function STLViewerPro({
     );
   }, [url, three]);
 
-  // -----------------------------------------
-  // ALT + clic: proyecta sobre cara superior
-  // -----------------------------------------
+  // ALT + clic: proyecta al plano Y=0 y convierte X a mm según el bbox de la pieza
   useEffect(() => {
-    const dom = three.renderer.domElement;
+    const { renderer, camera, pickPlane } = three;
+    const el = renderer.domElement;
     const raycaster = new THREE.Raycaster();
     const ndc = new THREE.Vector2();
+    const hitPoint = new THREE.Vector3();
 
-    function getTopY(): number {
-      // Preferimos prop, si no, lo inferido del STL
-      return (modelHeightMM ?? inferredHeiRef.current) || 0;
-    }
-    function getLength(): number {
-      return (modelLengthMM ?? inferredLenRef.current) || 0;
-    }
+    const onPointerDown = (ev: PointerEvent) => {
+      if (!ev.altKey) return; // solo ALT + clic
+      if (!currentMeshRef.current) return;
 
-    function addMarkerAt(x: number, y: number, z: number) {
-      if (!showClickMarkers || !markersRef.current) return;
-      const g = new THREE.SphereGeometry(1.2, 12, 12);
-      const m = new THREE.MeshStandardMaterial({ color: 0x0077ff, metalness: 0.0, roughness: 0.2 });
-      const s = new THREE.Mesh(g, m);
-      s.position.set(x, y + 0.2, z);
-      s.castShadow = true;
-      markersRef.current.add(s);
-    }
+      // NDC
+      const rect = el.getBoundingClientRect();
+      const x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+      const y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+      ndc.set(x, y);
 
-    function onPointerDown(e: PointerEvent) {
-      // ALT + botón izq
-      if (!e.altKey || e.button !== 0) return;
+      raycaster.setFromCamera(ndc, camera);
+      const ok = raycaster.ray.intersectPlane(pickPlane, hitPoint);
+      if (!ok) return;
 
-      const rect = dom.getBoundingClientRect();
-      ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-      ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-
-      raycaster.setFromCamera(ndc, three.camera);
-
-      const topY = getTopY();
-      if (!isFinite(topY)) return;
-
-      // Plano horizontal y = topY  → normal (0,1,0), constante = -topY
-      const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -topY);
-      const hit = new THREE.Vector3();
-      if (!raycaster.ray.intersectPlane(plane, hit)) return;
-
-      const L = getLength();
+      const worldX = hitPoint.x; // porque la pieza está centrada en X
+      const L = bboxSizeXRef.current || 0;
       if (L <= 0) return;
 
-      // hit.x está en coords centradas (0 en el centro); convertimos a [0..L] mm
-      const x_mm = Math.min(L, Math.max(0, hit.x + L / 2));
-
-      // Marcador visual
-      addMarkerAt(hit.x, topY, hit.z);
-
-      // Dispara callback
-      onAltClickX?.(x_mm);
-    }
-
-    dom.addEventListener("pointerdown", onPointerDown);
-    return () => {
-      dom.removeEventListener("pointerdown", onPointerDown);
+      // Convertimos a [0..L] en mm
+      const x_mm = Math.max(0, Math.min(L, Math.round(worldX + L / 2)));
+      // Avisamos al formulario (publicado por ForgeForm)
+      (window as any).__forgeAltClickX?.(x_mm);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [three, onAltClickX, modelHeightMM, modelLengthMM, showClickMarkers]);
+
+    el.addEventListener("pointerdown", onPointerDown);
+    return () => el.removeEventListener("pointerdown", onPointerDown);
+  }, [three]);
 
   return (
     <div
@@ -326,7 +280,7 @@ export default function STLViewerPro({
       className={className ?? "h-[70vh] w-full relative rounded-xl overflow-hidden bg-black"}
     >
       {/* HUD */}
-      <div className="pointer-events-auto absolute top-3 left-3 z-10 flex flex-wrap items-center gap-3 text-xs">
+      <div className="pointer-events-auto absolute top-3 left-3 z-10 flex items-center gap-3 text-xs">
         <button
           onClick={() => setShadows((s) => !s)}
           className="px-2 py-1 rounded-md bg-neutral-800 text-neutral-100 border border-neutral-700"
@@ -373,10 +327,6 @@ export default function STLViewerPro({
             onChange={(e) => setBgLight(e.target.checked)}
           />
         </label>
-
-        <span className="bg-neutral-800 text-neutral-100 border border-neutral-700 rounded-md px-2 py-1">
-          ALT + clic = agujero
-        </span>
       </div>
     </div>
   );
