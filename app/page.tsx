@@ -1,86 +1,107 @@
-// app/page.tsx
+"use client";
+
 import Link from "next/link";
-import ExampleThumb from "@/components/ExampleThumb";
+import Image from "next/image";
 
-const EXAMPLES = [
-  { kind: "cable_tray", title: "Bandeja de cables", model: "cable_tray" },
-  { kind: "vesa_adapter", title: "Adaptador VESA", model: "vesa_adapter" },
-  { kind: "router_mount", title: "Soporte Router", model: "router_mount" },
-  { kind: "camera_mount", title: "Soporte Cámara", model: "camera_mount" },
-  { kind: "wall_bracket", title: "Escuadra Pared", model: "wall_bracket" },
-  { kind: "fan_guard", title: "Rejilla Ventilador", model: "fan_guard" },
-  { kind: "desk_hook", title: "Hook de Mesa", model: "desk_hook" },
-] as const;
-
-export default function HomePage() {
+export default function Home() {
   return (
-    <div className="container mx-auto px-4 py-10">
+    <main className="min-h-screen bg-gradient-to-b from-gray-50 to-white text-gray-900">
+      {/* Header */}
+      <header className="flex justify-between items-center px-6 py-4 shadow-sm bg-white">
+        <h1 className="text-xl font-bold">Teknovashop Forge</h1>
+        <Link
+          href="/forge"
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 transition"
+        >
+          Abrir Configurador
+        </Link>
+      </header>
+
       {/* Hero */}
-      <section className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
-        <div className="space-y-5">
-          <h1 className="text-4xl md:text-5xl font-semibold leading-tight">
-            Genera <span className="text-sky-400">STL paramétricos</span> en segundos
-          </h1>
-          <p className="text-neutral-300 text-lg">
-            Ajusta parámetros, previsualiza en 3D y descarga. Diseñado para makers y empresas.
+      <section className="grid md:grid-cols-2 gap-10 px-10 py-16 items-center">
+        <div>
+          <h2 className="text-4xl font-extrabold mb-4 leading-tight">
+            Genera <span className="text-blue-600">STL paramétricos</span> en segundos
+          </h2>
+          <p className="text-lg text-gray-600 mb-6">
+            Ajusta parámetros, previsualiza en 3D y descarga tu diseño. 
+            Diseñado para makers y empresas.
           </p>
-
-          <div className="flex items-center gap-3">
-            <Link
-              href="/forge"
-              className="inline-flex items-center rounded-md bg-sky-500 hover:bg-sky-400 text-neutral-950 px-4 py-2 font-medium"
-            >
-              Empezar ahora
-            </Link>
-            {/* Quitado: Estado del backend */}
-          </div>
-
-          <div className="grid grid-cols-3 gap-3 text-sm">
-            <FeatureCard title="Rápido" text="STL al vuelo, optimizado para impresión." />
-            <FeatureCard title="Pro" text="Visor 3D con controles tipo CAD." />
-            <FeatureCard title="Escalable" text="Listo para licencias y packs." />
-          </div>
+          <Link
+            href="/forge"
+            className="inline-block px-6 py-3 bg-blue-600 text-white font-medium rounded-lg shadow hover:bg-blue-700 transition"
+          >
+            Empezar ahora
+          </Link>
         </div>
 
-        <div className="rounded-xl border border-neutral-800 bg-neutral-950 h-[280px] overflow-hidden">
-          {/* mock del viewport */}
-          <ExampleThumb kind="vesa_adapter" className="w-full h-full" />
+        {/* Vista previa del configurador */}
+        <div className="rounded-2xl shadow-lg border bg-white p-6 flex items-center justify-center">
+          <Image
+            src="/preview-configurator.png"
+            alt="Vista previa del configurador"
+            width={450}
+            height={350}
+            className="rounded-xl"
+          />
+        </div>
+      </section>
+
+      {/* Features */}
+      <section className="grid md:grid-cols-3 gap-6 px-10 mb-16 text-center">
+        <div className="p-6 rounded-xl bg-gray-100 shadow-sm">
+          <h3 className="font-bold mb-2">Rápido</h3>
+          <p className="text-gray-600 text-sm">STL al vuelo, optimizado para impresión.</p>
+        </div>
+        <div className="p-6 rounded-xl bg-gray-100 shadow-sm">
+          <h3 className="font-bold mb-2">Pro</h3>
+          <p className="text-gray-600 text-sm">Visor 3D con controles tipo CAD.</p>
+        </div>
+        <div className="p-6 rounded-xl bg-gray-100 shadow-sm">
+          <h3 className="font-bold mb-2">Escalable</h3>
+          <p className="text-gray-600 text-sm">Listo para licencias y packs.</p>
         </div>
       </section>
 
       {/* Ejemplos */}
-      <section className="mt-12">
-        <h2 className="text-xl font-semibold mb-4">Ejemplos de piezas</h2>
-
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {EXAMPLES.map((ex) => (
-            <Link
-              key={ex.model}
-              href={`/forge?model=${ex.model}`}
-              className="group rounded-xl border border-neutral-800 bg-neutral-950 hover:border-neutral-700 transition-colors overflow-hidden"
-            >
-              <div className="h-40">
-                <ExampleThumb kind={ex.kind as any} className="w-full h-full" />
+      <section className="px-10 pb-20">
+        <h3 className="text-2xl font-bold mb-6">Ejemplos de piezas</h3>
+        <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-8">
+          {examples.map((ex, i) => (
+            <div key={i} className="rounded-xl overflow-hidden shadow hover:shadow-lg transition">
+              <Image
+                src={ex.img}
+                alt={ex.title}
+                width={400}
+                height={300}
+                className="w-full h-48 object-cover"
+              />
+              <div className="p-4 bg-white">
+                <h4 className="font-semibold">{ex.title}</h4>
+                <p className="text-sm text-gray-600">{ex.desc}</p>
               </div>
-              <div className="px-4 py-3 flex items-center justify-between">
-                <div className="font-medium">{ex.title}</div>
-                <div className="text-xs text-neutral-400 group-hover:text-neutral-300">
-                  Configurar →
-                </div>
-              </div>
-            </Link>
+            </div>
           ))}
         </div>
       </section>
-    </div>
+    </main>
   );
 }
 
-function FeatureCard({ title, text }: { title: string; text: string }) {
-  return (
-    <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-3">
-      <div className="font-medium">{title}</div>
-      <div className="text-neutral-400">{text}</div>
-    </div>
-  );
-}
+const examples = [
+  {
+    img: "/examples/vesa.png",
+    title: "Adaptador VESA",
+    desc: "Soporte para monitores con patrón 75/100mm.",
+  },
+  {
+    img: "/examples/cable-tray.png",
+    title: "Bandeja de cables",
+    desc: "Organiza cables con un diseño paramétrico ajustable.",
+  },
+  {
+    img: "/examples/fan-guard.png",
+    title: "Protector de ventilador",
+    desc: "Diseño seguro para impresoras 3D y PCs.",
+  },
+];
