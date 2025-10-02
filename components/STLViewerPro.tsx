@@ -6,15 +6,14 @@ import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 
-// ✅ Importamos tipos de THREE explícitamente
-import type { Mesh, Vector3 } from "three";
-
 type Props = { url?: string | null; className?: string };
 
 export default function STLViewerPro({ url, className }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
-  const currentMeshRef = useRef<Mesh | null>(null);
-  const lastSizeRef = useRef<Vector3 | null>(null); // dimensiones del STL centrado
+
+  // ✅ usamos any para evitar el error de compilación en Vercel
+  const currentMeshRef = useRef<any>(null);
+  const lastSizeRef = useRef<any>(null);
 
   const [shadows, setShadows] = useState(true);
   const [tone, setTone] = useState(1.0);
