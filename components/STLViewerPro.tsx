@@ -11,8 +11,9 @@ type Props = { url?: string | null; className?: string };
 export default function STLViewerPro({ url, className }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
 
+  // Usamos `any` para compatibilidad con las tipificaciones de three en Vercel
   const currentMeshRef = useRef<any>(null);
-  const lastSizeRef = useRef<any>(null);
+  const lastSizeRef = useRef<any>(null); // { x, y, z } del bounding box centrado
 
   const [shadows, setShadows] = useState(true);
   const [tone, setTone] = useState(1.0);
@@ -34,7 +35,7 @@ export default function STLViewerPro({ url, className }: Props) {
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
-    renderer.physicallyCorrectLights = true; // ✅ sin @ts-expect-error
+    renderer.physicallyCorrectLights = true;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
@@ -46,6 +47,7 @@ export default function STLViewerPro({ url, className }: Props) {
     const group = new THREE.Group();
     scene.add(group);
 
+    // Grid y ejes (solo referencia visual)
     const grid = new THREE.GridHelper(1000, 40, 0x333333, 0x202020);
     const gm: any = (grid as any).material;
     if (Array.isArray(gm)) gm.forEach((m: any) => ((m.transparent = true), (m.opacity = 0.35)));
@@ -59,6 +61,7 @@ export default function STLViewerPro({ url, className }: Props) {
     axes.position.set(-120, 0, -120);
     scene.add(axes);
 
+    // Iluminación y entorno
     const pmrem = new THREE.PMREMGenerator(renderer);
     const envStudio = pmrem.fromScene(new RoomEnvironment()).texture;
     scene.environment = envStudio;
@@ -81,6 +84,7 @@ export default function STLViewerPro({ url, className }: Props) {
     plane.receiveShadow = true;
     scene.add(plane);
 
+    // Planos de recorte (opcional)
     const planes = [
       new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0),
       new THREE.Plane(new THREE.Vector3(0, -1, 0), 0),
@@ -91,6 +95,7 @@ export default function STLViewerPro({ url, className }: Props) {
     return { scene, camera, renderer, controls, group, dir, hemi, envStudio, planes, pmrem, plane, grid, axes };
   }, []);
 
+  // Montaje + render loop + resize
   useEffect(() => {
     const mount = mountRef.current!;
     const { renderer, camera, controls } = three;
@@ -124,6 +129,7 @@ export default function STLViewerPro({ url, className }: Props) {
     };
   }, [three]);
 
+  // Toggles de render
   useEffect(() => {
     three.renderer.shadowMap.enabled = shadows;
     (three.dir as any).castShadow = shadows;
@@ -159,7 +165,7 @@ export default function STLViewerPro({ url, className }: Props) {
     three.renderer.clippingPlanes = clipping ? three.planes : [];
   }, [clipping, three]);
 
-  // --- Carga STL ---
+  // Carga del STL (desde URL firmada)
   useEffect(() => {
     const { group, scene, camera, controls, renderer } = three;
     group.clear();
@@ -186,20 +192,28 @@ export default function STLViewerPro({ url, className }: Props) {
         const mesh = new THREE.Mesh(geometry, material);
         mesh.castShadow = true;
 
+        // Normalizamos la malla: suavizar normales, centrar, y apoyar en el suelo (Y=0)
         geometry.computeVertexNormals();
         geometry.center();
 
-        const box3 = new THREE.Box3().setFromObject(mesh);
+        // Calculamos bounding box en LOCAL (tras center())
+        geometry.computeBoundingBox();
+        const gbox = geometry.boundingBox!;
         const size = new THREE.Vector3();
-        box3.getSize(size);
-        lastSizeRef.current = size.clone();
+        gbox.getSize(size);
 
-        const minY = box3.min.y;
+        // Guardamos tamaño para mapear a mm 0..L,0..W
+        lastSizeRef.current = { x: size.x, y: size.y, z: size.z };
+
+        // Subimos la malla para que su base toque el suelo (Y=0 en Three)
+        // OJO: en backend Z es "alto"; aquí usamos Y como "alto" visual. No afecta al mapeo X/Y en mm.
+        const minY = gbox.min.y;
         mesh.position.y -= minY;
 
         group.add(mesh);
         currentMeshRef.current = mesh;
 
+        // Encuadre de cámara
         const radius = size.length() * 0.5 || 1;
         const fov = camera.fov * (Math.PI / 180);
         const dist = radius / Math.sin(fov / 2);
@@ -222,7 +236,7 @@ export default function STLViewerPro({ url, className }: Props) {
     };
   }, [url, three]);
 
-  // --- ALT+click: marcar agujero ---
+  // ALT + clic: convertir a coordenadas LOCALES del modelo y disparar evento con x_mm e y_mm
   useEffect(() => {
     const el = mountRef.current;
     if (!el) return;
@@ -232,6 +246,7 @@ export default function STLViewerPro({ url, className }: Props) {
 
     const onClick = (ev: MouseEvent) => {
       if (!ev.altKey) return;
+
       const mesh = currentMeshRef.current;
       const size = lastSizeRef.current;
       if (!mesh || !size) return;
@@ -244,12 +259,25 @@ export default function STLViewerPro({ url, className }: Props) {
       const intersects = raycaster.intersectObject(mesh, true);
       if (!intersects.length) return;
 
-      const p = intersects[0].point.clone();
-      const x_mm = (p.x + size.x / 2) * 1;
+      // Punto de intersección en MUNDO → pasamos a LOCAL del mesh
+      const pWorld = intersects[0].point.clone();
+      const pLocal = pWorld.clone();
+      mesh.worldToLocal(pLocal);
 
+      // El geometry ya está centrado: X va de -size.x/2 a +size.x/2,
+      // Y va de -size.y/2 a +size.y/2 (ojo: "alto" visual en Three es Y, pero para el backend
+      // mapeamos como plano superior X (largo) / Y (ancho)).
+      const x_mm = pLocal.x + size.x / 2;
+      const y_mm = pLocal.y + size.y / 2;
+
+      // Clampeamos dentro del 0..size
+      const x_clamped = Math.max(0, Math.min(x_mm, size.x));
+      const y_clamped = Math.max(0, Math.min(y_mm, size.y));
+
+      // Disparamos el evento global que escucha el formulario (ahora con y_mm también)
       window.dispatchEvent(
         new CustomEvent("forge:add-hole", {
-          detail: { x_mm: Math.max(0, Math.min(x_mm, size.x)), d_mm: 4 },
+          detail: { x_mm: x_clamped, y_mm: y_clamped, d_mm: 4 },
         })
       );
     };
