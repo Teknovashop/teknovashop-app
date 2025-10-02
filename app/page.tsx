@@ -1,107 +1,78 @@
+// /app/page.tsx
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
+import HeroPreview from "@/components/HeroPreview";
+import ExamplesSection from "@/components/ExamplesSection";
 
-export default function Home() {
+export default function HomePage() {
   return (
-    <main className="min-h-screen bg-gradient-to-b from-gray-50 to-white text-gray-900">
-      {/* Header */}
-      <header className="flex justify-between items-center px-6 py-4 shadow-sm bg-white">
-        <h1 className="text-xl font-bold">Teknovashop Forge</h1>
-        <Link
-          href="/forge"
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 transition"
-        >
-          Abrir Configurador
-        </Link>
+    <main className="min-h-screen bg-neutral-50 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
+      {/* Header simple (sin GitHub) */}
+      <header className="sticky top-0 z-20 border-b border-neutral-200/80 dark:border-neutral-800/60 bg-white/75 dark:bg-neutral-950/60 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
+          <span className="font-semibold">Teknovashop Forge</span>
+          <Link
+            href="/forge"
+            className="rounded-md bg-neutral-900 px-4 py-2 text-white hover:bg-neutral-700 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-100"
+          >
+            Abrir Configurador
+          </Link>
+        </div>
       </header>
 
       {/* Hero */}
-      <section className="grid md:grid-cols-2 gap-10 px-10 py-16 items-center">
-        <div>
-          <h2 className="text-4xl font-extrabold mb-4 leading-tight">
-            Genera <span className="text-blue-600">STL paramétricos</span> en segundos
-          </h2>
-          <p className="text-lg text-gray-600 mb-6">
-            Ajusta parámetros, previsualiza en 3D y descarga tu diseño. 
-            Diseñado para makers y empresas.
+      <section className="mx-auto grid max-w-7xl grid-cols-1 gap-8 px-4 py-12 md:grid-cols-2 md:items-center">
+        <div className="space-y-6">
+          <h1 className="text-3xl font-bold md:text-5xl">
+            Genera <span className="text-blue-600 dark:text-blue-400">STL</span>{" "}
+            paramétricos en segundos
+          </h1>
+          <p className="text-neutral-600 dark:text-neutral-400">
+            Ajusta parámetros, previsualiza en 3D y descarga. Diseñado para
+            makers y empresas que buscan piezas a medida sin perder tiempo.
           </p>
-          <Link
-            href="/forge"
-            className="inline-block px-6 py-3 bg-blue-600 text-white font-medium rounded-lg shadow hover:bg-blue-700 transition"
-          >
-            Empezar ahora
-          </Link>
-        </div>
+          <div className="flex gap-3">
+            <Link
+              href="/forge"
+              className="rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+            >
+              Empezar ahora
+            </Link>
+          </div>
 
-        {/* Vista previa del configurador */}
-        <div className="rounded-2xl shadow-lg border bg-white p-6 flex items-center justify-center">
-          <Image
-            src="/preview-configurator.png"
-            alt="Vista previa del configurador"
-            width={450}
-            height={350}
-            className="rounded-xl"
-          />
-        </div>
-      </section>
-
-      {/* Features */}
-      <section className="grid md:grid-cols-3 gap-6 px-10 mb-16 text-center">
-        <div className="p-6 rounded-xl bg-gray-100 shadow-sm">
-          <h3 className="font-bold mb-2">Rápido</h3>
-          <p className="text-gray-600 text-sm">STL al vuelo, optimizado para impresión.</p>
-        </div>
-        <div className="p-6 rounded-xl bg-gray-100 shadow-sm">
-          <h3 className="font-bold mb-2">Pro</h3>
-          <p className="text-gray-600 text-sm">Visor 3D con controles tipo CAD.</p>
-        </div>
-        <div className="p-6 rounded-xl bg-gray-100 shadow-sm">
-          <h3 className="font-bold mb-2">Escalable</h3>
-          <p className="text-gray-600 text-sm">Listo para licencias y packs.</p>
-        </div>
-      </section>
-
-      {/* Ejemplos */}
-      <section className="px-10 pb-20">
-        <h3 className="text-2xl font-bold mb-6">Ejemplos de piezas</h3>
-        <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-8">
-          {examples.map((ex, i) => (
-            <div key={i} className="rounded-xl overflow-hidden shadow hover:shadow-lg transition">
-              <Image
-                src={ex.img}
-                alt={ex.title}
-                width={400}
-                height={300}
-                className="w-full h-48 object-cover"
-              />
-              <div className="p-4 bg-white">
-                <h4 className="font-semibold">{ex.title}</h4>
-                <p className="text-sm text-gray-600">{ex.desc}</p>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-lg border border-neutral-200 bg-white/70 p-3 text-sm dark:border-neutral-800 dark:bg-neutral-900/60">
+              <div className="font-medium">Rápido</div>
+              <div className="text-neutral-500 dark:text-neutral-400">
+                STL al vuelo, optimizado para impresión.
               </div>
             </div>
-          ))}
+            <div className="rounded-lg border border-neutral-200 bg-white/70 p-3 text-sm dark:border-neutral-800 dark:bg-neutral-900/60">
+              <div className="font-medium">Pro</div>
+              <div className="text-neutral-500 dark:text-neutral-400">
+                Visor 3D con controles tipo CAD.
+              </div>
+            </div>
+            <div className="rounded-lg border border-neutral-200 bg-white/70 p-3 text-sm dark:border-neutral-800 dark:bg-neutral-900/60">
+              <div className="font-medium">Escalable</div>
+              <div className="text-neutral-500 dark:text-neutral-400">
+                Listo para licencias y packs.
+              </div>
+            </div>
+          </div>
         </div>
+
+        {/* Sólo la “vista previa del configurador” */}
+        <HeroPreview />
       </section>
+
+      {/* Ejemplos (con mini-comentarios de utilidad) */}
+      <ExamplesSection />
+
+      <footer className="mx-auto max-w-7xl px-4 py-10 text-sm text-neutral-500 dark:text-neutral-400">
+        © {new Date().getFullYear()} Teknovashop · Hecho para crear.
+      </footer>
     </main>
   );
 }
-
-const examples = [
-  {
-    img: "/examples/vesa.png",
-    title: "Adaptador VESA",
-    desc: "Soporte para monitores con patrón 75/100mm.",
-  },
-  {
-    img: "/examples/cable-tray.png",
-    title: "Bandeja de cables",
-    desc: "Organiza cables con un diseño paramétrico ajustable.",
-  },
-  {
-    img: "/examples/fan-guard.png",
-    title: "Protector de ventilador",
-    desc: "Diseño seguro para impresoras 3D y PCs.",
-  },
-];
