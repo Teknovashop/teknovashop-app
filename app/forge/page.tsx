@@ -1,15 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import dynamic from "next/dynamic";
+import nextDynamic from "next/dynamic";
 
-// Fuerza comportamiento dinámico para evitar pre-render SSR en Vercel
+// Evita prerender/ISR en esta ruta
 export const dynamic = "force-dynamic";
-export const revalidate = 0; // no SSG/ISR
+export const revalidate = 0;
 
-// 👉 Cargamos los componentes que usan Three con SSR desactivado
-const ForgeForm = dynamic(() => import("@/components/ForgeForm"), { ssr: false });
-const STLViewerPro = dynamic(() => import("@/components/STLViewerPro"), { ssr: false });
+// Cargamos componentes que usan Three con SSR desactivado
+const ForgeForm = nextDynamic(() => import("@/components/ForgeForm"), { ssr: false });
+const STLViewerPro = nextDynamic(() => import("@/components/STLViewerPro"), { ssr: false });
 
 export default function ForgePage() {
   const [stlUrl, setStlUrl] = useState<string | null>(null);
