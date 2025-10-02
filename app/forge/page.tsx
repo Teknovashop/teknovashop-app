@@ -1,12 +1,15 @@
 "use client";
 
 import { useState } from "react";
-// Importa los componentes cliente
-import ForgeForm from "@/components/ForgeForm";
-import STLViewerPro from "@/components/STLViewerPro";
+import dynamic from "next/dynamic";
 
 // Fuerza comportamiento dinámico para evitar pre-render SSR en Vercel
 export const dynamic = "force-dynamic";
+export const revalidate = 0; // no SSG/ISR
+
+// 👉 Cargamos los componentes que usan Three con SSR desactivado
+const ForgeForm = dynamic(() => import("@/components/ForgeForm"), { ssr: false });
+const STLViewerPro = dynamic(() => import("@/components/STLViewerPro"), { ssr: false });
 
 export default function ForgePage() {
   const [stlUrl, setStlUrl] = useState<string | null>(null);
