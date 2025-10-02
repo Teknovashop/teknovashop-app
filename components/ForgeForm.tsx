@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import STLViewerPro from "./STLViewerPro";
 
 type Hole = {
@@ -26,6 +26,11 @@ type GenerateRes = {
   object_key: string;
 };
 
+type Props = {
+  /** Callback opcional: se llama cuando el backend devuelve la URL del STL */
+  onGenerated?: (url: string) => void;
+};
+
 const MODELOS: { value: string; label: string }[] = [
   { value: "cable_tray", label: "Cable Tray" },
   { value: "vesa_adapter", label: "VESA Adapter" },
@@ -44,7 +49,7 @@ const THEMES = [
 const API_BASE =
   process.env.NEXT_PUBLIC_BACKEND_URL?.replace(/\/+$/, "") || "http://localhost:10000";
 
-export default function ForgeForm() {
+export default function ForgeForm({ onGenerated }: Props) {
   // UI
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [model, setModel] = useState<string>("cable_tray");
@@ -120,8 +125,13 @@ export default function ForgeForm() {
           throw new Error(`HTTP ${res.status} ${res.statusText} ${txt}`);
         }
         const data = (await res.json()) as GenerateRes;
+
         setStlUrl(data.stl_url);
         setLastObjectKey(data.object_key);
+
+        // 👉 Notificamos al padre si nos pasó el callback
+        onGenerated?.(data.stl_url);
+
         return data;
       } catch (e: any) {
         setErrorMsg(e?.message || "Error desconocido");
@@ -130,7 +140,7 @@ export default function ForgeForm() {
         setLoading(false);
       }
     },
-    [buildPayload]
+    [buildPayload, onGenerated]
   );
 
   const onPreview = async () => {
@@ -161,167 +171,147 @@ export default function ForgeForm() {
     setHoles((prev) => prev.filter((_, i) => i !== idx));
   };
 
-  const leftPanel = (
-    <div className="space-y-5">
-      {/* Tema del visor */}
-      <div className="grid gap-2">
-        <label className="text-sm text-neutral-300">Tema del visor</label>
-        <select
-          value={theme}
-          onChange={(e) => setTheme(e.target.value as "light" | "dark")}
-          className="bg-neutral-900 text-neutral-100 border border-neutral-700 rounded-md px-3 py-2"
-        >
-          {THEMES.map((t) => (
-            <option key={t.value} value={t.value}>
-              {t.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Modelo */}
-      <div className="grid gap-2">
-        <label className="text-sm text-neutral-300">Modelo</label>
-        <select
-          value={model}
-          onChange={(e) => setModel(e.target.value)}
-          className="bg-neutral-900 text-neutral-100 border border-neutral-700 rounded-md px-3 py-2"
-        >
-          {MODELOS.map((m) => (
-            <option key={m.value} value={m.value}>
-              {m.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Dimensiones */}
-      <div className="grid grid-cols-2 gap-4">
-        <FieldNumber
-          label="Largo (mm)"
-          value={lengthMM}
-          onChange={(v) => setLengthMM(v)}
-        />
-        <FieldNumber
-          label="Ancho (mm)"
-          value={widthMM}
-          onChange={(v) => setWidthMM(v)}
-        />
-        <FieldNumber
-          label="Alto (mm)"
-          value={heightMM}
-          onChange={(v) => setHeightMM(v)}
-        />
-        <FieldNumber
-          label="Grosor (mm)"
-          value={thicknessMM}
-          onChange={(v) => setThicknessMM(v)}
-        />
-      </div>
-
-      <FieldNumber
-        label="Redondeo bordes (mm)"
-        value={filletMM}
-        onChange={(v) => setFilletMM(v)}
-      />
-
-      {/* Agujeros */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <div className="text-sm text-neutral-300">Agujeros (vista superior)</div>
-          <button
-            ref={addHoleBtnRef}
-            onClick={onAddHoleRow}
-            className="text-xs px-2 py-1 rounded-md bg-neutral-800 text-neutral-100 border border-neutral-700"
-          >
-            + Añadir agujero
-          </button>
-        </div>
-        <p className="text-xs text-neutral-400">
-          Consejo: en el visor, pulsa <kbd className="px-1 py-0.5 bg-neutral-800 rounded border border-neutral-700">ALT</kbd> + clic
-          para añadir un agujero en esa posición (en mm). Puedes editar diámetro y posición aquí.
-        </p>
-
-        {holes.length === 0 ? (
-          <p className="text-sm text-neutral-500">
-            No hay agujeros. Pulsa “+ Añadir agujero” o usa ALT+clic en el visor.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {holes.map((h, i) => (
-              <div key={i} className="grid grid-cols-12 gap-2 items-center">
-                <div className="col-span-4">
-                  <SmallNumber
-                    label="x (mm)"
-                    value={h.x_mm}
-                    onChange={(v) => updateHole(i, { ...h, x_mm: v })}
-                  />
-                </div>
-                <div className="col-span-4">
-                  <SmallNumber
-                    label="y (mm)"
-                    value={h.y_mm}
-                    onChange={(v) => updateHole(i, { ...h, y_mm: v })}
-                  />
-                </div>
-                <div className="col-span-3">
-                  <SmallNumber
-                    label="Ø (mm)"
-                    value={h.d_mm}
-                    onChange={(v) => updateHole(i, { ...h, d_mm: v })}
-                  />
-                </div>
-                <div className="col-span-1 flex justify-end">
-                  <button
-                    onClick={() => onRemoveHole(i)}
-                    className="w-full text-xs px-2 py-2 rounded-md bg-neutral-800 text-neutral-100 border border-neutral-700"
-                  >
-                    ✕
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Acciones */}
-      <div className="flex gap-4">
-        <button
-          onClick={onPreview}
-          disabled={loading}
-          className="flex-1 px-4 py-3 rounded-md bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white font-medium"
-        >
-          {loading ? "Generando…" : "Previsualizar STL"}
-        </button>
-        <button
-          onClick={onDownload}
-          disabled={loading}
-          className="flex-1 px-4 py-3 rounded-md bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white font-medium"
-        >
-          {loading ? "Generando…" : "Descargar STL"}
-        </button>
-      </div>
-
-      {/* Info/errores */}
-      <div className="space-y-2">
-        {stlUrl && (
-          <div className="text-xs break-all text-neutral-400">
-            URL: <span className="underline">{stlUrl}</span>
-          </div>
-        )}
-        {errorMsg && <div className="text-sm text-red-400">Error: {errorMsg}</div>}
-      </div>
-    </div>
-  );
-
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Panel izquierdo */}
       <div className="rounded-xl bg-neutral-950 border border-neutral-800 p-5">
         <h2 className="text-neutral-100 text-lg font-semibold mb-4">Teknovashop Forge</h2>
-        {leftPanel}
+
+        <div className="space-y-5">
+          {/* Tema del visor */}
+          <div className="grid gap-2">
+            <label className="text-sm text-neutral-300">Tema del visor</label>
+            <select
+              value={theme}
+              onChange={(e) => setTheme(e.target.value as "light" | "dark")}
+              className="bg-neutral-900 text-neutral-100 border border-neutral-700 rounded-md px-3 py-2"
+            >
+              {THEMES.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Modelo */}
+          <div className="grid gap-2">
+            <label className="text-sm text-neutral-300">Modelo</label>
+            <select
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              className="bg-neutral-900 text-neutral-100 border border-neutral-700 rounded-md px-3 py-2"
+            >
+              {MODELOS.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Dimensiones */}
+          <div className="grid grid-cols-2 gap-4">
+            <FieldNumber label="Largo (mm)" value={lengthMM} onChange={(v) => setLengthMM(v)} />
+            <FieldNumber label="Ancho (mm)" value={widthMM} onChange={(v) => setWidthMM(v)} />
+            <FieldNumber label="Alto (mm)" value={heightMM} onChange={(v) => setHeightMM(v)} />
+            <FieldNumber label="Grosor (mm)" value={thicknessMM} onChange={(v) => setThicknessMM(v)} />
+          </div>
+
+          <FieldNumber label="Redondeo bordes (mm)" value={filletMM} onChange={(v) => setFilletMM(v)} />
+
+          {/* Agujeros */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-neutral-300">Agujeros (vista superior)</div>
+              <button
+                ref={addHoleBtnRef}
+                onClick={onAddHoleRow}
+                className="text-xs px-2 py-1 rounded-md bg-neutral-800 text-neutral-100 border border-neutral-700"
+              >
+                + Añadir agujero
+              </button>
+            </div>
+            <p className="text-xs text-neutral-400">
+              Consejo: en el visor, pulsa{" "}
+              <kbd className="px-1 py-0.5 bg-neutral-800 rounded border border-neutral-700">ALT</kbd> + clic
+              para añadir un agujero en esa posición (en mm). Puedes editar diámetro y posición aquí.
+            </p>
+
+            {holes.length === 0 ? (
+              <p className="text-sm text-neutral-500">
+                No hay agujeros. Pulsa “+ Añadir agujero” o usa ALT+clic en el visor.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {holes.map((h, i) => (
+                  <div key={i} className="grid grid-cols-12 gap-2 items-center">
+                    <div className="col-span-4">
+                      <SmallNumber
+                        label="x (mm)"
+                        value={h.x_mm}
+                        onChange={(v) => updateHole(i, { ...h, x_mm: v })}
+                      />
+                    </div>
+                    <div className="col-span-4">
+                      <SmallNumber
+                        label="y (mm)"
+                        value={h.y_mm}
+                        onChange={(v) => updateHole(i, { ...h, y_mm: v })}
+                      />
+                    </div>
+                    <div className="col-span-3">
+                      <SmallNumber
+                        label="Ø (mm)"
+                        value={h.d_mm}
+                        onChange={(v) => updateHole(i, { ...h, d_mm: v })}
+                      />
+                    </div>
+                    <div className="col-span-1 flex justify-end">
+                      <button
+                        onClick={() => onRemoveHole(i)}
+                        className="w-full text-xs px-2 py-2 rounded-md bg-neutral-800 text-neutral-100 border border-neutral-700"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Acciones */}
+          <div className="flex gap-4">
+            <button
+              onClick={onPreview}
+              disabled={loading}
+              className="flex-1 px-4 py-3 rounded-md bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white font-medium"
+            >
+              {loading ? "Generando…" : "Previsualizar STL"}
+            </button>
+            <button
+              onClick={onDownload}
+              disabled={loading}
+              className="flex-1 px-4 py-3 rounded-md bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white font-medium"
+            >
+              {loading ? "Generando…" : "Descargar STL"}
+            </button>
+          </div>
+
+          {/* Info/errores */}
+          <div className="space-y-2">
+            {stlUrl && (
+              <div className="text-xs break-all text-neutral-400">
+                URL: <span className="underline">{stlUrl}</span>
+              </div>
+            )}
+            {errorMsg && <div className="text-sm text-red-400">Error: {errorMsg}</div>}
+          </div>
+        </div>
       </div>
 
+      {/* Panel derecho (visor) */}
       <div className="rounded-xl bg-neutral-950 border border-neutral-800 p-2">
         <STLViewerPro
           url={stlUrl ?? null}
@@ -337,7 +327,7 @@ export default function ForgeForm() {
   }
 }
 
-// ---- Componentes de inputs ----
+/* ---------- Componentes de inputs ---------- */
 
 function FieldNumber({
   label,
@@ -385,7 +375,7 @@ function SmallNumber({
   );
 }
 
-// ---- Utilidades ----
+/* ---------- Utilidades ---------- */
 
 function parseNum(s: string): number {
   const v = Number(String(s).replace(",", "."));
