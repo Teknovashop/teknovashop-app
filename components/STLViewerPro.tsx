@@ -11,7 +11,6 @@ type Props = { url?: string | null; className?: string };
 export default function STLViewerPro({ url, className }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
 
-  // ✅ usamos any para evitar el error de compilación en Vercel
   const currentMeshRef = useRef<any>(null);
   const lastSizeRef = useRef<any>(null);
 
@@ -35,8 +34,7 @@ export default function STLViewerPro({ url, className }: Props) {
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
-    // @ts-expect-error legacy flag
-    renderer.physicallyCorrectLights = true;
+    renderer.physicallyCorrectLights = true; // ✅ sin @ts-expect-error
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
