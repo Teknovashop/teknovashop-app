@@ -1,35 +1,33 @@
 // app/layout.tsx
+import "./globals.css";
 import type { Metadata } from "next";
 import Link from "next/link";
-import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Teknovashop Forge",
-  description: "Generador de STL paramétricos en segundos",
+  description: "Genera STL paramétricos en segundos.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es">
       <body className="bg-neutral-50 text-neutral-900">
-        {/* NAV PRINCIPAL (único) */}
-        <header className="sticky top-0 z-50 backdrop-blur bg-neutral-900/90 text-neutral-100 border-b border-neutral-800">
-          <div className="mx-auto max-w-7xl px-4 h-14 flex items-center justify-between">
-            <div className="font-semibold">Teknovashop Forge</div>
-            <nav className="flex items-center gap-3">
-              <Link
-                href="/forge"
-                className="inline-flex items-center rounded-md bg-neutral-100 text-neutral-900 px-3 py-1.5 hover:bg-white border border-neutral-300"
-              >
-                Abrir Configurador
-              </Link>
-            </nav>
+        {/* Header único */}
+        <header className="sticky top-0 z-30 border-b border-neutral-200 bg-neutral-900 text-white">
+          <div className="mx-auto max-w-7xl px-4 py-3 flex items-center justify-between">
+            <Link href="/" className="font-semibold tracking-tight">Teknovashop Forge</Link>
+            <Link
+              href="/forge"
+              className="rounded-md bg-white px-3 py-1.5 text-sm font-medium text-neutral-900 hover:bg-neutral-100"
+            >
+              Abrir Configurador
+            </Link>
           </div>
         </header>
 
         <main className="mx-auto max-w-7xl px-4 py-10">{children}</main>
 
-        <footer className="mx-auto max-w-7xl px-4 py-12 text-sm text-neutral-500">
+        <footer className="mt-16 border-t border-neutral-200 py-8 text-center text-sm text-neutral-500">
           © {new Date().getFullYear()} Teknovashop · Hecho para crear
         </footer>
       </body>
