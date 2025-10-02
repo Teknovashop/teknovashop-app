@@ -1,50 +1,60 @@
-// app/page.tsx
+// /app/page.tsx
 "use client";
 
-import Link from "next/link";
 import ExamplesGrid from "@/components/ExamplesGrid";
 
 export default function HomePage() {
   return (
-    <>
-      {/* Hero claro con preview estática (solo marco) */}
-      <section className="mb-12 grid gap-8 lg:grid-cols-2">
-        <div className="flex flex-col justify-center">
-          <h1 className="text-4xl font-extrabold leading-tight">
-            Genera <span className="text-blue-600">STL</span> paramétricos en segundos
-          </h1>
-          <p className="mt-4 max-w-xl text-neutral-600">
-            Ajusta parámetros, previsualiza en 3D y descarga. Diseñado para makers y empresas
-            que buscan piezas a medida sin perder tiempo.
-          </p>
-          <div className="mt-6 flex gap-3">
-            <Link
-              href="/forge"
-              className="rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
-            >
-              Empezar ahora
-            </Link>
-            <a
-              href="#examples"
-              className="rounded-md border border-neutral-300 bg-white px-4 py-2 text-neutral-800 hover:bg-neutral-100"
-            >
-              Ver ejemplos
-            </a>
-          </div>
-        </div>
+    <main className="min-h-screen bg-neutral-50">
+      {/* Hero */}
+      <section className="border-b border-neutral-200 bg-white">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-16 grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
+          <div>
+            <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight">
+              Genera <span className="text-blue-600">STL</span> paramétricos en segundos
+            </h1>
+            <p className="mt-4 text-neutral-700">
+              Ajusta parámetros, previsualiza en 3D y descarga. Diseñado para makers y empresas que
+              buscan piezas a medida sin perder tiempo.
+            </p>
+            <div className="mt-6 flex gap-3">
+              <a
+                href="/forge"
+                className="rounded-md bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700"
+              >
+                Abrir Configurador
+              </a>
+            </div>
 
-        {/* “Preview” del configurador (estático pero elegante) */}
-        <div className="rounded-2xl border border-neutral-200 bg-neutral-100 p-6">
-          <div className="grid h-72 place-items-center rounded-xl border border-neutral-300 bg-white">
-            <div className="h-28 w-44 rounded-xl border-4 border-neutral-200 bg-neutral-100 shadow-inner" />
+            <div className="mt-8 grid grid-cols-3 gap-3">
+              <div className="rounded-lg border border-neutral-200 p-3">
+                <p className="font-medium">Rápido</p>
+                <p className="text-sm text-neutral-600">STL al vuelo, optimizado para impresión.</p>
+              </div>
+              <div className="rounded-lg border border-neutral-200 p-3">
+                <p className="font-medium">Pro</p>
+                <p className="text-sm text-neutral-600">Visor 3D con controles tipo CAD.</p>
+              </div>
+              <div className="rounded-lg border border-neutral-200 p-3">
+                <p className="font-medium">Escalable</p>
+                <p className="text-sm text-neutral-600">Listo para licencias y packs.</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Panel de preview puramente visual */}
+          <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-6">
+            <div className="w-full aspect-[16/9] rounded-xl border border-neutral-200 bg-neutral-100 grid place-items-center">
+              <div className="w-2/3 h-2/3 rounded-xl border-4 border-neutral-300 bg-neutral-200 grid place-items-center">
+                <div className="w-1/2 h-1/2 rounded-lg border-4 border-neutral-300 bg-neutral-100" />
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      <section id="examples" className="scroll-mt-24">
-        <h2 className="mb-6 text-2xl font-bold">Ejemplos de piezas</h2>
-        <ExamplesGrid />
-      </section>
-    </>
+      {/* Grid dinámico de ejemplos */}
+      <ExamplesGrid />
+    </main>
   );
 }
