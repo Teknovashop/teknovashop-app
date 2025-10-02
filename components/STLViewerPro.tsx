@@ -6,12 +6,15 @@ import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 
+// ✅ Importamos tipos de THREE explícitamente
+import type { Mesh, Vector3 } from "three";
+
 type Props = { url?: string | null; className?: string };
 
 export default function STLViewerPro({ url, className }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
-  const currentMeshRef = useRef<THREE.Mesh | null>(null);
-  const lastSizeRef = useRef<THREE.Vector3 | null>(null); // dimensiones del STL centrado
+  const currentMeshRef = useRef<Mesh | null>(null);
+  const lastSizeRef = useRef<Vector3 | null>(null); // dimensiones del STL centrado
 
   const [shadows, setShadows] = useState(true);
   const [tone, setTone] = useState(1.0);
@@ -26,7 +29,10 @@ export default function STLViewerPro({ url, className }: Props) {
     const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 2000);
     camera.position.set(220, 180, 220);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      powerPreference: "high-performance",
+    });
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
@@ -156,7 +162,7 @@ export default function STLViewerPro({ url, className }: Props) {
     three.renderer.clippingPlanes = clipping ? three.planes : [];
   }, [clipping, three]);
 
-  // --- Carga STL con fetch + parse (evita CORS raros de URLs firmadas) ---
+  // --- Carga STL ---
   useEffect(() => {
     const { group, scene, camera, controls, renderer } = three;
     group.clear();
@@ -186,7 +192,6 @@ export default function STLViewerPro({ url, className }: Props) {
         geometry.computeVertexNormals();
         geometry.center();
 
-        // Colocar sobre suelo
         const box3 = new THREE.Box3().setFromObject(mesh);
         const size = new THREE.Vector3();
         box3.getSize(size);
@@ -198,7 +203,6 @@ export default function STLViewerPro({ url, className }: Props) {
         group.add(mesh);
         currentMeshRef.current = mesh;
 
-        // Framing de cámara
         const radius = size.length() * 0.5 || 1;
         const fov = camera.fov * (Math.PI / 180);
         const dist = radius / Math.sin(fov / 2);
@@ -213,7 +217,6 @@ export default function STLViewerPro({ url, className }: Props) {
         renderer.render(scene, camera);
       } catch (e) {
         console.error("Error cargando STL:", e);
-        // No lanzamos nada: la UI ya enseña el error del fetch original si procede
       }
     })();
 
@@ -222,7 +225,7 @@ export default function STLViewerPro({ url, className }: Props) {
     };
   }, [url, three]);
 
-  // --- ALT + clic: calcular X (mm) en coordenadas del modelo y avisar al formulario ---
+  // --- ALT+click: marcar agujero ---
   useEffect(() => {
     const el = mountRef.current;
     if (!el) return;
@@ -245,10 +248,8 @@ export default function STLViewerPro({ url, className }: Props) {
       if (!intersects.length) return;
 
       const p = intersects[0].point.clone();
-      // El STL está centrado; X va de -size.x/2 a +size.x/2
-      const x_mm = (p.x + size.x / 2) * 1; // factor 1: unidades ya en mm
+      const x_mm = (p.x + size.x / 2) * 1;
 
-      // Disparar evento global que escucha el formulario
       window.dispatchEvent(
         new CustomEvent("forge:add-hole", {
           detail: { x_mm: Math.max(0, Math.min(x_mm, size.x)), d_mm: 4 },
