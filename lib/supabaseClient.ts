@@ -1,19 +1,11 @@
-// lib/supabaseClient.ts
+// lib/supabaseClient.ts (lazy/SSR-safe)
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 let _client: SupabaseClient | null = null;
 
-/**
- * Obtiene el cliente de Supabase solo en cliente (navegador).
- * En SSR/build devuelve null para evitar errores de entorno.
- */
 export function getSupabase(): SupabaseClient | null {
-  if (typeof window === 'undefined') {
-    // Estamos en SSR / build: no crear cliente aquí
-    return null;
-  }
+  if (typeof window === 'undefined') return null;
   if (_client) return _client;
-
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !anon) {

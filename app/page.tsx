@@ -1,7 +1,7 @@
-// app/page.tsx — página principal (hero + ejemplos + precios)
-export const dynamic = 'force-dynamic'; // evita que Next intente prerenderizar con envs faltantes
+// app/page.tsx — home (usa STLViewerPro como preview)
+export const dynamic = 'force-dynamic';
 
-import STLViewer from '@/components/STLViewer';
+import STLViewerPro from '@/components/STLViewerPro';
 import GenerateForm from '@/components/GenerateForm';
 import ModelGrid from '@/components/ModelGrid';
 import Pricing from '@/components/Pricing';
@@ -14,8 +14,8 @@ export default function Page() {
         <div className="container mx-auto px-4 max-w-6xl">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
             <div className="rounded-2xl p-4 md:p-6 bg-white/5 border border-white/10">
-              {/* Vista previa del configurador */}
-              <STLViewer />
+              {/* Vista previa del configurador (Pro) */}
+              <STLViewerPro />
             </div>
             <div className="rounded-2xl p-4 md:p-6 bg-white/5 border border-white/10">
               {/* Controles esenciales */}
