@@ -1,10 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Ajustes finos */
 :root {
-  --page-bg: #ffffff;
-  --section-tint: #f4f7fb;
   --ink: #0b1526;
   --muted: #6b7280;
 }
-html, body {
-  background: var(--page-bg);
-  color: var(--ink);
-}
+
+html, body { scroll-behavior: smooth; }
