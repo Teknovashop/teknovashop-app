@@ -12,7 +12,7 @@ type Props = { url?: string | null; className?: string };
 export default function STLViewerPro({ url, className }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
 
-  // Usamos `any` para compatibilidad con las tipificaciones de three en Vercel
+  // Compatibilidad de tipos en Vercel
   const currentMeshRef = useRef<any>(null);
   const lastSizeRef = useRef<any>(null); // { x, y, z } del bounding box centrado
 
@@ -48,7 +48,7 @@ export default function STLViewerPro({ url, className }: Props) {
     const group = new THREE.Group();
     scene.add(group);
 
-    // Grid y ejes (solo referencia visual)
+    // Grid + ejes
     const grid = new THREE.GridHelper(1000, 40, 0x333333, 0x202020);
     const gm: any = (grid as any).material;
     if (Array.isArray(gm)) gm.forEach((m: any) => ((m.transparent = true), (m.opacity = 0.35)));
@@ -62,7 +62,7 @@ export default function STLViewerPro({ url, className }: Props) {
     axes.position.set(-120, 0, -120);
     scene.add(axes);
 
-    // Iluminación y entorno
+    // Entorno + luces
     const pmrem = new THREE.PMREMGenerator(renderer);
     const envStudio = pmrem.fromScene(new RoomEnvironment()).texture;
     scene.environment = envStudio;
@@ -85,7 +85,7 @@ export default function STLViewerPro({ url, className }: Props) {
     plane.receiveShadow = true;
     scene.add(plane);
 
-    // Planos de recorte (opcional)
+    // Clipping opcional
     const planes = [
       new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0),
       new THREE.Plane(new THREE.Vector3(0, -1, 0), 0),
@@ -130,7 +130,7 @@ export default function STLViewerPro({ url, className }: Props) {
     };
   }, [three]);
 
-  // Toggles de render
+  // Toggles
   useEffect(() => {
     three.renderer.shadowMap.enabled = shadows;
     (three.dir as any).castShadow = shadows;
@@ -166,7 +166,7 @@ export default function STLViewerPro({ url, className }: Props) {
     three.renderer.clippingPlanes = clipping ? three.planes : [];
   }, [clipping, three]);
 
-  // Carga del STL (desde URL firmada)
+  // Carga STL
   useEffect(() => {
     const { group, scene, camera, controls, renderer } = three;
     group.clear();
@@ -193,18 +193,17 @@ export default function STLViewerPro({ url, className }: Props) {
         const mesh = new THREE.Mesh(geometry, material);
         mesh.castShadow = true;
 
-        // Normalizamos la malla
+        // Normaliza
         geometry.computeVertexNormals();
         geometry.center();
 
-        // Bounding box en LOCAL (tras center())
         geometry.computeBoundingBox();
         const gbox = geometry.boundingBox!;
         const size = new THREE.Vector3();
         gbox.getSize(size);
         lastSizeRef.current = { x: size.x, y: size.y, z: size.z };
 
-        // Apoyar en suelo
+        // Apoyar en el suelo
         const minY = gbox.min.y;
         mesh.position.y -= minY;
 
@@ -276,28 +275,36 @@ export default function STLViewerPro({ url, className }: Props) {
     return () => el.removeEventListener("click", onClick);
   }, [three]);
 
-  // --- Utilidad segura para exportar a Blob desde STLExporter (fix tipado) ---
+  // --- Helper: crea un Blob válido desde la salida del STLExporter ---
   function blobFromExporterOutput(output: unknown): Blob {
-    // Puede ser ArrayBuffer, DataView o string dependiendo de tipos/versiones
     const type = "model/stl";
+
+    // 1) ArrayBuffer
     if (output instanceof ArrayBuffer) {
       return new Blob([output], { type });
     }
-    // @ts-expect-error: detectar DataView aunque TS no lo tipa en lib dom
-    if (typeof DataView !== "undefined" && output instanceof DataView) {
-      // @ts-ignore
-      return new Blob([output.buffer], { type });
+
+    // 2) DataView-like (duck-typing: objeto con .buffer ArrayBuffer)
+    if (
+      typeof output === "object" &&
+      output !== null &&
+      "buffer" in (output as any) &&
+      (output as any).buffer instanceof ArrayBuffer
+    ) {
+      return new Blob([(output as any).buffer as ArrayBuffer], { type });
     }
+
+    // 3) string
     if (typeof output === "string") {
       return new Blob([output], { type });
     }
-    // última red: castear a any y probar .buffer
-    const anyOut: any = output as any;
-    if (anyOut?.buffer instanceof ArrayBuffer) {
-      return new Blob([anyOut.buffer], { type });
+
+    // 4) último recurso: intentar crear el blob directamente
+    try {
+      return new Blob([output as any], { type });
+    } catch {
+      return new Blob([], { type });
     }
-    // fallback
-    return new Blob([], { type });
   }
 
   // Exportar a STL lo que se ve
