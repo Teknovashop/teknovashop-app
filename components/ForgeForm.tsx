@@ -18,13 +18,9 @@ type Params = {
 type Hole = { x_mm: number; y_mm: number; d_mm: number };
 
 type Props = {
-  /** Modelo inicial (ej. "cable_tray" | "vesa_adapter" | "router_mount" | "camera_mount" | "wall_bracket") */
   initialModel?: string;
-  /** Parámetros iniciales (si llegan por query en /forge) */
   initialParams?: Params;
-  /** Agujeros iniciales (si llegan por query) */
   initialHoles?: Hole[];
-  /** Callback cuando el backend devuelve el STL */
   onGenerated?: (url: string) => void;
 };
 
@@ -39,6 +35,9 @@ const MODEL_OPTIONS = [
 function n(v: any, def: number): number {
   const x = Number(v);
   return Number.isFinite(x) ? x : def;
+}
+function clamp(x: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, x));
 }
 
 export default function ForgeForm({
@@ -73,10 +72,17 @@ export default function ForgeForm({
     return () => window.removeEventListener("forge:add-hole", onAdd as any);
   }, [width_mm]);
 
-  const params: Params = useMemo(
-    () => ({ length_mm, width_mm, height_mm, thickness_mm, fillet_mm }),
-    [length_mm, width_mm, height_mm, thickness_mm, fillet_mm]
-  );
+  // Parámetros calculados y normalizados
+  const params: Params = useMemo(() => {
+    const p: Params = {
+      length_mm: clamp(Number(length_mm) || 0, 1, 5000),
+      width_mm: clamp(Number(width_mm) || 0, 1, 5000),
+      height_mm: clamp(Number(height_mm) || 0, 1, 5000),
+      thickness_mm: clamp(Number(thickness_mm) || 1, 0.2, 100),
+      fillet_mm: clamp(Number(fillet_mm) || 0, 0, 200),
+    };
+    return p;
+  }, [length_mm, width_mm, height_mm, thickness_mm, fillet_mm]);
 
   const canGenerate = API_BASE.length > 0;
 
@@ -90,15 +96,54 @@ export default function ForgeForm({
     }
     setBusy(true);
     try {
+      // Enviar parámetros con nombres alternativos por compatibilidad:
+      const payload = {
+        model,
+        params: {
+          // nombres “oficiales”
+          length_mm: params.length_mm,
+          width_mm: params.width_mm,
+          height_mm: params.height_mm,
+          thickness_mm: params.thickness_mm,
+          fillet_mm: params.fillet_mm,
+          // alias comunes por si el backend los espera
+          length: params.length_mm,
+          width: params.width_mm,
+          height: params.height_mm,
+          wall: params.thickness_mm,
+          fillet: params.fillet_mm,
+        },
+        holes: holes.map((h) => ({
+          x_mm: Number(h.x_mm),
+          y_mm: Number(h.y_mm),
+          d_mm: Number(h.d_mm),
+        })),
+      };
+
       const res = await fetch(`${API_BASE}/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model, params, holes }),
+        body: JSON.stringify(payload),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.detail || json?.error || `HTTP ${res.status}`);
-      if (json?.stl_url && typeof onGenerated === "function") {
-        onGenerated(json.stl_url as string);
+
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json?.detail || json?.error || `HTTP ${res.status}`);
+      }
+
+      // Soportamos varias respuestas posibles del backend
+      const url: string | undefined =
+        json?.stl_url || json?.signed_url || json?.url;
+      if (url) {
+        // notifica al padre
+        if (typeof onGenerated === "function") onGenerated(url);
+        // también emitir un evento por si alguien lo escucha
+        window.dispatchEvent(new CustomEvent("forge:generated-url", { detail: { url } }));
+      } else if (json?.path) {
+        // Si el server devuelve solo la ruta (en Supabase), emite el path
+        window.dispatchEvent(new CustomEvent("forge:generated-path", { detail: { path: json.path } }));
+      } else {
+        throw new Error("Respuesta inesperada del backend");
       }
     } catch (e: any) {
       setError(e?.message || "No se pudo generar el STL");
@@ -107,23 +152,19 @@ export default function ForgeForm({
     }
   }, [model, params, holes, onGenerated, canGenerate]);
 
-  // Auto-generar si viene ?autogenerate=1 en la URL
+  // Auto-generar si viene ?autogenerate=1
   useEffect(() => {
     try {
       const usp = new URLSearchParams(window.location.search);
       const auto = usp.get("autogenerate");
       if (auto === "1") {
-        // También podemos inyectar holes desde query si vienen
         const holesStr = usp.get("holes");
         if (holesStr) {
           try {
             const parsed = JSON.parse(decodeURIComponent(holesStr));
-            if (Array.isArray(parsed)) {
-              setHoles(parsed.filter(Boolean));
-            }
+            if (Array.isArray(parsed)) setHoles(parsed.filter(Boolean));
           } catch {}
         }
-        // Disparo
         handleGenerate();
       }
     } catch {}
@@ -180,7 +221,7 @@ export default function ForgeForm({
 
         <label className="text-sm">
           <span className="mb-1 block text-neutral-600">Alto (mm)</span>
-          <input
+        <input
             type="number"
             className="w-full rounded-md border border-neutral-300 px-3 py-2"
             value={height_mm}
@@ -196,7 +237,7 @@ export default function ForgeForm({
             className="w-full rounded-md border border-neutral-300 px-3 py-2"
             value={thickness_mm}
             onChange={(e) => setThickness(n(e.target.value, thickness_mm))}
-            min={1}
+            min={0.2}
             step={0.5}
           />
         </label>
