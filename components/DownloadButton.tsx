@@ -21,32 +21,20 @@ export default function DownloadButton({ path, fileName }: Props) {
     setErr(null);
     setLoading(true);
     try {
-      const hasPublic =
-        !!process.env.NEXT_PUBLIC_SUPABASE_URL &&
-        !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      const hasPublic = !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
       if (hasPublic) {
-        // vía Supabase (cliente)
         const supabase = getSupabase();
         if (!supabase) throw new Error('Disponible solo en el navegador.');
         const bucket = process.env.NEXT_PUBLIC_SUPABASE_BUCKET || 'forge-stl';
-        const { data, error } = await supabase.storage
-          .from(bucket)
-          .createSignedUrl(path, 120);
+        const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 120);
         if (error) throw error;
         if (!data?.signedUrl) throw new Error('No se pudo generar enlace firmado');
         download(data.signedUrl);
       } else {
-        // fallback: proxy a backend (Render)
-        const r = await fetch(`/api/files/signed-url?path=${encodeURIComponent(path)}`, {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-          cache: 'no-store',
-        });
-        if (!r.ok) {
-          const t = await r.text();
-          throw new Error(t || 'No se pudo obtener signed URL');
-        }
+        // Fallback a backend (Render) mediante proxy interno
+        const r = await fetch(`/api/files/signed-url?path=${encodeURIComponent(path)}`, { cache: 'no-store' });
+        if (!r.ok) throw new Error(await r.text());
         const j = await r.json(); // { signed_url }
         if (!j?.signed_url) throw new Error('Respuesta inválida del backend');
         download(j.signed_url);
