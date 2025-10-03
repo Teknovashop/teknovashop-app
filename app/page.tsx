@@ -1,60 +1,46 @@
-// /app/page.tsx
-"use client";
+// app/page.tsx — página principal completa (hero + ejemplos + precios)
+import STLViewer from '@/components/STLViewer';
+import GenerateForm from '@/components/GenerateForm';
+import ModelGrid from '@/components/ModelGrid';
+import Pricing from '@/components/Pricing';
 
-import ExamplesGrid from "@/components/ExamplesGrid";
-
-export default function HomePage() {
+export default function Page() {
   return (
-    <main className="min-h-screen bg-neutral-50">
-      {/* Hero */}
-      <section className="border-b border-neutral-200 bg-white">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-16 grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
-          <div>
-            <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight">
-              Genera <span className="text-blue-600">STL</span> paramétricos en segundos
-            </h1>
-            <p className="mt-4 text-neutral-700">
-              Ajusta parámetros, previsualiza en 3D y descarga. Diseñado para makers y empresas que
-              buscan piezas a medida sin perder tiempo.
-            </p>
-            <div className="mt-6 flex gap-3">
-              <a
-                href="/forge"
-                className="rounded-md bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700"
-              >
-                Abrir Configurador
-              </a>
+    <main className="min-h-screen">
+      {/* HERO */}
+      <section className="relative py-10 md:py-14">
+        <div className="container mx-auto px-4 max-w-6xl">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+            <div className="rounded-2xl p-4 md:p-6 bg-white/5 border border-white/10">
+              {/* Vista previa del configurador */}
+              <STLViewer />
             </div>
-
-            <div className="mt-8 grid grid-cols-3 gap-3">
-              <div className="rounded-lg border border-neutral-200 p-3">
-                <p className="font-medium">Rápido</p>
-                <p className="text-sm text-neutral-600">STL al vuelo, optimizado para impresión.</p>
-              </div>
-              <div className="rounded-lg border border-neutral-200 p-3">
-                <p className="font-medium">Pro</p>
-                <p className="text-sm text-neutral-600">Visor 3D con controles tipo CAD.</p>
-              </div>
-              <div className="rounded-lg border border-neutral-200 p-3">
-                <p className="font-medium">Escalable</p>
-                <p className="text-sm text-neutral-600">Listo para licencias y packs.</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Panel de preview puramente visual */}
-          <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-6">
-            <div className="w-full aspect-[16/9] rounded-xl border border-neutral-200 bg-neutral-100 grid place-items-center">
-              <div className="w-2/3 h-2/3 rounded-xl border-4 border-neutral-300 bg-neutral-200 grid place-items-center">
-                <div className="w-1/2 h-1/2 rounded-lg border-4 border-neutral-300 bg-neutral-100" />
-              </div>
+            <div className="rounded-2xl p-4 md:p-6 bg-white/5 border border-white/10">
+              {/* Controles esenciales */}
+              <GenerateForm compact />
+              <p className="mt-4 text-sm text-black/60 md:text-white/70">
+                Consejo: cambia 1–2 parámetros y visualiza el resultado antes de seguir.
+              </p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Grid dinámico de ejemplos */}
-      <ExamplesGrid />
+      {/* EJEMPLOS */}
+      <section className="py-8 md:py-12">
+        <div className="container mx-auto px-4 max-w-6xl">
+          <h2 className="text-xl md:text-2xl font-semibold mb-4">Ejemplos de piezas</h2>
+          <ModelGrid />
+        </div>
+      </section>
+
+      {/* PRECIOS */}
+      <section className="py-8 md:py-12">
+        <div className="container mx-auto px-4 max-w-6xl">
+          <h2 className="text-xl md:text-2xl font-semibold mb-4">Precios</h2>
+          <Pricing />
+        </div>
+      </section>
     </main>
   );
 }

@@ -9,7 +9,7 @@ export default function DownloadButton({ path, fileName }: { path: string; fileN
     setErr(null); setLoading(true);
     try {
       const bucket = process.env.NEXT_PUBLIC_SUPABASE_BUCKET || 'forge-stl';
-      const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 60);
+      const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 120);
       if (error) throw error;
       const url = data?.signedUrl;
       if (!url) throw new Error('No signed URL');
@@ -28,10 +28,10 @@ export default function DownloadButton({ path, fileName }: { path: string; fileN
   return (
     <div className="inline-flex flex-col items-start gap-2">
       <button onClick={onClick} disabled={loading}
-        className="px-4 py-2 rounded-2xl bg-white/10 hover:bg-white/20 transition shadow border border-white/10 backdrop-blur active:scale-95">
+        className="px-4 py-2 rounded-2xl bg-black/10 md:bg-white/10 hover:bg-black/20 md:hover:bg-white/20 transition shadow border border-black/10 md:border-white/10 backdrop-blur active:scale-95">
         {loading ? 'Generando enlace…' : 'Descargar STL'}
       </button>
-      {err && <span className="text-sm text-red-400">{err}</span>}
+      {err && <span className="text-sm text-red-500">{err}</span>}
     </div>
   );
 }
