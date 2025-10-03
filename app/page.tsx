@@ -1,4 +1,6 @@
-// app/page.tsx — página principal completa (hero + ejemplos + precios)
+// app/page.tsx — página principal (hero + ejemplos + precios)
+export const dynamic = 'force-dynamic'; // evita que Next intente prerenderizar con envs faltantes
+
 import STLViewer from '@/components/STLViewer';
 import GenerateForm from '@/components/GenerateForm';
 import ModelGrid from '@/components/ModelGrid';
