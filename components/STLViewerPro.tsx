@@ -276,14 +276,38 @@ export default function STLViewerPro({ url, className }: Props) {
     return () => el.removeEventListener("click", onClick);
   }, [three]);
 
+  // --- Utilidad segura para exportar a Blob desde STLExporter (fix tipado) ---
+  function blobFromExporterOutput(output: unknown): Blob {
+    // Puede ser ArrayBuffer, DataView o string dependiendo de tipos/versiones
+    const type = "model/stl";
+    if (output instanceof ArrayBuffer) {
+      return new Blob([output], { type });
+    }
+    // @ts-expect-error: detectar DataView aunque TS no lo tipa en lib dom
+    if (typeof DataView !== "undefined" && output instanceof DataView) {
+      // @ts-ignore
+      return new Blob([output.buffer], { type });
+    }
+    if (typeof output === "string") {
+      return new Blob([output], { type });
+    }
+    // última red: castear a any y probar .buffer
+    const anyOut: any = output as any;
+    if (anyOut?.buffer instanceof ArrayBuffer) {
+      return new Blob([anyOut.buffer], { type });
+    }
+    // fallback
+    return new Blob([], { type });
+  }
+
   // Exportar a STL lo que se ve
   function downloadCurrentSTL(fileName = "modelo.stl") {
     try {
       const exporter = new STLExporter();
       const object: any = currentMeshRef.current || three.group || three.scene;
       if (!object) throw new Error("No hay malla para exportar");
-      const binary = exporter.parse(object, { binary: true }) as ArrayBuffer;
-      const blob = new Blob([binary], { type: "model/stl" });
+      const output = exporter.parse(object, { binary: true } as any);
+      const blob = blobFromExporterOutput(output);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
