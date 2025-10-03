@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import { STLExporter } from "three/examples/jsm/exporters/STLExporter.js";
 
 type Props = { url?: string | null; className?: string };
 
@@ -192,28 +193,25 @@ export default function STLViewerPro({ url, className }: Props) {
         const mesh = new THREE.Mesh(geometry, material);
         mesh.castShadow = true;
 
-        // Normalizamos la malla: suavizar normales, centrar, y apoyar en el suelo (Y=0)
+        // Normalizamos la malla
         geometry.computeVertexNormals();
         geometry.center();
 
-        // Calculamos bounding box en LOCAL (tras center())
+        // Bounding box en LOCAL (tras center())
         geometry.computeBoundingBox();
         const gbox = geometry.boundingBox!;
         const size = new THREE.Vector3();
         gbox.getSize(size);
-
-        // Guardamos tamaño para mapear a mm 0..L,0..W
         lastSizeRef.current = { x: size.x, y: size.y, z: size.z };
 
-        // Subimos la malla para que su base toque el suelo (Y=0 en Three)
-        // OJO: en backend Z es "alto"; aquí usamos Y como "alto" visual. No afecta al mapeo X/Y en mm.
+        // Apoyar en suelo
         const minY = gbox.min.y;
         mesh.position.y -= minY;
 
         group.add(mesh);
         currentMeshRef.current = mesh;
 
-        // Encuadre de cámara
+        // Encuadre cámara
         const radius = size.length() * 0.5 || 1;
         const fov = camera.fov * (Math.PI / 180);
         const dist = radius / Math.sin(fov / 2);
@@ -236,7 +234,7 @@ export default function STLViewerPro({ url, className }: Props) {
     };
   }, [url, three]);
 
-  // ALT + clic: convertir a coordenadas LOCALES del modelo y disparar evento con x_mm e y_mm
+  // ALT + clic → añade agujero
   useEffect(() => {
     const el = mountRef.current;
     if (!el) return;
@@ -246,7 +244,6 @@ export default function STLViewerPro({ url, className }: Props) {
 
     const onClick = (ev: MouseEvent) => {
       if (!ev.altKey) return;
-
       const mesh = currentMeshRef.current;
       const size = lastSizeRef.current;
       if (!mesh || !size) return;
@@ -259,22 +256,15 @@ export default function STLViewerPro({ url, className }: Props) {
       const intersects = raycaster.intersectObject(mesh, true);
       if (!intersects.length) return;
 
-      // Punto de intersección en MUNDO → pasamos a LOCAL del mesh
       const pWorld = intersects[0].point.clone();
       const pLocal = pWorld.clone();
       mesh.worldToLocal(pLocal);
 
-      // El geometry ya está centrado: X va de -size.x/2 a +size.x/2,
-      // Y va de -size.y/2 a +size.y/2 (ojo: "alto" visual en Three es Y, pero para el backend
-      // mapeamos como plano superior X (largo) / Y (ancho)).
       const x_mm = pLocal.x + size.x / 2;
       const y_mm = pLocal.y + size.y / 2;
-
-      // Clampeamos dentro del 0..size
       const x_clamped = Math.max(0, Math.min(x_mm, size.x));
       const y_clamped = Math.max(0, Math.min(y_mm, size.y));
 
-      // Disparamos el evento global que escucha el formulario (ahora con y_mm también)
       window.dispatchEvent(
         new CustomEvent("forge:add-hole", {
           detail: { x_mm: x_clamped, y_mm: y_clamped, d_mm: 4 },
@@ -286,10 +276,32 @@ export default function STLViewerPro({ url, className }: Props) {
     return () => el.removeEventListener("click", onClick);
   }, [three]);
 
+  // Exportar a STL lo que se ve
+  function downloadCurrentSTL(fileName = "modelo.stl") {
+    try {
+      const exporter = new STLExporter();
+      const object: any = currentMeshRef.current || three.group || three.scene;
+      if (!object) throw new Error("No hay malla para exportar");
+      const binary = exporter.parse(object, { binary: true }) as ArrayBuffer;
+      const blob = new Blob([binary], { type: "model/stl" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error(e);
+      alert("No se pudo exportar el STL");
+    }
+  }
+
   return (
     <div ref={mountRef} className={className ?? "h-[70vh] w-full relative rounded-xl overflow-hidden bg-black"}>
       {/* HUD */}
-      <div className="pointer-events-auto absolute top-3 left-3 z-10 flex items-center gap-3 text-xs">
+      <div className="pointer-events-auto absolute top-3 left-3 z-10 flex flex-wrap items-center gap-3 text-xs">
         <button
           onClick={() => setShadows((s) => !s)}
           className="px-2 py-1 rounded-md bg-neutral-800 text-neutral-100 border border-neutral-700"
@@ -328,6 +340,14 @@ export default function STLViewerPro({ url, className }: Props) {
           <span>Fondo claro</span>
           <input type="checkbox" checked={bgLight} onChange={(e) => setBgLight(e.target.checked)} />
         </label>
+
+        {/* Descargar STL del viewer */}
+        <button
+          onClick={() => downloadCurrentSTL()}
+          className="px-3 py-1 rounded bg-neutral-900/80 text-white hover:bg-neutral-900 border border-neutral-700"
+        >
+          Descargar STL
+        </button>
       </div>
     </div>
   );
