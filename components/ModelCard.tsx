@@ -5,14 +5,25 @@ import type { ForgeModel } from '@/data/models';
 
 export default function ModelCard({ m }: { m: ForgeModel }) {
   return (
-    <div className="bg-white/5 rounded-2xl p-4 shadow border border-white/10">
-      <div className="relative w-full aspect-video rounded-xl overflow-hidden mb-3">
+    <div className="group rounded-3xl bg-white border border-[#e6eaf2] shadow-sm hover:shadow-md transition overflow-hidden">
+      <div className="relative w-full aspect-[16/9] bg-[#f4f7fb]">
         <Image src={m.thumbnail} alt={m.name} fill className="object-cover" />
       </div>
-      <h3 className="text-lg font-semibold mb-1">{m.name}</h3>
-      <p className="text-sm text-black/70 md:text-white/70 mb-3">{m.description}</p>
-      {m.tips && <ul className="text-xs text-black/60 md:text-white/60 mb-4 list-disc pl-5 space-y-1">{m.tips.map((t,i)=>(<li key={i}>{t}</li>))}</ul>}
-      <DownloadButton path={m.stlPath} fileName={`${m.slug}.stl`} />
+
+      <div className="p-5">
+        <h3 className="text-lg font-semibold text-[#0b1526]">{m.name}</h3>
+        <p className="mt-1 text-sm text-[#6b7280]">{m.description}</p>
+
+        {m.tips && (
+          <ul className="mt-3 text-xs text-[#6b7280] space-y-1 list-disc pl-5">
+            {m.tips.map((t, i) => <li key={i}>{t}</li>)}
+          </ul>
+        )}
+
+        <div className="mt-4">
+          <DownloadButton path={m.stlPath} fileName={`${m.slug}.stl`} />
+        </div>
+      </div>
     </div>
   );
 }
