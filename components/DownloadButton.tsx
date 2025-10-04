@@ -1,61 +1,63 @@
-'use client';
-import { useState } from 'react';
-import { getSupabase } from '@/lib/supabaseClient';
+"use client";
 
-type Props = { path: string; fileName?: string };
+import { useState } from "react";
 
-export default function DownloadButton({ path, fileName }: Props) {
+export default function DownloadButton({
+  path,
+  fileName,
+  className,
+}: {
+  path: string;
+  fileName: string;
+  className?: string;
+}) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const download = (url: string) => {
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = fileName ?? path.split('/').pop() ?? 'model.stl';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  };
+  // Normaliza "public/foo.stl" -> "foo.stl" y quita barras iniciales
+  function normalizeKey(p: string) {
+    return p.replace(/^\/+/, "").replace(/^public\//, "");
+  }
 
   const onClick = async () => {
     setErr(null);
     setLoading(true);
     try {
-      const hasPublic = !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-      if (hasPublic) {
-        const supabase = getSupabase();
-        if (!supabase) throw new Error('Disponible solo en el navegador.');
-        const bucket = process.env.NEXT_PUBLIC_SUPABASE_BUCKET || 'forge-stl';
-        const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 120);
-        if (error) throw error;
-        if (!data?.signedUrl) throw new Error('No se pudo generar enlace firmado');
-        download(data.signedUrl);
-      } else {
-        // Fallback a backend (Render) mediante proxy interno
-        const r = await fetch(`/api/files/signed-url?path=${encodeURIComponent(path)}`, { cache: 'no-store' });
-        if (!r.ok) throw new Error(await r.text());
-        const j = await r.json(); // { signed_url }
-        if (!j?.signed_url) throw new Error('Respuesta inválida del backend');
-        download(j.signed_url);
+      const key = normalizeKey(path);
+      const res = await fetch(`/api/sign-stl?key=${encodeURIComponent(key)}`, {
+        method: "GET",
+        cache: "no-store",
+      });
+      const json = await res.json();
+      if (!res.ok || !json?.url) {
+        throw new Error(json?.error || "No se pudo firmar la URL");
       }
+
+      // Disparar descarga
+      const a = document.createElement("a");
+      a.href = json.url as string;
+      a.download = fileName || key.split("/").pop() || "modelo.stl";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
     } catch (e: any) {
-      setErr(e.message || 'Error al descargar');
+      setErr(e?.message || "Error al descargar");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="inline-flex flex-col items-start gap-2">
+    <div className={className}>
       <button
+        type="button"
         onClick={onClick}
         disabled={loading}
-        className="px-4 py-2 rounded-2xl bg-[#1118270f] hover:bg-[#1118271a] dark:bg-white/10 dark:hover:bg-white/20 transition shadow-sm border border-[#e6eaf2] dark:border-neutral-800"
+        className="rounded-lg bg-neutral-900 text-white px-4 py-2 hover:bg-neutral-800 disabled:opacity-60"
       >
-        {loading ? 'Generando enlace…' : 'Descargar STL'}
+        {loading ? "Preparando…" : "Descargar STL"}
       </button>
-      {err && <span className="text-sm text-red-600">{err}</span>}
+      {err && <p className="mt-2 text-sm text-red-600">{err}</p>}
     </div>
   );
 }
