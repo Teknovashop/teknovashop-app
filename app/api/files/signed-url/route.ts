@@ -1,103 +1,121 @@
-// app/api/files/signed-url/route.ts
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-import type { FileObject } from "@supabase/storage-js";
 
-// Lee variables (usa tus nombres actuales en Vercel)
-const SUPABASE_URL = process.env.SUPABASE_URL!;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+// Lee variables de entorno (desde Vercel)
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const BUCKET = process.env.NEXT_PUBLIC_SUPABASE_BUCKET || "forge-stl";
 
-if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  console.warn(
-    "[signed-url] Faltan SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY en variables de entorno."
-  );
+// Carga dinámica para no romper el build en Edge
+async function getSupabase() {
+  const { createClient } = await import("@supabase/supabase-js");
+  return createClient(SUPABASE_URL, SUPABASE_KEY);
 }
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-  auth: { persistSession: false },
-});
+/**
+ * Normaliza un texto para comparar: minúsculas, sin espacios extras.
+ */
+function norm(s: string) {
+  return (s || "").toLowerCase().trim();
+}
+
+/**
+ * Busca en un listado el primer archivo .stl que contenga el "stem".
+ */
+function findMatchByStem(list: any[] | null | undefined, stem: string) {
+  if (!Array.isArray(list)) return null;
+  const nstem = norm(stem).replace(/[_\s]+/g, "-");
+  const candidates = list
+    .filter((f) => f && f.name && /\.stl$/i.test(f.name))
+    .filter((f) => norm(f.name).includes(nstem) || norm(f.name).includes(nstem.replace(/-/g, "_")));
+
+  if (candidates.length === 0) return null;
+
+  // Ordena por created_at (si existe) o por nombre, y coge el "más reciente"
+  candidates.sort((a, b) => {
+    const ca = a.created_at ? new Date(a.created_at).getTime() : 0;
+    const cb = b.created_at ? new Date(b.created_at).getTime() : 0;
+    if (cb !== ca) return cb - ca;
+    return norm(b.name).localeCompare(norm(a.name));
+  });
+
+  return candidates[0]?.name || null;
+}
 
 export async function GET(req: Request) {
   try {
-    const { searchParams } = new URL(req.url);
-    const keyParam = (searchParams.get("key") || "").trim();
+    const url = new URL(req.url);
+    const keyParam = url.searchParams.get("key");
 
     if (!keyParam) {
-      return NextResponse.json({ error: "Missing 'key' query param" }, { status: 400 });
+      return NextResponse.json({ error: `Missing 'key' query param` }, { status: 400 });
     }
 
-    // normalizamos: quitamos "public/" y "/" iniciales
-    const key = keyParam.replace(/^\/+/, "").replace(/^public\//, "");
-    // ejemplo: "vesa-adapter.stl" o "vesa-adapter/vesa-adapter.stl"
-    const stem = key.replace(/\.stl$/i, "").split("/").pop() || "";
-    const parentDir = key.includes("/") ? key.split("/")[0] : stem;
-    const candidates: string[] = [];
+    const supabase = await getSupabase();
 
-    // helper: primer fichero .stl que empiece por "stem-" o igual a "stem.stl"
-    const findMatch = (arr: FileObject[]) => {
-      const byExact = arr.find((f) => f.name.toLowerCase() === `${stem}.stl`.toLowerCase());
-      if (byExact) return byExact.name;
-      const byPrefix = arr.find(
-        (f) => f.name.toLowerCase().startsWith(`${stem}-`) && f.name.toLowerCase().endsWith(".stl")
-      );
-      return byPrefix?.name;
-    };
+    // Si viene una key con extensión .stl o contiene '/', intentamos firmarla tal cual
+    const rawKey = keyParam.replace(/^\/+/, "");
+    const looksLikeFullKey = /\.stl$/i.test(rawKey) || rawKey.includes("/");
 
-    // a) buscar en raíz
-    const rootList = await supabase.storage.from(BUCKET).list("", { limit: 1000 });
-    let foundKey = findMatch(rootList.data ?? []);
+    let finalKey = rawKey;
 
-    // b) buscar en carpeta con guiones (p. ej. "router-mount/")
-    if (!foundKey) {
-      const listDash = await supabase.storage.from(BUCKET).list(stem, { limit: 1000 });
-      const matchDash = findMatch(listDash.data ?? []);
-      if (matchDash) foundKey = `${stem}/${matchDash}`;
+    if (!looksLikeFullKey) {
+      // Tratamos 'key' como "stem" (slug). Buscamos en:
+      // a) raíz del bucket
+      // b) carpeta 'stem' (con guiones)
+      // c) carpeta 'stem' (con underscores)
+      const stem = rawKey;
+
+      // (a) root
+      const rootList = await supabase.storage.from(BUCKET).list("", { limit: 1000 });
+      if (rootList.error) {
+        return NextResponse.json(
+          { error: `Supabase list root error: ${rootList.error.message}` },
+          { status: 500 }
+        );
+      }
+      const rootMatch = findMatchByStem(rootList.data, stem);
+      if (rootMatch) {
+        finalKey = rootMatch; // ej: 'vesa-adapter.stl'
+      } else {
+        // (b) carpeta con guiones
+        const dashFolder = stem.replace(/[_\s]+/g, "-");
+        const listDash = await supabase.storage.from(BUCKET).list(dashFolder, { limit: 1000 });
+        if (!listDash.error) {
+          const matchDash = findMatchByStem(listDash.data, stem);
+          if (matchDash) finalKey = `${dashFolder}/${matchDash}`;
+        }
+
+        // (c) carpeta con underscores, si aún no encontramos
+        if (finalKey === rawKey) {
+          const underFolder = stem.replace(/[-\s]+/g, "_");
+          const listUnder = await supabase.storage.from(BUCKET).list(underFolder, { limit: 1000 });
+          if (!listUnder.error) {
+            const matchUnder = findMatchByStem(listUnder.data, stem);
+            if (matchUnder) finalKey = `${underFolder}/${matchUnder}`;
+          }
+        }
+      }
     }
 
-    // c) buscar en carpeta con guiones bajos (p. ej. "router_mount/")
-    if (!foundKey) {
-      const alt = stem.replace(/-/g, "_");
-      const listUnd = await supabase.storage.from(BUCKET).list(alt, { limit: 1000 });
-      const matchUnd = findMatch(listUnd.data ?? []);
-      if (matchUnd) foundKey = `${alt}/${matchUnd}`;
-    }
-
-    // d) si el key venía ya con subcarpeta, intentamos exacto
-    if (!foundKey && key.includes("/")) {
-      // ejemplo: "vesa-adapter/vesa-adapter.stl"
-      const parts = key.split("/");
-      const dir = parts.slice(0, -1).join("/");
-      const fname = parts[parts.length - 1];
-      const listDir = await supabase.storage.from(BUCKET).list(dir, { limit: 1000 });
-      const ok = (listDir.data ?? []).some((f) => f.name.toLowerCase() === fname.toLowerCase());
-      if (ok) foundKey = key;
-    }
-
-    // e) último intento: buscar en carpeta parentDir cuando stem y parent difieren
-    if (!foundKey && parentDir && parentDir !== stem) {
-      const listParent = await supabase.storage.from(BUCKET).list(parentDir, { limit: 1000 });
-      const matchParent = findMatch(listParent.data ?? []);
-      if (matchParent) foundKey = `${parentDir}/${matchParent}`;
-    }
-
-    if (!foundKey) {
-      return NextResponse.json({ error: "Object not found" }, { status: 404 });
-    }
-
-    const sign = await supabase.storage
-      .from(BUCKET)
-      .createSignedUrl(foundKey, 60 /*segundos*/);
-
-    if (!sign.data?.signedUrl) {
+    // Si aún es el slug original, no encontramos nada
+    if (finalKey === rawKey && !looksLikeFullKey) {
       return NextResponse.json(
-        { error: sign.error?.message || "Cannot sign URL" },
-        { status: 500 }
+        { error: `Object not found for stem '${rawKey}'` },
+        { status: 404 }
       );
     }
 
-    return NextResponse.json({ url: sign.data.signedUrl, key: foundKey });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "Internal error" }, { status: 500 });
+    // Firmamos la URL por 60 segundos. Si el bucket es público, también podrías usar getPublicUrl.
+    const signed = await supabase.storage.from(BUCKET).createSignedUrl(finalKey, 60);
+    if (signed.error || !signed.data?.signedUrl) {
+      return NextResponse.json(
+        { error: signed.error?.message || "Could not create signed URL" },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({ url: signed.data.signedUrl });
+  } catch (err: any) {
+    return NextResponse.json({ error: err?.message || "Internal error" }, { status: 500 });
   }
 }
