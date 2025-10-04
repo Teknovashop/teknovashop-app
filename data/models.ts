@@ -3,16 +3,10 @@ export type ForgeModel = {
   name: string;
   slug: string;
   thumbnail: string;
-  stlPath: string; // ruta dentro del bucket forge-stl
+  stlPath: string;        // ahora: slug (o key base) que el API resolverá
   description: string;
   tips?: string[];
 };
-
-// NOTA: Ajustado a lo que se ve en Supabase:
-// - cable-tray-9216ac10db2b.stl (raíz del bucket)
-// - router-mount-ae9e5015b….stl (raíz del bucket)
-// - vesa-adapter-78410643d6….stl (raíz del bucket)
-// Si mueves estos ficheros a carpetas, cambia aquí las rutas.
 
 export const MODELS: ForgeModel[] = [
   {
@@ -20,7 +14,7 @@ export const MODELS: ForgeModel[] = [
     name: 'Adaptador VESA 75/100 -> 100/200',
     slug: 'vesa-adapter',
     thumbnail: '/images/models/vesa-adapter.jpg',
-    stlPath: 'vesa-adapter-78410643d6....stl', // <-- pon aquí el nombre exacto de tu archivo (copiar/pegar)
+    stlPath: 'vesa-adapter', // <— slug; el API encontrará el .stl
     description: 'Placa adaptadora entre patrones VESA.',
     tips: [
       'Confirma ambos patrones antes de imprimir',
@@ -32,7 +26,7 @@ export const MODELS: ForgeModel[] = [
     name: 'Soporte de Router',
     slug: 'router-mount',
     thumbnail: '/images/models/router-mount.jpg',
-    stlPath: 'router-mount-ae9e5015b....stl', // <-- nombre exacto del archivo en el bucket
+    stlPath: 'router-mount',
     description: 'Soporte de pared con ranuras.',
     tips: ['Holgura lateral 0.3-0.5 mm', 'Usa tacos adecuados a la pared'],
   },
@@ -41,19 +35,16 @@ export const MODELS: ForgeModel[] = [
     name: 'Bandeja de Cables',
     slug: 'cable-tray',
     thumbnail: '/images/models/cable-tray.jpg',
-    stlPath: 'cable-tray-9216ac10db2b.stl', // <-- nombre exacto del archivo en el bucket
+    stlPath: 'cable-tray',
     description: 'Organizador bajo mesa modular.',
     tips: ['Ancla cada 20-30 cm', 'Infill 30-40% si cargas peso'],
   },
-
-  // ——— el resto todavía sin STL “oficial” en el bucket ———
-  // Deja '' para que ModelCard genere rutas candidatas por slug.
   {
     id: 'headset-stand',
     name: 'Soporte de Auriculares',
     slug: 'headset-stand',
     thumbnail: '/images/models/headset-stand.jpg',
-    stlPath: '',
+    stlPath: 'headset-stand',
     description: 'Soporte estable para auriculares.',
     tips: ['Fieltro en la base', 'Altura ajustable en preset'],
   },
@@ -62,7 +53,7 @@ export const MODELS: ForgeModel[] = [
     name: 'Dock para Movil (USB-C)',
     slug: 'phone-dock',
     thumbnail: '/images/models/phone-dock.jpg',
-    stlPath: '',
+    stlPath: 'phone-dock',
     description: 'Base con guia USB-C.',
     tips: ['Ten en cuenta la funda', 'Angulo 60-65 recomendado'],
   },
@@ -71,7 +62,7 @@ export const MODELS: ForgeModel[] = [
     name: 'Soporte de Tablet',
     slug: 'tablet-stand',
     thumbnail: '/images/models/tablet-stand.jpg',
-    stlPath: '',
+    stlPath: 'tablet-stand',
     description: 'Soporte plegable dos angulos.',
     tips: ['Refuerza paredes si >12"', 'Uso en mesa recomendado'],
   },
@@ -80,7 +71,7 @@ export const MODELS: ForgeModel[] = [
     name: 'Caddy SSD 2.5 a 3.5',
     slug: 'ssd-holder',
     thumbnail: '/images/models/ssd-holder.jpg',
-    stlPath: '',
+    stlPath: 'ssd-holder',
     description: 'Adaptador SSD a bahia 3.5.',
     tips: ['Tornillos M3x6', 'PETG si hay calor'],
   },
@@ -89,7 +80,7 @@ export const MODELS: ForgeModel[] = [
     name: 'Clips de Cable (Pack)',
     slug: 'cable-clip',
     thumbnail: '/images/models/cable-clip.jpg',
-    stlPath: '',
+    stlPath: 'cable-clip',
     description: 'Clips para 3-6 mm.',
     tips: ['Cinta 3M para agarre', 'Imprime varios por vez'],
   },
@@ -98,7 +89,7 @@ export const MODELS: ForgeModel[] = [
     name: 'Caja Raspberry Pi',
     slug: 'raspi-case',
     thumbnail: '/images/models/raspi-case.jpg',
-    stlPath: '',
+    stlPath: 'raspi-case',
     description: 'Caja ventilada con anclajes.',
     tips: ['Revisa puertos modelo', 'Añade ventilador si OC'],
   },
@@ -107,7 +98,7 @@ export const MODELS: ForgeModel[] = [
     name: 'Soporte GoPro',
     slug: 'go-pro-mount',
     thumbnail: '/images/models/go-pro-mount.jpg',
-    stlPath: '',
+    stlPath: 'go-pro-mount',
     description: 'Montura universal estilo GoPro.',
     tips: ['Usa tornillo M5', 'Refuerza con 40% infill'],
   },
@@ -116,7 +107,7 @@ export const MODELS: ForgeModel[] = [
     name: 'Gancho de Pared',
     slug: 'wall-hook',
     thumbnail: '/images/models/wall-hook.jpg',
-    stlPath: '',
+    stlPath: 'wall-hook',
     description: 'Gancho robusto para cables.',
     tips: ['Taco 6-8 mm', 'No exceder 5 kg'],
   },
@@ -125,7 +116,7 @@ export const MODELS: ForgeModel[] = [
     name: 'Elevador de Monitor',
     slug: 'monitor-stand',
     thumbnail: '/images/models/monitor-stand.jpg',
-    stlPath: '',
+    stlPath: 'monitor-stand',
     description: 'Base para elevar monitor.',
     tips: ['Añade pads antideslizantes', 'Asegura estabilidad'],
   },
@@ -134,7 +125,7 @@ export const MODELS: ForgeModel[] = [
     name: 'Soporte de Portatil',
     slug: 'laptop-stand',
     thumbnail: '/images/models/laptop-stand.jpg',
-    stlPath: '',
+    stlPath: 'laptop-stand',
     description: 'Soporte ventilado.',
     tips: ['No tapar entradas aire', 'PETG recomendado'],
   },
@@ -143,7 +134,7 @@ export const MODELS: ForgeModel[] = [
     name: 'Clip Brazo Mic',
     slug: 'mic-arm-clip',
     thumbnail: '/images/models/mic-arm-clip.jpg',
-    stlPath: '',
+    stlPath: 'mic-arm-clip',
     description: 'Clip para ordenar cables.',
     tips: ['Holgura 0.3 mm', 'PLA suficiente'],
   },
@@ -152,7 +143,7 @@ export const MODELS: ForgeModel[] = [
     name: 'Zapata Camara',
     slug: 'camera-plate',
     thumbnail: '/images/models/camera-plate.jpg',
-    stlPath: '',
+    stlPath: 'camera-plate',
     description: 'Placa tipo quick-release.',
     tips: ['Usa tornillo 1/4"', 'Comprueba holguras'],
   },
@@ -161,7 +152,7 @@ export const MODELS: ForgeModel[] = [
     name: 'Soporte USB Hub',
     slug: 'hub-holder',
     thumbnail: '/images/models/hub-holder.jpg',
-    stlPath: '',
+    stlPath: 'hub-holder',
     description: 'Soporte para hub USB.',
     tips: ['Medir ancho hub', 'Cinta 3M o tornillos'],
   },
