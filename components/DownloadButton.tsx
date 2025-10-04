@@ -24,10 +24,12 @@ export default function DownloadButton({
     setLoading(true);
     try {
       const key = normalizeKey(path);
-      const res = await fetch(`/api/sign-stl?key=${encodeURIComponent(key)}`, {
-        method: "GET",
-        cache: "no-store",
-      });
+
+      const res = await fetch(
+        `/api/files/signed-url?key=${encodeURIComponent(key)}`,
+        { method: "GET", cache: "no-store" }
+      );
+
       const json = await res.json();
       if (!res.ok || !json?.url) {
         throw new Error(json?.error || "No se pudo firmar la URL");
