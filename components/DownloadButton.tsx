@@ -34,7 +34,6 @@ export default function DownloadButton({
         throw new Error(json?.error || "No se pudo firmar la URL");
       }
 
-      // Disparar descarga
       const a = document.createElement("a");
       a.href = json.url as string;
       a.download = fileName || key.split("/").pop() || "modelo.stl";
