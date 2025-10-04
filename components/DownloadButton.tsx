@@ -1,14 +1,13 @@
-"use client";
-
-import { useState } from "react";
+'use client';
+import { useState } from 'react';
 
 export default function DownloadButton({
-  path,
+  stem,
   fileName,
   className,
 }: {
-  path: string;
-  fileName: string;
+  stem: string;          // p.ej. "cable-tray" (usamos slug)
+  fileName: string;      // nombre sugerido de descarga
   className?: string;
 }) {
   const [loading, setLoading] = useState(false);
@@ -18,26 +17,26 @@ export default function DownloadButton({
     setErr(null);
     setLoading(true);
     try {
-      // 'path' puede ser un slug (ej. "vesa-adapter") o una key completa (ej. "vesa-adapter/vesa-adapter.stl")
-      const res = await fetch(`/api/files/signed-url?key=${encodeURIComponent(path)}`, {
-        method: "GET",
-        cache: "no-store",
-      });
-      const json = await res.json();
+      if (!stem) throw new Error('Falta el identificador del modelo');
 
+      const res = await fetch(`/api/files/signed-url?stem=${encodeURIComponent(stem)}`, {
+        method: 'GET',
+        cache: 'no-store',
+      });
+
+      const json = await res.json();
       if (!res.ok || !json?.url) {
-        throw new Error(json?.error || "No se pudo firmar la URL");
+        throw new Error(json?.error || 'No se pudo firmar la URL');
       }
 
-      // Disparar descarga
-      const a = document.createElement("a");
+      const a = document.createElement('a');
       a.href = json.url as string;
-      a.download = fileName || "modelo.stl";
+      a.download = fileName || `${stem}.stl`;
       document.body.appendChild(a);
       a.click();
       a.remove();
     } catch (e: any) {
-      setErr(e?.message || "Error al descargar");
+      setErr(e?.message || 'Error al descargar');
     } finally {
       setLoading(false);
     }
@@ -51,7 +50,7 @@ export default function DownloadButton({
         disabled={loading}
         className="rounded-lg bg-neutral-900 text-white px-4 py-2 hover:bg-neutral-800 disabled:opacity-60"
       >
-        {loading ? "Preparando…" : "Descargar STL"}
+        {loading ? 'Preparando…' : 'Descargar STL'}
       </button>
       {err && <p className="mt-2 text-sm text-red-600">{err}</p>}
     </div>
