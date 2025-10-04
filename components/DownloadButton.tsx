@@ -14,29 +14,25 @@ export default function DownloadButton({
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // Normaliza "public/foo.stl" -> "foo.stl" y quita barras iniciales
-  function normalizeKey(p: string) {
-    return p.replace(/^\/+/, "").replace(/^public\//, "");
-  }
-
   const onClick = async () => {
     setErr(null);
     setLoading(true);
     try {
-      const key = normalizeKey(path);
-      const res = await fetch(
-        `/api/files/signed-url?key=${encodeURIComponent(key)}`,
-        { method: "GET", cache: "no-store" }
-      );
-
+      // 'path' puede ser un slug (ej. "vesa-adapter") o una key completa (ej. "vesa-adapter/vesa-adapter.stl")
+      const res = await fetch(`/api/files/signed-url?key=${encodeURIComponent(path)}`, {
+        method: "GET",
+        cache: "no-store",
+      });
       const json = await res.json();
+
       if (!res.ok || !json?.url) {
         throw new Error(json?.error || "No se pudo firmar la URL");
       }
 
+      // Disparar descarga
       const a = document.createElement("a");
       a.href = json.url as string;
-      a.download = fileName || key.split("/").pop() || "modelo.stl";
+      a.download = fileName || "modelo.stl";
       document.body.appendChild(a);
       a.click();
       a.remove();
