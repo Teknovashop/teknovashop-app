@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useState } from "react";
 import DownloadButton from "./DownloadButton";
 import type { ForgeModel } from "@/data/models";
@@ -12,13 +11,11 @@ export default function ModelCard({ m }: { m: ForgeModel }) {
     <div className="group rounded-3xl bg-white dark:bg-neutral-900 border border-[#e6eaf2] dark:border-neutral-800 shadow-sm hover:shadow-md transition overflow-hidden">
       <div className="relative w-full aspect-[16/9] bg-[#f4f7fb] dark:bg-neutral-800">
         {imgOk ? (
-          <Image
+          <img
             src={m.thumbnail}
             alt={m.name}
-            fill
-            className="object-cover"
+            className="absolute inset-0 h-full w-full object-cover"
             onError={() => setImgOk(false)}
-            priority={false}
           />
         ) : (
           <div className="absolute inset-0 grid place-items-center">
@@ -46,7 +43,7 @@ export default function ModelCard({ m }: { m: ForgeModel }) {
         )}
 
         <div className="mt-4">
-          {/* El botón normaliza 'public/xxx.stl' a 'xxx.stl' */}
+          {/* El botón normaliza 'public/xxx.stl' a 'xxx.stl' y el backend busca variantes con hash si hace falta */}
           <DownloadButton path={m.stlPath} fileName={`${m.slug}.stl`} />
         </div>
       </div>
