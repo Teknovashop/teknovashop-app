@@ -34,7 +34,7 @@ export default function ModelCard({ m }: { m: ForgeModel }) {
           {m.description}
         </p>
 
-        {m.tips && m.tips.length > 0 && (
+        {!!m.tips?.length && (
           <ul className="mt-3 text-xs text-[#6b7280] dark:text-neutral-400 space-y-1 list-disc pl-5">
             {m.tips.map((t, i) => (
               <li key={i}>{t}</li>
@@ -43,7 +43,6 @@ export default function ModelCard({ m }: { m: ForgeModel }) {
         )}
 
         <div className="mt-4">
-          {/* El botón normaliza 'public/xxx.stl' a 'xxx.stl' y el backend busca variantes con hash si hace falta */}
           <DownloadButton path={m.stlPath} fileName={`${m.slug}.stl`} />
         </div>
       </div>
