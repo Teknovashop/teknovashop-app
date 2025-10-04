@@ -6,8 +6,8 @@ export default function DownloadButton({
   fileName,
   className,
 }: {
-  stem: string;          // p.ej. "cable-tray" (usamos slug)
-  fileName: string;      // nombre sugerido de descarga
+  stem: string;       // p.ej. "cable-tray"
+  fileName: string;   // nombre sugerido
   className?: string;
 }) {
   const [loading, setLoading] = useState(false);
@@ -23,7 +23,6 @@ export default function DownloadButton({
         method: 'GET',
         cache: 'no-store',
       });
-
       const json = await res.json();
       if (!res.ok || !json?.url) {
         throw new Error(json?.error || 'No se pudo firmar la URL');
