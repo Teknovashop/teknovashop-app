@@ -1,5 +1,4 @@
 'use client';
-import Image from 'next/image';
 import DownloadButton from './DownloadButton';
 import type { ForgeModel } from '@/data/models';
 
@@ -7,14 +6,12 @@ export default function ModelCard({ m }: { m: ForgeModel }) {
   return (
     <div className="group rounded-3xl bg-white dark:bg-neutral-900 border border-[#e6eaf2] dark:border-neutral-800 shadow-sm hover:shadow-md transition overflow-hidden">
       <div className="relative w-full aspect-[16/9] bg-[#f4f7fb] dark:bg-neutral-800">
-        {/* Forzamos carga directa desde /public para evitar problemas del optimizador en prod */}
-        <Image
+        {/* img plano para evitar cualquier problema del optimizador */}
+        <img
           src={m.thumbnail}
           alt={m.name}
-          fill
-          className="object-cover"
-          sizes="(min-width:1024px) 33vw, (min-width:640px) 50vw, 100vw"
-          unoptimized
+          loading="lazy"
+          className="w-full h-full object-cover"
         />
       </div>
 
@@ -31,7 +28,7 @@ export default function ModelCard({ m }: { m: ForgeModel }) {
         )}
 
         <div className="mt-4">
-          {/* Para firmar y descargar buscamos por el "stem" (el slug del modelo) */}
+          {/* Buscamos por el slug (stem) dentro del bucket */}
           <DownloadButton stem={m.slug} fileName={`${m.slug}.stl`} />
         </div>
       </div>
