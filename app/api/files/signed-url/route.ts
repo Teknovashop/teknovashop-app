@@ -1,93 +1,103 @@
+// app/api/files/signed-url/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import type { FileObject } from "@supabase/storage-js";
 
-const BUCKET = "forge-stl";
+// Lee variables (usa tus nombres actuales en Vercel)
+const SUPABASE_URL = process.env.SUPABASE_URL!;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const BUCKET = process.env.NEXT_PUBLIC_SUPABASE_BUCKET || "forge-stl";
 
-function normalizeKey(k: string) {
-  return k.replace(/^\/+/, "").replace(/^public\//, "");
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  console.warn(
+    "[signed-url] Faltan SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY en variables de entorno."
+  );
 }
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+  auth: { persistSession: false },
+});
 
 export async function GET(req: Request) {
   try {
-    const url = process.env.SUPABASE_URL;
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (!url || !serviceKey) {
-      return NextResponse.json(
-        { error: "Faltan SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY" },
-        { status: 500 }
-      );
-    }
-
     const { searchParams } = new URL(req.url);
-    const rawKey = searchParams.get("key") || "";
-    const key = normalizeKey(rawKey);
-    if (!key) return NextResponse.json({ error: "Missing key" }, { status: 400 });
+    const keyParam = (searchParams.get("key") || "").trim();
 
-    const supabase = createClient(url, serviceKey, { auth: { persistSession: false } });
-
-    // --- 1) Intento directo tal cual (raíz o path dado) ---
-    const direct = await supabase.storage
-      .from(BUCKET)
-      .createSignedUrl(key, 60, { download: key.split("/").pop() });
-
-    if (direct.data?.signedUrl) {
-      return NextResponse.json({ url: direct.data.signedUrl });
+    if (!keyParam) {
+      return NextResponse.json({ error: "Missing 'key' query param" }, { status: 400 });
     }
 
-    // --- 2) Fallbacks por patrón ---
-    // key típico que viene del front: "vesa-adapter.stl" o "router-mount.stl"
-    const requestedName = key.split("/").pop() || key;         // vesa-adapter.stl
-    const stem = requestedName.replace(/\.stl$/i, "");         // vesa-adapter
-    const stemUS = stem.replace(/-/g, "_");                    // vesa_adapter
+    // normalizamos: quitamos "public/" y "/" iniciales
+    const key = keyParam.replace(/^\/+/, "").replace(/^public\//, "");
+    // ejemplo: "vesa-adapter.stl" o "vesa-adapter/vesa-adapter.stl"
+    const stem = key.replace(/\.stl$/i, "").split("/").pop() || "";
+    const parentDir = key.includes("/") ? key.split("/")[0] : stem;
+    const candidates: string[] = [];
 
-    // candidatos de carpetas (raíz, con guiones, con guiones bajos)
-    const candidates: string[] = ["", `${stem}/`, `${stemUS}/`];
-
-    // Función de ayuda para buscar una coincidencia .stl por lista
-    const findMatch = (items: { name: string }[], folderPrefix = "") => {
-      const match = items.find(
-        (it) =>
-          it.name === requestedName ||
-          (it.name.toLowerCase().endsWith(".stl") &&
-            (it.name.startsWith(`${stem}-`) ||
-             it.name.startsWith(`${stemUS}-`) ||
-             it.name === `${stem}.stl` ||
-             it.name === `${stemUS}.stl`))
+    // helper: primer fichero .stl que empiece por "stem-" o igual a "stem.stl"
+    const findMatch = (arr: FileObject[]) => {
+      const byExact = arr.find((f) => f.name.toLowerCase() === `${stem}.stl`.toLowerCase());
+      if (byExact) return byExact.name;
+      const byPrefix = arr.find(
+        (f) => f.name.toLowerCase().startsWith(`${stem}-`) && f.name.toLowerCase().endsWith(".stl")
       );
-      return match ? (folderPrefix ? `${folderPrefix}${match.name}` : match.name) : null;
+      return byPrefix?.name;
     };
 
     // a) buscar en raíz
     const rootList = await supabase.storage.from(BUCKET).list("", { limit: 1000 });
-    let foundKey = findMatch(rootList.data || "");
-    // b) buscar en carpeta con guiones
+    let foundKey = findMatch(rootList.data ?? []);
+
+    // b) buscar en carpeta con guiones (p. ej. "router-mount/")
     if (!foundKey) {
       const listDash = await supabase.storage.from(BUCKET).list(stem, { limit: 1000 });
-      foundKey = findMatch(listDash.data || [], `${stem}/`);
+      const matchDash = findMatch(listDash.data ?? []);
+      if (matchDash) foundKey = `${stem}/${matchDash}`;
     }
-    // c) buscar en carpeta con guiones bajos
+
+    // c) buscar en carpeta con guiones bajos (p. ej. "router_mount/")
     if (!foundKey) {
-      const listUS = await supabase.storage.from(BUCKET).list(stemUS, { limit: 1000 });
-      foundKey = findMatch(listUS.data || [], `${stemUS}/`);
+      const alt = stem.replace(/-/g, "_");
+      const listUnd = await supabase.storage.from(BUCKET).list(alt, { limit: 1000 });
+      const matchUnd = findMatch(listUnd.data ?? []);
+      if (matchUnd) foundKey = `${alt}/${matchUnd}`;
+    }
+
+    // d) si el key venía ya con subcarpeta, intentamos exacto
+    if (!foundKey && key.includes("/")) {
+      // ejemplo: "vesa-adapter/vesa-adapter.stl"
+      const parts = key.split("/");
+      const dir = parts.slice(0, -1).join("/");
+      const fname = parts[parts.length - 1];
+      const listDir = await supabase.storage.from(BUCKET).list(dir, { limit: 1000 });
+      const ok = (listDir.data ?? []).some((f) => f.name.toLowerCase() === fname.toLowerCase());
+      if (ok) foundKey = key;
+    }
+
+    // e) último intento: buscar en carpeta parentDir cuando stem y parent difieren
+    if (!foundKey && parentDir && parentDir !== stem) {
+      const listParent = await supabase.storage.from(BUCKET).list(parentDir, { limit: 1000 });
+      const matchParent = findMatch(listParent.data ?? []);
+      if (matchParent) foundKey = `${parentDir}/${matchParent}`;
     }
 
     if (!foundKey) {
-      const msg = direct.error?.message || "Object not found";
-      return NextResponse.json({ error: msg }, { status: 404 });
+      return NextResponse.json({ error: "Object not found" }, { status: 404 });
     }
 
-    const alt = await supabase.storage
+    const sign = await supabase.storage
       .from(BUCKET)
-      .createSignedUrl(foundKey, 60, { download: requestedName });
-    if (!alt.data?.signedUrl) {
-      const msg = alt.error?.message || "No se pudo firmar el objeto";
-      const code = /not found/i.test(msg) ? 404 : 500;
-      return NextResponse.json({ error: msg }, { status: code });
+      .createSignedUrl(foundKey, 60 /*segundos*/);
+
+    if (!sign.data?.signedUrl) {
+      return NextResponse.json(
+        { error: sign.error?.message || "Cannot sign URL" },
+        { status: 500 }
+      );
     }
 
-    return NextResponse.json({ url: alt.data.signedUrl });
+    return NextResponse.json({ url: sign.data.signedUrl, key: foundKey });
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "Error" }, { status: 500 });
+    return NextResponse.json({ error: e?.message || "Internal error" }, { status: 500 });
   }
 }
