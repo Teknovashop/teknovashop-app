@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
+import { MODELS } from "@/data/models";
 
 export const dynamicParams = true;
 export const revalidate = 0;
@@ -14,11 +15,12 @@ const ForgeForm = dynamic(() => import("@/components/ForgeForm"), { ssr: false }
 const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL;
 
 type Params = {
-  length_mm: number;
-  width_mm: number;
-  height_mm: number;
+  length_mm?: number;
+  width_mm?: number;
+  height_mm?: number;
   thickness_mm?: number;
   fillet_mm?: number;
+  // cualquier otro parámetro que necesites
 };
 
 function parseParams(q: string | null): Params | null {
@@ -30,13 +32,24 @@ function parseParams(q: string | null): Params | null {
   return null;
 }
 
+// Convierte slug kebab-case -> snake_case para el backend si hace falta
+const toBackendId = (slug: string) => slug.replace(/-/g, "_");
+
 export default function ForgePage({
   searchParams,
 }: {
   searchParams?: Record<string, string | string[] | undefined>;
 }) {
-  const model = (searchParams?.model as string) || "cable_tray";
-  const params = useMemo(() => parseParams(searchParams?.params as string | null), [searchParams]);
+  const defaultModel = MODELS[0]?.slug ?? "vesa-adapter";
+  const queryModel = (searchParams?.model as string) || defaultModel;
+
+  // Garantiza que sea uno de los modelos que existen
+  const model = MODELS.some(m => m.slug === queryModel) ? queryModel : defaultModel;
+
+  const params = useMemo(
+    () => parseParams(searchParams?.params as string | null),
+    [searchParams]
+  );
   const autogen = (searchParams?.generate as string) === "1";
 
   const [stlUrl, setStlUrl] = useState<string | null>(null);
@@ -44,12 +57,14 @@ export default function ForgePage({
   // Auto-generar STL si vienen model+params y generate=1
   useEffect(() => {
     if (!API_BASE || !params || !autogen) return;
+
     (async () => {
       try {
         const res = await fetch(`${API_BASE}/generate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model, params, holes: [] }),
+          // IMPORTANTE: si tu backend espera snake_case, convertimos aquí
+          body: JSON.stringify({ model: toBackendId(model), params, holes: [] }),
         });
         const json = await res.json();
         if (res.ok && json?.stl_url) setStlUrl(json.stl_url);
@@ -66,7 +81,7 @@ export default function ForgePage({
         {/* Columna izquierda: formulario */}
         <div className="w-full">
           <ForgeForm
-            initialModel={model}
+            initialModel={model}                // usamos el slug tal cual
             initialParams={params ?? undefined}
             onGenerated={(url: string) => setStlUrl(url)}
           />
@@ -74,7 +89,6 @@ export default function ForgePage({
 
         {/* Columna derecha: visor(es) */}
         <div className="grid gap-6">
-          {/* Vista izquierda: (si tienes doble visor, mantenlo) */}
           <div className="rounded-2xl border border-neutral-200 bg-neutral-900/2 p-3">
             <STLViewerPro url={stlUrl} className="h-[480px] w-full rounded-xl bg-black/90" />
           </div>
