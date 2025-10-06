@@ -6,13 +6,16 @@ import { useRouter } from "next/navigation";
 import type { ForgeModelSlug } from "@/lib/forge-spec";
 import { DEFAULT_PARAMS, FIELDS } from "@/lib/forge-config";
 
+function slugToTitle(s: string) {
+  return String(s).split("-").join(" ");
+}
+
 export default function ForgeConfigurator({ params }: { params: { slug: string } }) {
   const router = useRouter();
   const slug = params.slug as ForgeModelSlug;
 
   const schema = FIELDS[slug] || {};
   const initial = useMemo(() => {
-    // usa DEFAULT_PARAMS si existe; si no, genera a partir del schema
     if (DEFAULT_PARAMS[slug]) return { ...DEFAULT_PARAMS[slug] };
     return Object.fromEntries(Object.entries(schema).map(([k, v]) => [k, v.defaultValue]));
   }, [slug, schema]);
@@ -53,11 +56,17 @@ export default function ForgeConfigurator({ params }: { params: { slug: string }
 
   return (
     <div className="max-w-2xl mx-auto p-6">
-      <button onClick={() => router.back()} className="text-sm text-neutral-500 mb-3">← Volver</button>
-      <h1 className="text-2xl font-bold mb-4 capitalize">Configurar: {String(slug).replaceAll("-", " ")}</h1>
+      <button onClick={() => router.back()} className="text-sm text-neutral-500 mb-3">
+        ← Volver
+      </button>
+      <h1 className="text-2xl font-bold mb-4 capitalize">
+        Configurar: {slugToTitle(slug)}
+      </h1>
 
       {Object.keys(schema).length === 0 ? (
-        <p className="text-neutral-600">Este modelo aún no tiene configurador visual. Puedes generar con los parámetros por defecto.</p>
+        <p className="text-neutral-600">
+          Este modelo aún no tiene configurador visual. Puedes generar con los parámetros por defecto.
+        </p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {Object.entries(schema).map(([key, cfg]) => (
