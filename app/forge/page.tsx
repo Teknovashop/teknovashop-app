@@ -14,20 +14,21 @@ const ForgeForm = dynamic(() => import("@/components/ForgeForm"), { ssr: false }
 
 const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL;
 
-type Params = {
+/** Renombrado para evitar colisiones con tipos de ForgeForm */
+type UrlParams = {
   length_mm?: number;
   width_mm?: number;
   height_mm?: number;
   thickness_mm?: number;
   fillet_mm?: number;
-  // cualquier otro parámetro que necesites
+  // añade aquí otros campos opcionales que envíes al backend
 };
 
-function parseParams(q: string | null): Params | null {
+function parseParams(q: string | null): UrlParams | null {
   if (!q) return null;
   try {
     const obj = JSON.parse(decodeURIComponent(q));
-    if (typeof obj === "object" && obj) return obj as Params;
+    if (typeof obj === "object" && obj) return obj as UrlParams;
   } catch {}
   return null;
 }
@@ -44,7 +45,7 @@ export default function ForgePage({
   const queryModel = (searchParams?.model as string) || defaultModel;
 
   // Garantiza que sea uno de los modelos que existen
-  const model = MODELS.some(m => m.slug === queryModel) ? queryModel : defaultModel;
+  const model = MODELS.some((m) => m.slug === queryModel) ? queryModel : defaultModel;
 
   const params = useMemo(
     () => parseParams(searchParams?.params as string | null),
@@ -63,7 +64,7 @@ export default function ForgePage({
         const res = await fetch(`${API_BASE}/generate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          // IMPORTANTE: si tu backend espera snake_case, convertimos aquí
+          // si tu backend espera snake_case en `model`
           body: JSON.stringify({ model: toBackendId(model), params, holes: [] }),
         });
         const json = await res.json();
@@ -81,8 +82,8 @@ export default function ForgePage({
         {/* Columna izquierda: formulario */}
         <div className="w-full">
           <ForgeForm
-            initialModel={model}                // usamos el slug tal cual
-            initialParams={params ?? undefined}
+            initialModel={model}                          // usamos el slug tal cual
+            initialParams={(params ?? undefined) as any}   // evitar choque de tipos con ForgeForm
             onGenerated={(url: string) => setStlUrl(url)}
           />
         </div>
