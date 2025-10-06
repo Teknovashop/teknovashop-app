@@ -18,4 +18,20 @@ export type ForgeModelSlug =
   | "hub-holder";
 
 export type ForgeParams = Record<string, number | boolean | string>;
-export type ForgeRequest = { model: ForgeModelSlug; params: ForgeParams };
+
+export type ForgeRequest = {
+  model: ForgeModelSlug;
+  params: ForgeParams;
+};
+
+// Config de UI
+export type NumField = {
+  label: string;
+  type: "number";
+  step?: number;
+  min?: number;
+  max?: number;
+  defaultValue: number;
+};
+
+export type Fields = Record<string, NumField>;
