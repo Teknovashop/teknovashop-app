@@ -1,28 +1,23 @@
-import { NextRequest, NextResponse } from "next/server";
+// app/api/generate/route.ts
+import { NextResponse } from "next/server";
 
-const BACKEND_URL = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL;
-const GENERATE_PATH = process.env.BACKEND_GENERATE_PATH || "/generate";
+const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL; // p.ej. https://teknovashop-forge.onrender.com
 
-export async function POST(req: NextRequest) {
-  if (!BACKEND_URL) {
-    return new NextResponse("Backend URL no configurada", { status: 500 });
-  }
+export async function POST(req: Request) {
   try {
-    const body = await req.json(); // {model, params, holes?}
-    const r = await fetch(`${BACKEND_URL}${GENERATE_PATH}`, {
+    const body = await req.json();
+    if (!body?.model) {
+      return NextResponse.json({ error: "Missing 'model'" }, { status: 400 });
+    }
+    const r = await fetch(`${BACKEND}/generate`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
-      // 2 minutos por si el backend tarda un poco más
       cache: "no-store",
     });
-    if (!r.ok) {
-      const t = await r.text();
-      return new NextResponse(t || "Error generando STL", { status: r.status });
-    }
-    const data = await r.json();
-    return NextResponse.json(data);
+    const json = await r.json();
+    return NextResponse.json(json, { status: r.status });
   } catch (e: any) {
-    return new NextResponse(e?.message ?? "Error inesperado", { status: 500 });
+    return NextResponse.json({ error: e?.message || "Proxy error" }, { status: 500 });
   }
 }
