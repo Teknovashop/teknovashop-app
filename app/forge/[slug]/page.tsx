@@ -4,29 +4,37 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-type Fields = Record<string, { label: string; type: "number"; step?: number; min?: number; defaultValue: number }>;
+type NumField = {
+  label: string;
+  type: "number";
+  step?: number;
+  min?: number;
+  max?: number;
+  defaultValue: number;
+};
+type Fields = Record<string, NumField>;
 
 const FIELDS: Record<string, Fields> = {
   "vesa-adapter": {
-    width: { label: "Ancho placa (mm)", type: "number", step: 1, min: 60, defaultValue: 120 },
-    height:{ label: "Alto placa (mm)",  type: "number", step: 1, min: 60, defaultValue: 120 },
-    thickness:{ label: "Grosor (mm)", type: "number", step: 0.5, min: 2, defaultValue: 5 },
-    pattern_from:{ label: "Patrón desde (mm)", type: "number", step: 25, min: 50, defaultValue: 75 },
-    pattern_to:{ label: "Patrón hasta (mm)", type: "number", step: 25, min: 75, defaultValue: 100 },
-    hole_d:{ label: "Ø agujero (mm)", type: "number", step: 0.5, min: 3, defaultValue: 5 },
+    width:        { label: "Ancho placa (mm)",   type: "number", step: 1,   min: 60, defaultValue: 120 },
+    height:       { label: "Alto placa (mm)",    type: "number", step: 1,   min: 60, defaultValue: 120 },
+    thickness:    { label: "Grosor (mm)",        type: "number", step: 0.5, min: 2,  defaultValue: 5 },
+    pattern_from: { label: "Patrón desde (mm)",  type: "number", step: 25,  min: 50, defaultValue: 75 },
+    pattern_to:   { label: "Patrón hasta (mm)",  type: "number", step: 25,  min: 75, defaultValue: 100 },
+    hole_d:       { label: "Ø agujero (mm)",     type: "number", step: 0.5, min: 3,  defaultValue: 5 },
   },
   "router-mount": {
-    base_w:{ label: "Ancho base (mm)", type: "number", step: 1, min: 40, defaultValue: 80 },
-    base_h:{ label: "Alto placa (mm)", type: "number", step: 1, min: 60, defaultValue: 100 },
-    depth:{ label: "Fondo repisa (mm)", type: "number", step: 1, min: 30, defaultValue: 60 },
-    thickness:{ label: "Grosor (mm)", type: "number", step: 0.5, min: 3, defaultValue: 4 },
-    hole_d:{ label: "Ø tornillo (mm)", type: "number", step: 0.5, min: 3, defaultValue: 4 },
+    base_w:     { label: "Ancho base (mm)",   type: "number", step: 1,   min: 40, defaultValue: 80 },
+    base_h:     { label: "Alto placa (mm)",   type: "number", step: 1,   min: 60, defaultValue: 100 },
+    depth:      { label: "Fondo repisa (mm)", type: "number", step: 1,   min: 30, defaultValue: 60 },
+    thickness:  { label: "Grosor (mm)",       type: "number", step: 0.5, min: 3,  defaultValue: 4 },
+    hole_d:     { label: "Ø tornillo (mm)",   type: "number", step: 0.5, min: 3,  defaultValue: 4 },
   },
   "cable-tray": {
-    width:{ label: "Ancho (mm)", type: "number", step: 1, min: 100, defaultValue: 220 },
-    depth:{ label: "Fondo (mm)", type: "number", step: 1, min: 40, defaultValue: 80 },
-    height:{ label: "Altura (mm)", type: "number", step: 1, min: 30, defaultValue: 50 },
-    wall:{ label: "Espesor pared (mm)", type: "number", step: 0.5, min: 3, defaultValue: 4 },
+    width:  { label: "Ancho (mm)",          type: "number", step: 1,   min: 100, defaultValue: 220 },
+    depth:  { label: "Fondo (mm)",          type: "number", step: 1,   min: 40,  defaultValue: 80 },
+    height: { label: "Altura (mm)",         type: "number", step: 1,   min: 30,  defaultValue: 50 },
+    wall:   { label: "Espesor pared (mm)",  type: "number", step: 0.5, min: 3,   defaultValue: 4 },
   },
 };
 
@@ -41,23 +49,31 @@ export default function ForgeConfigurator({ params }: { params: { slug: string }
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
 
   const onChange = (k: string, v: string) => {
-    const n = Number(v);
-    setValues((s) => ({ ...s, [k]: isNaN(n) ? s[k] : n }));
+    const num = Number(v);
+    setValues((s) => ({ ...s, [k]: isNaN(num) ? s[k] : num }));
   };
 
   const generate = async () => {
-    setErr(null); setDownloadUrl(null); setLoading(true);
+    if (!Object.keys(schema).length) return;
+
+    setErr(null);
+    setDownloadUrl(null);
+    setLoading(true);
     try {
-      const res = await fetch("/api/generate", {
+      // ⬇️ tu endpoint real
+      const res = await fetch("/api/forge/generate", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ model: params.slug, params: values }),
       });
+
       const json = await res.json();
-      if (!res.ok || !json?.ok) throw new Error(json?.detail || json?.error || "Error generando STL");
+      if (!res.ok || !json?.ok || !json?.url) {
+        throw new Error(json?.detail || json?.error || "No se pudo generar el STL");
+      }
       setDownloadUrl(json.url);
     } catch (e: any) {
-      setErr(e?.message || "Error");
+      setErr(e?.message || "Error inesperado");
     } finally {
       setLoading(false);
     }
@@ -65,11 +81,17 @@ export default function ForgeConfigurator({ params }: { params: { slug: string }
 
   return (
     <div className="max-w-2xl mx-auto p-6">
-      <button onClick={() => router.back()} className="text-sm text-neutral-500 mb-3">← Volver</button>
-      <h1 className="text-2xl font-bold mb-4 capitalize">Configurar: {params.slug.replace("-", " ")}</h1>
+      <button onClick={() => router.back()} className="text-sm text-neutral-500 mb-3">
+        ← Volver
+      </button>
+      <h1 className="text-2xl font-bold mb-4 capitalize">
+        Configurar: {params.slug.replaceAll("-", " ")}
+      </h1>
 
       {Object.keys(schema).length === 0 ? (
-        <p className="text-neutral-600">Este modelo aún no tiene configurador. Próximamente. 🙂</p>
+        <p className="text-neutral-600">
+          Este modelo aún no tiene configurador. Próximamente. 🙂
+        </p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {Object.entries(schema).map(([key, cfg]) => (
@@ -80,6 +102,7 @@ export default function ForgeConfigurator({ params }: { params: { slug: string }
                 defaultValue={cfg.defaultValue}
                 step={cfg.step}
                 min={cfg.min}
+                max={cfg.max}
                 onChange={(e) => onChange(key, e.target.value)}
                 className="w-full rounded-lg border px-3 py-2"
               />
