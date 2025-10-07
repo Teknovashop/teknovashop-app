@@ -1,55 +1,39 @@
-'use client';
+// components/ModelCard.tsx (nuevo)
+"use client";
+import { useState } from "react";
+import Link from "next/link";
 
-import DownloadButton from './DownloadButton';
-import type { ForgeModel } from '@/data/models';
-import Image from 'next/image';
+export default function ModelCard({ model }: { model: { slug: string; name: string; thumbnail: string; description: string } }) {
+  const [busy, setBusy] = useState(false);
 
-export default function ModelCard({ m }: { m: ForgeModel }) {
+  async function quickDownload() {
+    try {
+      setBusy(true);
+      const res = await fetch("/api/forge/generate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ model: model.slug, params: null }) // null -> server usará DEFAULT_PARAMS
+      });
+      const json = await res.json();
+      if (!res.ok || !json?.url) throw new Error(json?.error || "No se pudo generar");
+      window.location.href = json.url; // descarga directa
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
-    <div className="group rounded-3xl bg-white dark:bg-neutral-900 border border-[#e6eaf2] dark:border-neutral-800 shadow-sm hover:shadow-md transition overflow-hidden">
-      {/* Imagen principal centrada y responsiva */}
-      <div className="relative w-full aspect-[16/9] overflow-hidden bg-[#f4f7fb] dark:bg-neutral-800">
-        <Image
-          src={m.thumbnail}
-          alt={m.name || 'Modelo'}
-          fill
-          priority={false}
-          loading="lazy"
-          sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
-          className="object-cover object-center transition-transform duration-500 group-hover:scale-105"
-          onError={(e) => {
-            // Evita fondo roto si la imagen no carga
-            const t = e.target as HTMLImageElement;
-            t.style.display = 'none';
-          }}
-        />
-      </div>
-
-      {/* Contenido textual */}
-      <div className="p-5">
-        <h3 className="text-lg font-semibold text-[#0b1526] dark:text-white">
-          {m.name}
-        </h3>
-        <p className="mt-1 text-sm text-[#6b7280] dark:text-neutral-400">
-          {m.description}
-        </p>
-
-        {m.tips && (
-          <ul className="mt-3 text-xs text-[#6b7280] dark:text-neutral-400 space-y-1 list-disc pl-5">
-            {m.tips.map((t, i) => (
-              <li key={i}>{t}</li>
-            ))}
-          </ul>
-        )}
-
-        {/* Botón de descarga STL */}
-        <div className="mt-4">
-          <DownloadButton
-            path={m.stlPath}
-            fileName={`${m.slug}.stl`}
-            className="w-full"
-          />
-        </div>
+    <div className="rounded-2xl border p-4">
+      <img src={model.thumbnail} alt={model.name} className="w-full rounded-xl mb-3" />
+      <h3 className="text-lg font-semibold">{model.name}</h3>
+      <p className="text-sm text-neutral-600 mb-4">{model.description}</p>
+      <div className="flex gap-2">
+        <Link href={`/forge/${model.slug}`} className="px-3 py-2 rounded-lg bg-black text-white">
+          Configurar y descargar
+        </Link>
+        <button onClick={quickDownload} disabled={busy} className="px-3 py-2 rounded-lg border">
+          {busy ? "Generando…" : "Descarga rápida"}
+        </button>
       </div>
     </div>
   );
