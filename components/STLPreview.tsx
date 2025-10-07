@@ -189,7 +189,7 @@ export default function STLPreview({
       roughness: 0.6,
       metalness: 0.2,
       flatShading: true,
-      side: THREE.DoubleSide, // <-- clave para láminas finas/caras invertidas
+      side: THREE["DoubleSide"], // <-- clave para láminas finas/caras invertidas
     });
 
     const onGeomReady = (geom: any) => {
