@@ -30,62 +30,135 @@ function toMessage(err: any): string {
   if (!err) return "Error";
   if (typeof err === "string") return err;
   if (Array.isArray(err)) return err.map(toMessage).join(" · ");
-  if ((err as any).message) return String((err as any).message);
-  if ((err as any).detail) return toMessage((err as any).detail);
+  if (err?.message) return String(err.message);
+  if (err?.detail) return toMessage(err.detail);
   try { return JSON.stringify(err); } catch { return String(err); }
 }
 
+// --------- Normalización de parámetros ---------
 type Dict = Record<string, any>;
+const n = (v: any): number | undefined => {
+  if (v === null || v === undefined) return undefined;
+  if (typeof v === "number") return isFinite(v) ? v : undefined;
+  const s = String(v).trim().replace(",", "."); // 3,2 -> 3.2
+  const num = Number(s);
+  return isFinite(num) ? num : undefined;
+};
 
-// Normaliza nombres del formulario -> *_mm esperados por el backend
-function normalizeParams(model: string, raw: Dict = {}) {
-  const p: Dict = { ...raw };
-  const out: Dict = { ...p };
-
-  const setIfMissing = (dst: string, names: string[]) => {
-    if (out[dst] == null) {
-      for (const n of names) {
-        if (p[n] != null) { out[dst] = Number(p[n]); break; }
-      }
-    } else {
-      out[dst] = Number(out[dst]);
+function setIfMissing(out: Dict, dst: string, candidates: string[], src: Dict) {
+  if (out[dst] == null) {
+    for (const key of candidates) {
+      if (src[key] != null) { out[dst] = n(src[key]); break; }
     }
-  };
+  } else {
+    out[dst] = n(out[dst]);
+  }
+}
 
-  // genéricos
-  setIfMissing("length_mm",   ["length_mm","length","base_w","ancho_mm","ancho","width","largo"]);
-  setIfMissing("width_mm",    ["width_mm","width","depth","fondo_mm","fondo","base_d"]);
-  setIfMissing("height_mm",   ["height_mm","height","base_h","alto_mm","alto","altura","stem_h"]);
-  setIfMissing("thickness_mm",["thickness_mm","thickness","grosor_mm","grosor","wall"]);
-  setIfMissing("fillet_mm",   ["fillet_mm","fillet","round","radio","hook_r"]);
+function ensureNumber(out: Dict, key: string, fallback?: number) {
+  const v = n(out[key]);
+  if (v == null) out[key] = fallback ?? 1; // mínimo 1mm si el modelo lo exige
+  else out[key] = v;
+}
 
-  // mapeos por modelo (no sobreescriben lo ya seteado)
-  const ensure = (k: string, v: any) => { if (out[k] == null && v != null) out[k] = v; };
+// Mapea nombres del formulario -> *_mm esperados por el backend
+function normalizeParams(model: string, raw: Dict = {}) {
+  // normaliza comas/strings a números
+  const src: Dict = {};
+  for (const k of Object.keys(raw)) src[k] = n(raw[k]) ?? raw[k];
+
+  const out: Dict = { ...src };
+
+  // genéricos (cubren la mayoría de formularios)
+  setIfMissing(out, "length_mm",   ["length_mm","length","base_w","ancho_mm","ancho","width","largo","drive_l","hub_w"], src);
+  setIfMissing(out, "width_mm",    ["width_mm","width","depth","fondo_mm","fondo","base_d","drive_w","hub_d"], src);
+  setIfMissing(out, "height_mm",   ["height_mm","height","base_h","alto_mm","alto","altura","stem_h","hub_h","board_h"], src);
+  setIfMissing(out, "thickness_mm",["thickness_mm","thickness","grosor_mm","grosor","wall","clip_t"], src);
+  setIfMissing(out, "fillet_mm",   ["fillet_mm","fillet","round","radio","hook_r"], src);
+
+  // fallbacks seguros: si algún *_mm sigue faltando, intenta con otros alias o asegura mínimo 1
+  ensureNumber(out, "length_mm",  out.length_mm  ?? n(src.base_w) ?? n(src.width)  ?? n(src.drive_l));
+  ensureNumber(out, "width_mm",   out.width_mm   ?? n(src.base_d) ?? n(src.depth)  ?? n(src.drive_w));
+  ensureNumber(out, "height_mm",  out.height_mm  ?? n(src.base_h) ?? n(src.height) ?? n(src.stem_h) ?? n(src.wall) ?? 1);
+  ensureNumber(out, "thickness_mm", out.thickness_mm ?? n(src.wall) ?? n(src.clip_t) ?? 2);
+
+  // ----- Ajustes por modelo (no sobrescriben lo ya asignado) -----
+  const ensure = (k: string, v?: number) => { if (out[k] == null && v != null) out[k] = v; };
 
   switch (model) {
-    case "router_mount":
-      // ya cubierto con base_w/base_h/depth/hole_d -> *_mm
-      break;
-    case "vesa_adapter":
-      // width/height/thickness -> *_mm ya cubiertos
-      break;
     case "headset_stand":
-      // aliases específicos
-      ensure("length_mm", out["length_mm"] ?? Number(p.base_w));
-      ensure("width_mm",  out["width_mm"]  ?? Number(p.base_d));
-      ensure("height_mm", out["height_mm"] ?? Number(p.stem_h));
-      ensure("thickness_mm", out["thickness_mm"] ?? Number(p.wall));
-      ensure("fillet_mm", out["fillet_mm"] ?? Number(p.hook_r));
+      ensure("length_mm", n(src.base_w));
+      ensure("width_mm",  n(src.base_d));
+      ensure("height_mm", n(src.stem_h));
+      ensure("thickness_mm", n(src.wall));
+      ensure("fillet_mm", n(src.hook_r));
       break;
+
+    case "phone_dock":
+      // ya cubren length/width; altura requerida por backend -> usa grosor si falta
+      ensure("height_mm", out.thickness_mm ?? n(src.wall) ?? 4);
+      break;
+
+    case "tablet_stand":
+      // altura requerida -> usa pestaña (lip_h) o grosor
+      ensure("height_mm", n(src.lip_h) ?? out.thickness_mm ?? 4);
+      break;
+
+    case "ssd_holder":
+      // los *_mm vienen vacíos; forzamos mínimos para Pydantic
+      ensure("length_mm", n(src.drive_l) ?? 100);
+      ensure("width_mm",  n(src.drive_w) ?? 70);
+      ensure("height_mm", out.thickness_mm ?? n(src.wall) ?? 2);
+      break;
+
+    case "cable_clip":
+      // clip 2.5D: altura = grosor
+      ensure("height_mm", out.thickness_mm ?? n(src.wall) ?? 2);
+      break;
+
+    case "raspi_case":
+      // placa: board_w x board_l x board_h
+      ensure("length_mm", n(src.board_w));
+      ensure("width_mm",  n(src.board_l));
+      ensure("height_mm", n(src.board_h) ?? (n(src.wall) ?? 2));
+      break;
+
+    case "go_pro_mount":
+      // 2.5D: altura = grosor
+      ensure("height_mm", out.thickness_mm ?? n(src.wall) ?? 3);
+      break;
+
+    case "wall_hook":
+      // usa alto base como altura si falta
+      ensure("height_mm", n(src.base_h) ?? out.thickness_mm ?? 3);
+      break;
+
+    case "laptop_stand":
+      ensure("height_mm", n(src.lip_h) ?? out.thickness_mm ?? 4);
+      break;
+
+    case "mic_arm_clip":
+      // 2.5D: altura = grosor
+      ensure("height_mm", out.thickness_mm ?? n(src.wall) ?? 3);
+      break;
+
+    case "hub_holder":
+      ensure("length_mm", n(src.hub_w));
+      ensure("width_mm",  n(src.hub_d));
+      ensure("height_mm", n(src.hub_h) ?? out.thickness_mm ?? 3);
+      break;
+
     default:
       break;
   }
 
   return out;
 }
+// -----------------------------------------------
 
 /**
  * Body esperado: { model: string, params: object, holes?: Array<{x_mm,y_mm,d_mm}> }
+ * Devuelve: { ok: true, url, object_key, thumb_url } o { ok: false, error }
  */
 export async function POST(req: Request) {
   try {
@@ -95,6 +168,7 @@ export async function POST(req: Request) {
 
     const normalized = normalizeParams(String(model), params || {});
 
+    // 1) Generar en backend
     const gen = await fetch(`${BACKEND}/generate`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -107,6 +181,7 @@ export async function POST(req: Request) {
       return cors({ ok: false, error: toMessage(genJson?.detail || genJson?.error || "Generation failed") }, gen.status || 500);
     }
 
+    // 2) Firmar URL con Supabase
     const { createClient } = await import("@supabase/supabase-js");
     const url = SUPABASE_URL || "";
     const key = SUPABASE_SERVICE_ROLE_KEY || NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
