@@ -42,8 +42,14 @@ export default function ModelCard({ m }: { m: ForgeModel }) {
           </ul>
         )}
 
-        {/* Botón de descarga STL */}
-        <div className="mt-4">
+        {/* Acciones */}
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <a
+            href={`/forge/${m.slug}`}
+            className="inline-flex items-center justify-center rounded-lg border border-neutral-300 px-3 py-2 text-sm hover:bg-neutral-50 transition"
+          >
+            Configurar
+          </a>
           <DownloadButton
             path={m.stlPath}
             fileName={`${m.slug}.stl`}
