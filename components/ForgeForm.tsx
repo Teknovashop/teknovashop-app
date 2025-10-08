@@ -32,14 +32,14 @@ const MODEL_OPTIONS = [
   { value: "headset_stand", label: "Headset Stand" },
   { value: "phone_dock",    label: "Phone Dock (USB-C)" },
   { value: "tablet_stand",  label: "Tablet Stand" },
-  { value: "ssd_holder",    label: "SSD Holder (2.5\")" },
+  { value: "ssd_holder",    label: 'SSD Holder (2.5")' },
   { value: "raspi_case",    label: "Raspberry Pi Case" },
   { value: "go_pro_mount",  label: "GoPro Mount" },
   { value: "wall_hook",     label: "Wall Hook" },
   { value: "monitor_stand", label: "Monitor Stand" },
   { value: "laptop_stand",  label: "Laptop Stand" },
   { value: "mic_arm_clip",  label: "Mic Arm Clip" },
-  { value: "camera_plate",  label: "Camera Plate 1/4\" },
+  { value: "camera_plate",  label: 'Camera Plate 1/4"' },
   { value: "hub_holder",    label: "USB Hub Holder" }
 ];
 
