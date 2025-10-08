@@ -25,11 +25,22 @@ type Props = {
 };
 
 const MODEL_OPTIONS = [
-  { value: "cable_tray", label: "Cable Tray (bandeja)" },
-  { value: "vesa_adapter", label: "VESA Adapter" },
-  { value: "router_mount", label: "Router Mount (L)" },
-  { value: "camera_mount", label: "Camera Mount (base+columna)" },
-  { value: "wall_bracket", label: "Wall Bracket (escuadra)" },
+  { value: "cable_tray",    label: "Cable Tray (bandeja)" },
+  { value: "vesa_adapter",  label: "VESA Adapter" },
+  { value: "router_mount",  label: "Router Mount (L)" },
+  { value: "cable_clip",    label: "Cable Clip" },
+  { value: "headset_stand", label: "Headset Stand" },
+  { value: "phone_dock",    label: "Phone Dock (USB-C)" },
+  { value: "tablet_stand",  label: "Tablet Stand" },
+  { value: "ssd_holder",    label: "SSD Holder (2.5\")" },
+  { value: "raspi_case",    label: "Raspberry Pi Case" },
+  { value: "go_pro_mount",  label: "GoPro Mount" },
+  { value: "wall_hook",     label: "Wall Hook" },
+  { value: "monitor_stand", label: "Monitor Stand" },
+  { value: "laptop_stand",  label: "Laptop Stand" },
+  { value: "mic_arm_clip",  label: "Mic Arm Clip" },
+  { value: "camera_plate",  label: "Camera Plate 1/4\" },
+  { value: "hub_holder",    label: "USB Hub Holder" }
 ];
 
 function n(v: any, def: number): number {
