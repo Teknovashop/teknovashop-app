@@ -2,15 +2,39 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-export const runtime = "nodejs";
+export const runtime = "nodejs"; // evita edge-cache en Vercel
 export const dynamic = "force-dynamic";
 
+function getSupabaseServer() {
+  // Preferimos credenciales de servidor; si no están, caemos a públicas
+  const url =
+    process.env.SUPABASE_URL ||
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    "";
+  const key =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    "";
+  if (!url || !key) {
+    throw new Error("Supabase URL/KEY no configurados");
+  }
+  return createClient(url, key);
+}
+
+const BUCKET =
+  process.env.SUPABASE_BUCKET ||
+  process.env.NEXT_PUBLIC_SUPABASE_BUCKET ||
+  "forge-stl";
+
+// CORS básico por si algún día sirves desde subdominio distinto
 function cors(json: any, status = 200) {
-  return NextResponse.json(json, {
+  return new NextResponse(JSON.stringify(json), {
     status,
     headers: {
+      "content-type": "application/json; charset=utf-8",
       "access-control-allow-origin": "*",
-      "access-control-allow-headers": "*",
+      "access-control-allow-methods": "POST, OPTIONS",
+      "access-control-allow-headers": "content-type",
     },
   });
 }
@@ -19,55 +43,45 @@ export async function OPTIONS() {
   return cors({ ok: true });
 }
 
-function getSupabaseServer() {
-  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-  const key =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    "";
-  if (!url || !key) throw new Error("Faltan credenciales de Supabase");
-  return createClient(url, key);
-}
-
+/**
+ * Espera un body:
+ * {
+ *   "slug": "cable-tray",   // obligatorio
+ *   "params": {...}         // opcional (por ahora lo ignoramos)
+ * }
+ * Devuelve: { url: "https://signed-url" }
+ */
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const slug: string = (body?.slug || body?.model || "").trim();
-    const params = body?.params ?? null;
-    // 👇 IMPORTANTE: preservar agujeros del UI (admite top-level o dentro de params)
-    const holes = body?.holes ?? body?.params?.holes ?? null;
+    const { slug } = await req.json().catch(() => ({} as any));
+    if (!slug || typeof slug !== "string") {
+      return cors({ error: "Missing 'slug' in body" }, 400);
+    }
 
-    if (!slug) return cors({ error: "Missing 'slug' in body" }, 400);
+    // El STL “resultado” lo estamos guardando como forge-output.stl dentro de cada carpeta
+    const key = `${slug}/forge-output.stl`;
 
-    const API_BASE = (
-      process.env.NEXT_PUBLIC_FORGE_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || ""
-    ).replace(/\/+$/, "");
-    if (!API_BASE) return cors({ error: "Backend no configurado" }, 500);
-
-    // 1) Generar en backend — reenviamos también `holes`
-    const r = await fetch(`${API_BASE}/generate`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ slug, params, holes }),
-      cache: "no-store",
-    });
-
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) return cors({ error: j?.detail || j?.error || "Forge API error" }, r.status || 500);
-
-    const key = j?.object_key || j?.key || j?.file || j?.path;
-    if (j?.url && !key) return cors({ ok: true, url: j.url });
-
-    // 2) Firmar URL si el bucket es privado
     const supabase = getSupabaseServer();
-    const BUCKET =
-      process.env.SUPABASE_BUCKET || process.env.NEXT_PUBLIC_SUPABASE_BUCKET || "forge-stl";
-    const signed = await supabase.storage.from(BUCKET).createSignedUrl(key, 60 * 10);
+
+    // (Opcional) Comprobación rápida de existencia
+    const pathStem = slug.replace(/^\/+/, "");
+    const list = await supabase.storage.from(BUCKET).list(pathStem, { limit: 100 });
+    const exists = list.data?.some((f) => f.name === "forge-output.stl");
+    if (!exists) {
+      return cors({ error: `No existe '${key}' en bucket '${BUCKET}'` }, 404);
+    }
+
+    // Firmamos URL temporal (5 min)
+    const signed = await supabase.storage
+      .from(BUCKET)
+      .createSignedUrl(key, 60 * 5);
+
     if (signed.error || !signed.data?.signedUrl) {
       return cors({ error: signed.error?.message || "No se pudo firmar URL" }, 500);
     }
-    return cors({ ok: true, url: signed.data.signedUrl });
-  } catch (e: any) {
-    return cors({ error: e?.message || "Unexpected error" }, 500);
+
+    return cors({ url: signed.data.signedUrl });
+  } catch (err: any) {
+    return cors({ error: err?.message || "Unexpected error" }, 500);
   }
 }
