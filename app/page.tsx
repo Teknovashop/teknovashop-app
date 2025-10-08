@@ -2,14 +2,13 @@
 export const dynamic = 'force-dynamic';
 
 import Link from 'next/link';
-import HeroVideo from '@/components/HeroVideo';   // <-- NUEVO
+import HeroVideo from '@/components/HeroVideo';
 import ModelGrid from '@/components/ModelGrid';
 import Pricing from '@/components/Pricing';
 
 const CONFIGURATOR_HREF = '/forge'; // <-- tu configurador real
 
-// Puedes controlar las rutas del vídeo desde variables de entorno públicas si quieres.
-// Si no existen, usa los ficheros estáticos de /public/hero
+// Si defines estas vars en Vercel, se usarán; si no, tiramos de /public/hero
 const HERO_VIDEO_SRC =
   process.env.NEXT_PUBLIC_HERO_VIDEO_URL || '/hero/hero.mp4';
 const HERO_VIDEO_POSTER =
@@ -75,12 +74,14 @@ export default function Page() {
               </div>
             </div>
 
-            {/* Panel derecho del hero: vídeo */}
-            <HeroVideo
-              src={HERO_VIDEO_SRC}
-              poster={HERO_VIDEO_POSTER}
-              className="h-[420px]"
-            />
+            {/* Panel derecho del hero: vídeo centrado */}
+            <div className="flex items-center justify-center">
+              <HeroVideo
+                src={HERO_VIDEO_SRC}
+                poster={HERO_VIDEO_POSTER}
+                className="w-full"
+              />
+            </div>
           </div>
         </div>
       </section>
@@ -97,7 +98,7 @@ export default function Page() {
       <section className="py-8 md:py-12">
         <div className="container mx-auto px-4 max-w-6xl">
           <h2 className="text-xl md:text-2xl font-semibold mb-4 text-[#0b1526] dark:text-white">Precios</h2>
-        <Pricing />
+          <Pricing />
         </div>
       </section>
     </main>
