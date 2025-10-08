@@ -1,40 +1,23 @@
 // app/api/forge/generate/route.ts
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 
-export const runtime = "nodejs"; // evita edge-cache en Vercel
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function getSupabaseServer() {
-  // Preferimos credenciales de servidor; si no están, caemos a públicas
-  const url =
-    process.env.SUPABASE_URL ||
-    process.env.NEXT_PUBLIC_SUPABASE_URL ||
-    "";
-  const key =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    "";
-  if (!url || !key) {
-    throw new Error("Supabase URL/KEY no configurados");
-  }
-  return createClient(url, key);
-}
+const BACKEND = (process.env.NEXT_PUBLIC_FORGE_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "").replace(/\/+$/, "");
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const NEXT_PUBLIC_SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+const BUCKET = process.env.NEXT_PUBLIC_SUPABASE_BUCKET || "forge-stl";
 
-const BUCKET =
-  process.env.SUPABASE_BUCKET ||
-  process.env.NEXT_PUBLIC_SUPABASE_BUCKET ||
-  "forge-stl";
-
-// CORS básico por si algún día sirves desde subdominio distinto
-function cors(json: any, status = 200) {
-  return new NextResponse(JSON.stringify(json), {
+function cors(body: any, status = 200) {
+  return new NextResponse(JSON.stringify(body), {
     status,
     headers: {
-      "content-type": "application/json; charset=utf-8",
+      "content-type": "application/json",
       "access-control-allow-origin": "*",
-      "access-control-allow-methods": "POST, OPTIONS",
-      "access-control-allow-headers": "content-type",
+      "access-control-allow-methods": "GET,POST,OPTIONS",
+      "access-control-allow-headers": "content-type,authorization",
     },
   });
 }
@@ -44,43 +27,43 @@ export async function OPTIONS() {
 }
 
 /**
- * Espera un body:
- * {
- *   "slug": "cable-tray",   // obligatorio
- *   "params": {...}         // opcional (por ahora lo ignoramos)
- * }
- * Devuelve: { url: "https://signed-url" }
+ * Espera body:
+ * { model: string, params: object, holes?: Array<{x_mm,y_mm,d_mm}> }
+ * Llama al backend /generate y devuelve URL firmada del STL.
  */
 export async function POST(req: Request) {
   try {
-    const { slug } = await req.json().catch(() => ({} as any));
-    if (!slug || typeof slug !== "string") {
-      return cors({ error: "Missing 'slug' in body" }, 400);
+    const { model, params, holes } = await req.json().catch(() => ({} as any));
+    if (!model) return cors({ error: "Missing 'model'" }, 400);
+
+    if (!BACKEND) return cors({ error: "Backend URL not configured" }, 500);
+
+    // 1) Generar en backend
+    const gen = await fetch(`${BACKEND}/generate`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model, params, holes: Array.isArray(holes) ? holes : [] }),
+      cache: "no-store",
+    });
+
+    const genJson = await gen.json().catch(() => ({} as any));
+    if (!gen.ok || !genJson?.object_key) {
+      return cors({ error: genJson?.detail || genJson?.error || "Generation failed" }, gen.status || 500);
     }
 
-    // El STL “resultado” lo estamos guardando como forge-output.stl dentro de cada carpeta
-    const key = `${slug}/forge-output.stl`;
+    // 2) Firmar URL con Supabase
+    const { createClient } = await import("@supabase/supabase-js");
+    const url = SUPABASE_URL || "";
+    const key = SUPABASE_SERVICE_ROLE_KEY || NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+    const supabase = createClient(url, key);
 
-    const supabase = getSupabaseServer();
-
-    // (Opcional) Comprobación rápida de existencia
-    const pathStem = slug.replace(/^\/+/, "");
-    const list = await supabase.storage.from(BUCKET).list(pathStem, { limit: 100 });
-    const exists = list.data?.some((f) => f.name === "forge-output.stl");
-    if (!exists) {
-      return cors({ error: `No existe '${key}' en bucket '${BUCKET}'` }, 404);
-    }
-
-    // Firmamos URL temporal (5 min)
-    const signed = await supabase.storage
-      .from(BUCKET)
-      .createSignedUrl(key, 60 * 5);
-
+    const keyPath = genJson.object_key as string;
+    const signed = await supabase.storage.from(BUCKET).createSignedUrl(keyPath, 60 * 5);
     if (signed.error || !signed.data?.signedUrl) {
-      return cors({ error: signed.error?.message || "No se pudo firmar URL" }, 500);
+      return cors({ error: signed.error?.message || "Failed to sign URL" }, 500);
     }
 
-    return cors({ url: signed.data.signedUrl });
+    return cors({ url: signed.data.signedUrl, object_key: keyPath, thumb_url: genJson?.thumb_url });
   } catch (err: any) {
     return cors({ error: err?.message || "Unexpected error" }, 500);
   }
