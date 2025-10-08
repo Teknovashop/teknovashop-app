@@ -26,6 +26,15 @@ export async function OPTIONS() {
   return cors({ ok: true });
 }
 
+function toMessage(err: any): string {
+  if (!err) return "Error";
+  if (typeof err === "string") return err;
+  if (Array.isArray(err)) return err.map(toMessage).join(" · ");
+  if (err.message) return String(err.message);
+  if (err.detail) return toMessage(err.detail);
+  try { return JSON.stringify(err); } catch { return String(err); }
+}
+
 /**
  * Espera body:
  * { model: string, params: object, holes?: Array<{x_mm,y_mm,d_mm}> }
@@ -34,9 +43,8 @@ export async function OPTIONS() {
 export async function POST(req: Request) {
   try {
     const { model, params, holes } = await req.json().catch(() => ({} as any));
-    if (!model) return cors({ error: "Missing 'model'" }, 400);
-
-    if (!BACKEND) return cors({ error: "Backend URL not configured" }, 500);
+    if (!model) return cors({ ok: false, error: "Missing 'model'" }, 400);
+    if (!BACKEND) return cors({ ok: false, error: "Backend URL not configured" }, 500);
 
     // 1) Generar en backend
     const gen = await fetch(`${BACKEND}/generate`, {
@@ -48,7 +56,7 @@ export async function POST(req: Request) {
 
     const genJson = await gen.json().catch(() => ({} as any));
     if (!gen.ok || !genJson?.object_key) {
-      return cors({ error: genJson?.detail || genJson?.error || "Generation failed" }, gen.status || 500);
+      return cors({ ok: false, error: toMessage(genJson?.detail || genJson?.error || "Generation failed") }, gen.status || 500);
     }
 
     // 2) Firmar URL con Supabase
@@ -60,11 +68,11 @@ export async function POST(req: Request) {
     const keyPath = genJson.object_key as string;
     const signed = await supabase.storage.from(BUCKET).createSignedUrl(keyPath, 60 * 5);
     if (signed.error || !signed.data?.signedUrl) {
-      return cors({ error: signed.error?.message || "Failed to sign URL" }, 500);
+      return cors({ ok: false, error: toMessage(signed.error?.message || "Failed to sign URL") }, 500);
     }
 
-    return cors({ url: signed.data.signedUrl, object_key: keyPath, thumb_url: genJson?.thumb_url });
+    return cors({ ok: true, url: signed.data.signedUrl, object_key: keyPath, thumb_url: genJson?.thumb_url });
   } catch (err: any) {
-    return cors({ error: err?.message || "Unexpected error" }, 500);
+    return cors({ ok: false, error: toMessage(err) }, 500);
   }
 }
