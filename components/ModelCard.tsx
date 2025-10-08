@@ -5,23 +5,14 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { DEFAULT_PARAMS } from '@/lib/forge-config';
 import PriceBadges from '@/components/PriceBadges';
-
-// Tipo local mínimo (evita depender de '@/types/models')
-type ModelInfo = {
-  slug: string;
-  name: string;
-  description: string;
-  thumbnail: string;
-  // admite extras sin romper tipado
-  [key: string]: any;
-};
+import type { ForgeModel } from '@/data/models';
 
 function normalizeSlug(slug: string) {
   // backend models usan snake_case; catálogo usa a veces kebab-case
   return slug.replace(/-/g, '_');
 }
 
-export default function ModelCard({ m }: { m: ModelInfo }) {
+export default function ModelCard({ m }: { m: ForgeModel }) {
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
