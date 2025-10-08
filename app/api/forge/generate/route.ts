@@ -31,13 +31,52 @@ function toMessage(err: any): string {
   if (typeof err === "string") return err;
   if (Array.isArray(err)) return err.map(toMessage).join(" · ");
   if (err.message) return String(err.message);
-  if (err.detail) return toMessage(err.detail);
+  if ((err as any).detail) return toMessage((err as any).detail);
   try { return JSON.stringify(err); } catch { return String(err); }
 }
 
+// Map various front-end field names to the canonical *_mm keys expected by backend
+function normalizeParams(model: string, raw: Record<string, any> = {}) {
+  const p: Record<string, any> = { ...raw };
+  const out: Record<string, any> = { ...p };
+
+  const setIfMissing = (dst: string, names: string[]) => {
+    if (out[dst] == null) {
+      for (const n of names) {
+        if (p[n] != null) { out[dst] = Number(p[n]); break; }
+      }
+    } else {
+      out[dst] = Number(out[dst]);
+    }
+  };
+
+  // generic heuristics
+  setIfMissing("length_mm",   ["length_mm","length","base_w","ancho_mm","ancho","width"]);
+  setIfMissing("width_mm",    ["width_mm","width","depth","fondo_mm","fondo","base_d"]);
+  setIfMissing("height_mm",   ["height_mm","height","base_h","alto_mm","alto","altura"]);
+  setIfMissing("thickness_mm",["thickness_mm","thickness","grosor_mm","grosor","wall"]);
+  setIfMissing("fillet_mm",   ["fillet_mm","fillet","round","radio"]);
+
+  // model-specific tweaks (safe additions; never override if already set)
+  const addIfMissing = (k: string, v: any) => { if (out[k] == null && v != null) out[k] = v; };
+
+  if (model === "router_mount") {
+    addIfMissing("length_mm", out["length_mm"]);
+    addIfMissing("width_mm",  out["width_mm"]);
+    addIfMissing("height_mm", out["height_mm"]);
+  }
+
+  if (model === "vesa_adapter") {
+    addIfMissing("length_mm", out["length_mm"]);
+    addIfMissing("width_mm",  out["width_mm"]);
+    addIfMissing("height_mm", out["height_mm"]);
+  }
+
+  return out;
+}
+
 /**
- * Espera body:
- * { model: string, params: object, holes?: Array<{x_mm,y_mm,d_mm}> }
+ * Body esperado: { model: string, params: object, holes?: Array<{x_mm,y_mm,d_mm}> }
  * Llama al backend /generate y devuelve URL firmada del STL.
  */
 export async function POST(req: Request) {
@@ -46,11 +85,12 @@ export async function POST(req: Request) {
     if (!model) return cors({ ok: false, error: "Missing 'model'" }, 400);
     if (!BACKEND) return cors({ ok: false, error: "Backend URL not configured" }, 500);
 
-    // 1) Generar en backend
+    const normalized = normalizeParams(String(model), params || {});
+
     const gen = await fetch(`${BACKEND}/generate`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ model, params, holes: Array.isArray(holes) ? holes : [] }),
+      body: JSON.stringify({ model, params: normalized, holes: Array.isArray(holes) ? holes : [] }),
       cache: "no-store",
     });
 
@@ -59,7 +99,6 @@ export async function POST(req: Request) {
       return cors({ ok: false, error: toMessage(genJson?.detail || genJson?.error || "Generation failed") }, gen.status || 500);
     }
 
-    // 2) Firmar URL con Supabase
     const { createClient } = await import("@supabase/supabase-js");
     const url = SUPABASE_URL || "";
     const key = SUPABASE_SERVICE_ROLE_KEY || NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
