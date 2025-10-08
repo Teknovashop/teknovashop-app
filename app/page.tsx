@@ -2,11 +2,18 @@
 export const dynamic = 'force-dynamic';
 
 import Link from 'next/link';
-import HeroPreview from '@/components/HeroPreview';
+import HeroVideo from '@/components/HeroVideo';   // <-- NUEVO
 import ModelGrid from '@/components/ModelGrid';
 import Pricing from '@/components/Pricing';
 
 const CONFIGURATOR_HREF = '/forge'; // <-- tu configurador real
+
+// Puedes controlar las rutas del vídeo desde variables de entorno públicas si quieres.
+// Si no existen, usa los ficheros estáticos de /public/hero
+const HERO_VIDEO_SRC =
+  process.env.NEXT_PUBLIC_HERO_VIDEO_URL || '/hero/hero.mp4';
+const HERO_VIDEO_POSTER =
+  process.env.NEXT_PUBLIC_HERO_POSTER_URL || '/hero/hero.png';
 
 export default function Page() {
   return (
@@ -68,8 +75,12 @@ export default function Page() {
               </div>
             </div>
 
-            {/* Tu preview existente (no lo toco) */}
-            <HeroPreview />
+            {/* Panel derecho del hero: vídeo */}
+            <HeroVideo
+              src={HERO_VIDEO_SRC}
+              poster={HERO_VIDEO_POSTER}
+              className="h-[420px]"
+            />
           </div>
         </div>
       </section>
@@ -86,7 +97,7 @@ export default function Page() {
       <section className="py-8 md:py-12">
         <div className="container mx-auto px-4 max-w-6xl">
           <h2 className="text-xl md:text-2xl font-semibold mb-4 text-[#0b1526] dark:text-white">Precios</h2>
-          <Pricing />
+        <Pricing />
         </div>
       </section>
     </main>
