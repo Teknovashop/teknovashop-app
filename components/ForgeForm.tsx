@@ -40,7 +40,7 @@ const MODEL_OPTIONS = [
   { value: "laptop_stand",  label: "Laptop Stand" },
   { value: "mic_arm_clip",  label: "Mic Arm Clip" },
   { value: "camera_plate",  label: 'Camera Plate 1/4"' },
-  { value: "hub_holder",    label: "USB Hub Holder" },
+  { value: "hub_holder",    label: "USB Hub Holder" }
 ];
 
 function n(v: any, def: number): number {
@@ -51,11 +51,9 @@ function clamp(x: number, min: number, max: number) {
   return Math.min(max, Math.max(min, x));
 }
 
-// --- pequeño helper para emitir eventos de forma segura ---
+// helper para emitir eventos
 function emit<T = any>(name: string, detail?: T) {
-  try {
-    window.dispatchEvent(new CustomEvent(name, { detail }));
-  } catch {}
+  try { window.dispatchEvent(new CustomEvent(name, { detail })); } catch {}
 }
 
 export default function ForgeForm({
@@ -67,61 +65,21 @@ export default function ForgeForm({
   const [model, setModel] = useState<string>(initialModel);
 
   const [length_mm, setLength] = useState<number>(initialParams?.length_mm ?? 120);
-  const [width_mm,  setWidth]  = useState<number>(initialParams?.width_mm  ?? 100);
+  const [width_mm, setWidth] = useState<number>(initialParams?.width_mm ?? 100);
   const [height_mm, setHeight] = useState<number>(initialParams?.height_mm ?? 60);
   const [thickness_mm, setThickness] = useState<number>(initialParams?.thickness_mm ?? 3);
-  const [fillet_mm,    setFillet]    = useState<number>(initialParams?.fillet_mm    ?? 0);
+  const [fillet_mm, setFillet] = useState<number>(initialParams?.fillet_mm ?? 0);
 
   const [holes, setHoles] = useState<Hole[]>(initialHoles);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Para evitar “spams” al visor cuando tecleas: debounce ligero
+  // debounce pequeño para no spamear el visor al teclear
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const debouncedEmit = useCallback((fn: () => void, ms = 120) => {
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(fn, ms);
   }, []);
-
-  // ---- sincronización con el visor desde el PRIMER render ----
-  // Handshake inicial (modelo, params y agujeros)
-  useEffect(() => {
-    const p: Params = {
-      length_mm: clamp(Number(length_mm) || 0, 1, 5000),
-      width_mm:  clamp(Number(width_mm)  || 0, 1, 5000),
-      height_mm: clamp(Number(height_mm) || 0, 1, 5000),
-      thickness_mm: clamp(Number(thickness_mm) || 1, 0.2, 100),
-      fillet_mm:    clamp(Number(fillet_mm)    || 0, 0, 200),
-    };
-    emit("forge:set-model", { model });   // <- ¡modelo primero!
-    emit("forge:set-params", { params: p });
-    emit("forge:set-holes", { holes });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // solo al montar
-
-  // Cuando cambie el modelo, avisa inmediatamente al visor
-  useEffect(() => {
-    emit("forge:set-model", { model });
-  }, [model]);
-
-  // Cuando cambien parámetros, avisa con debounce
-  const params: Params = useMemo(() => {
-    const p: Params = {
-      length_mm: clamp(Number(length_mm) || 0, 1, 5000),
-      width_mm:  clamp(Number(width_mm)  || 0, 1, 5000),
-      height_mm: clamp(Number(height_mm) || 0, 1, 5000),
-      thickness_mm: clamp(Number(thickness_mm) || 1, 0.2, 100),
-      fillet_mm:    clamp(Number(fillet_mm)    || 0, 0, 200),
-    };
-    debouncedEmit(() => emit("forge:set-params", { params: p }));
-    return p;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [length_mm, width_mm, height_mm, thickness_mm, fillet_mm]);
-
-  // Agujeros -> visor
-  useEffect(() => {
-    debouncedEmit(() => emit("forge:set-holes", { holes }));
-  }, [holes, debouncedEmit]);
 
   // Escucha del visor: ALT+click emite "forge:add-hole"
   useEffect(() => {
@@ -136,16 +94,54 @@ export default function ForgeForm({
     return () => window.removeEventListener("forge:add-hole", onAdd as any);
   }, [width_mm]);
 
+  // Parámetros normalizados
+  const params: Params = useMemo(() => {
+    const p: Params = {
+      length_mm: clamp(Number(length_mm) || 0, 1, 5000),
+      width_mm: clamp(Number(width_mm) || 0, 1, 5000),
+      height_mm: clamp(Number(height_mm) || 0, 1, 5000),
+      thickness_mm: clamp(Number(thickness_mm) || 1, 0.2, 100),
+      fillet_mm: clamp(Number(fillet_mm) || 0, 0, 200),
+    };
+    // sincroniza al visor con debounce
+    debouncedEmit(() => emit("forge:set-params", { params: p }));
+    return p;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [length_mm, width_mm, height_mm, thickness_mm, fillet_mm]);
+
+  // ---- HANDSHAKE INICIAL (forzamos refresco) ----
+  useEffect(() => {
+    emit("forge:set-model", { model });
+    emit("forge:set-params", { params });
+    emit("forge:set-holes", { holes });
+    // ⬇️ CLAVE: fuerza al visor a reconstruir nada más cargar
+    emit("forge:refresh", { reason: "initial-handshake" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // solo al montar
+
+  // Cuando cambie el modelo: avisa y fuerza refresco inmediato
+  useEffect(() => {
+    emit("forge:set-model", { model });
+    emit("forge:refresh", { reason: "model-changed" }); // ⬅️ nuevo
+  }, [model]);
+
+  // Agujeros -> visor (debounce)
+  useEffect(() => {
+    debouncedEmit(() => emit("forge:set-holes", { holes }));
+  }, [holes, debouncedEmit]);
+
   const canGenerate = API_BASE.length > 0;
 
   const handleGenerate = useCallback(async () => {
     setError(null);
     if (!canGenerate) {
-      setError("Falta configurar NEXT_PUBLIC_FORGE_API_URL (o NEXT_PUBLIC_BACKEND_URL) en Vercel.");
+      setError(
+        "Falta configurar la variable NEXT_PUBLIC_FORGE_API_URL (o NEXT_PUBLIC_BACKEND_URL) en Vercel."
+      );
       return;
     }
 
-    // Asegura que el visor ya conoce el estado justo antes de generar
+    // antes de generar, avisa al visor (por si hace algo local)
     emit("forge:generate", { model, params, holes });
 
     setBusy(true);
@@ -153,17 +149,16 @@ export default function ForgeForm({
       const payload = {
         model,
         params: {
-          // nombres “oficiales”
           length_mm: params.length_mm,
-          width_mm:  params.width_mm,
+          width_mm: params.width_mm,
           height_mm: params.height_mm,
           thickness_mm: params.thickness_mm,
-          fillet_mm:    params.fillet_mm,
-          // alias comunes por si el backend los espera
+          fillet_mm: params.fillet_mm,
+          // alias
           length: params.length_mm,
-          width:  params.width_mm,
+          width: params.width_mm,
           height: params.height_mm,
-          wall:   params.thickness_mm,
+          wall: params.thickness_mm,
           fillet: params.fillet_mm,
         },
         holes: holes.map((h) => ({
@@ -184,8 +179,8 @@ export default function ForgeForm({
         throw new Error(json?.detail || json?.error || `HTTP ${res.status}`);
       }
 
-      // distintas formas de devolver la URL
-      const url: string | undefined = json?.stl_url || json?.signed_url || json?.url;
+      const url: string | undefined =
+        json?.stl_url || json?.signed_url || json?.url;
       if (url) {
         onGenerated?.(url);
         emit("forge:generated-url", { url });
@@ -201,7 +196,7 @@ export default function ForgeForm({
     }
   }, [model, params, holes, onGenerated, canGenerate]);
 
-  // Auto-generar si viene ?autogenerate=1
+  // Auto-generar con ?autogenerate=1
   useEffect(() => {
     try {
       const usp = new URLSearchParams(window.location.search);
@@ -220,7 +215,9 @@ export default function ForgeForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const removeHole = (idx: number) => setHoles((prev) => prev.filter((_, i) => i !== idx));
+  const removeHole = (idx: number) => {
+    setHoles((prev) => prev.filter((_, i) => i !== idx));
+  };
 
   return (
     <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
@@ -310,10 +307,7 @@ export default function ForgeForm({
             type="button"
             className="rounded-md border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-50"
             onClick={() =>
-              setHoles((prev) => [
-                ...prev,
-                { x_mm: Math.round(length_mm / 2), y_mm: Math.round(width_mm / 2), d_mm: 4 },
-              ])
+              setHoles((prev) => [...prev, { x_mm: Math.round(length_mm / 2), y_mm: Math.round(width_mm / 2), d_mm: 4 }])
             }
           >
             + Añadir
