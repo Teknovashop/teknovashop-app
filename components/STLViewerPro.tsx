@@ -22,6 +22,10 @@ export default function STLViewerPro({ url, className }: Props) {
   const [clipping, setClipping] = useState(false);
   const [bgLight, setBgLight] = useState(true);
 
+  // URL interna que puede venir por props o por eventos del configurador
+  const [internalUrl, setInternalUrl] = useState<string | null>(url ?? null);
+  useEffect(() => setInternalUrl(url ?? null), [url]);
+
   const three = useMemo(() => {
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0b0b0b);
@@ -166,20 +170,55 @@ export default function STLViewerPro({ url, className }: Props) {
     three.renderer.clippingPlanes = clipping ? three.planes : [];
   }, [clipping, three]);
 
-  // Carga STL
+  // ------------ Bus de eventos del configurador -------------
+  useEffect(() => {
+    const onGenUrl = (ev: Event) => {
+      const detail = (ev as CustomEvent).detail || {};
+      if (detail?.url) setInternalUrl(String(detail.url));
+    };
+    const onLoadUrl = (ev: Event) => {
+      const detail = (ev as CustomEvent).detail || {};
+      if (detail?.url) setInternalUrl(String(detail.url));
+    };
+    const onClear = () => {
+      setInternalUrl(null);
+      const { group } = three;
+      group.clear();
+      currentMeshRef.current = null;
+      lastSizeRef.current = null;
+    };
+
+    window.addEventListener("forge:generated-url", onGenUrl as any);
+    window.addEventListener("forge:load-url", onLoadUrl as any);
+    window.addEventListener("forge:clear", onClear as any);
+
+    return () => {
+      window.removeEventListener("forge:generated-url", onGenUrl as any);
+      window.removeEventListener("forge:load-url", onLoadUrl as any);
+      window.removeEventListener("forge:clear", onClear as any);
+    };
+  }, [three]);
+
+  // Carga STL (desde internalUrl)
   useEffect(() => {
     const { group, scene, camera, controls, renderer } = three;
+
+    // limpia todo lo previo
     group.clear();
     currentMeshRef.current = null;
     lastSizeRef.current = null;
-    if (!url) return;
+    if (!internalUrl) return;
 
     const loader = new STLLoader();
     let aborted = false;
 
     (async () => {
       try {
-        const res = await fetch(url, { mode: "cors" });
+        // Bust de caché para evitar ver el STL anterior (CDN/proxy)
+        const bust = internalUrl.includes("?") ? `&t=${Date.now()}` : `?t=${Date.now()}`;
+        const finalUrl = internalUrl + bust;
+
+        const res = await fetch(finalUrl, { mode: "cors", cache: "no-store" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const buf = await res.arrayBuffer();
         if (aborted) return;
@@ -231,7 +270,7 @@ export default function STLViewerPro({ url, className }: Props) {
     return () => {
       aborted = true;
     };
-  }, [url, three]);
+  }, [internalUrl, three]);
 
   // ALT + clic → añade agujero
   useEffect(() => {
