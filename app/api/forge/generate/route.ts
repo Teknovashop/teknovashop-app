@@ -1,3 +1,4 @@
+// app/api/forge/generate/route.ts
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -9,9 +10,6 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const NEXT_PUBLIC_SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const BUCKET = process.env.NEXT_PUBLIC_SUPABASE_BUCKET || "forge-stl";
 
-// interruptor rápido de demo (1 = paywall ON, 0 = OFF)
-const PAYWALL_PREVIEW = (process.env.PAYWALL_PREVIEW ?? "1") === "1";
-
 function cors(body: any, status = 200) {
   return new NextResponse(JSON.stringify(body), {
     status,
@@ -19,11 +17,14 @@ function cors(body: any, status = 200) {
       "content-type": "application/json",
       "access-control-allow-origin": "*",
       "access-control-allow-methods": "GET,POST,OPTIONS",
-      "access-control-allow-headers": "content-type,authorization,x-user-email",
+      "access-control-allow-headers": "content-type,authorization",
     },
   });
 }
-export async function OPTIONS() { return cors({ ok: true }); }
+
+export async function OPTIONS() {
+  return cors({ ok: true });
+}
 
 function toMessage(err: any): string {
   if (!err) return "Error";
@@ -34,131 +35,135 @@ function toMessage(err: any): string {
   try { return JSON.stringify(err); } catch { return String(err); }
 }
 
-// ---------------- Normalización de parámetros ----------------
+// --------- Normalización de parámetros ---------
 type Dict = Record<string, any>;
 const n = (v: any): number | undefined => {
-  if (v == null) return undefined;
+  if (v === null || v === undefined) return undefined;
   if (typeof v === "number") return isFinite(v) ? v : undefined;
-  const num = Number(String(v).trim().replace(",", "."));
+  const s = String(v).trim().replace(",", "."); // 3,2 -> 3.2
+  const num = Number(s);
   return isFinite(num) ? num : undefined;
 };
+
 function setIfMissing(out: Dict, dst: string, candidates: string[], src: Dict) {
   if (out[dst] == null) {
-    for (const key of candidates) { if (src[key] != null) { out[dst] = n(src[key]); break; } }
-  } else { out[dst] = n(out[dst]); }
+    for (const key of candidates) {
+      if (src[key] != null) { out[dst] = n(src[key]); break; }
+    }
+  } else {
+    out[dst] = n(out[dst]);
+  }
 }
+
 function ensureNumber(out: Dict, key: string, fallback?: number) {
-  const v = n(out[key]); out[key] = v == null ? (fallback ?? 1) : v;
+  const v = n(out[key]);
+  if (v == null) out[key] = fallback ?? 1;
+  else out[key] = v;
 }
+
+// Mapea nombres del formulario -> *_mm esperados por el backend
 function normalizeParams(model: string, raw: Dict = {}) {
-  const src: Dict = {}; for (const k of Object.keys(raw)) src[k] = n(raw[k]) ?? raw[k];
+  const src: Dict = {};
+  for (const k of Object.keys(raw)) src[k] = n(raw[k]) ?? raw[k];
+
   const out: Dict = { ...src };
 
-  setIfMissing(out, "length_mm",   ["length_mm","length","base_w","ancho_mm","ancho","width","largo","drive_l","hub_w"], src);
-  setIfMissing(out, "width_mm",    ["width_mm","width","depth","fondo_mm","fondo","base_d","drive_w","hub_d"], src);
-  setIfMissing(out, "height_mm",   ["height_mm","height","base_h","alto_mm","alto","altura","stem_h","hub_h","board_h"], src);
-  setIfMissing(out, "thickness_mm",["thickness_mm","thickness","grosor_mm","grosor","wall","clip_t"], src);
-  setIfMissing(out, "fillet_mm",   ["fillet_mm","fillet","round","radio","hook_r"], src);
+  // genéricos
+  setIfMissing(out, "length_mm",    ["length_mm","length","base_w","ancho_mm","ancho","width","largo","drive_l","hub_w","slot_l","tape_l","strap_l","largo_cinta"], src);
+  setIfMissing(out, "width_mm",     ["width_mm","width","depth","fondo_mm","fondo","base_d","drive_w","hub_d","slot_w","tape_w","strap_w","ancho_cinta","adhesive_w"], src);
+  setIfMissing(out, "height_mm",    ["height_mm","height","base_h","alto_mm","alto","altura","stem_h","hub_h","board_h"], src);
+  setIfMissing(out, "thickness_mm", ["thickness_mm","thickness","grosor_mm","grosor","wall","clip_t"], src);
+  setIfMissing(out, "fillet_mm",    ["fillet_mm","fillet","round","radio","hook_r"], src);
 
-  ensureNumber(out, "length_mm",  out.length_mm  ?? n(src.base_w) ?? n(src.width)  ?? n(src.drive_l));
-  ensureNumber(out, "width_mm",   out.width_mm   ?? n(src.base_d) ?? n(src.depth)  ?? n(src.drive_w));
-  ensureNumber(out, "height_mm",  out.height_mm  ?? n(src.base_h) ?? n(src.height) ?? n(src.stem_h) ?? n(src.wall) ?? 1);
+  // fallbacks seguros
+  ensureNumber(out, "length_mm",    out.length_mm  ?? n(src.base_w) ?? n(src.width)  ?? n(src.drive_l));
+  ensureNumber(out, "width_mm",     out.width_mm   ?? n(src.base_d) ?? n(src.depth)  ?? n(src.drive_w));
+  ensureNumber(out, "height_mm",    out.height_mm  ?? n(src.base_h) ?? n(src.height) ?? n(src.stem_h) ?? n(src.wall) ?? 1);
   ensureNumber(out, "thickness_mm", out.thickness_mm ?? n(src.wall) ?? n(src.clip_t) ?? 2);
 
+  // ----- Ajustes por modelo -----
   const ensure = (k: string, v?: number) => { if (out[k] == null && v != null) out[k] = v; };
 
   switch (model) {
     case "headset_stand":
-      ensure("length_mm", n(src.base_w)); ensure("width_mm", n(src.base_d));
-      ensure("height_mm", n(src.stem_h)); ensure("thickness_mm", n(src.wall)); ensure("fillet_mm", n(src.hook_r)); break;
-    case "phone_dock":    ensure("height_mm", out.thickness_mm ?? n(src.wall) ?? 4); break;
-    case "tablet_stand":  ensure("height_mm", n(src.lip_h) ?? out.thickness_mm ?? 4); break;
+      ensure("length_mm", n(src.base_w));
+      ensure("width_mm",  n(src.base_d));
+      ensure("height_mm", n(src.stem_h));
+      ensure("thickness_mm", n(src.wall));
+      ensure("fillet_mm", n(src.hook_r));
+      break;
+
+    case "phone_dock":
+      ensure("height_mm", out.thickness_mm ?? n(src.wall) ?? 4);
+      break;
+
+    case "tablet_stand":
+      ensure("height_mm", n(src.lip_h) ?? out.thickness_mm ?? 4);
+      break;
+
     case "ssd_holder":
-      ensure("length_mm", n(src.drive_l) ?? 100); ensure("width_mm", n(src.drive_w) ?? 70);
-      ensure("height_mm", out.thickness_mm ?? n(src.wall) ?? 2); break;
-    case "cable_clip":    ensure("height_mm", out.thickness_mm ?? n(src.wall) ?? 2); break;
-    case "raspi_case":    ensure("length_mm", n(src.board_w)); ensure("width_mm", n(src.board_l)); ensure("height_mm", n(src.board_h) ?? (n(src.wall) ?? 2)); break;
-    case "go_pro_mount":  ensure("height_mm", out.thickness_mm ?? n(src.wall) ?? 3); break;
-    case "wall_hook":     ensure("height_mm", n(src.base_h) ?? out.thickness_mm ?? 3); break;
-    case "laptop_stand":  ensure("height_mm", n(src.lip_h) ?? out.thickness_mm ?? 4); break;
-    case "mic_arm_clip":  ensure("height_mm", out.thickness_mm ?? n(src.wall) ?? 3); break;
-    case "hub_holder":    ensure("length_mm", n(src.hub_w)); ensure("width_mm", n(src.hub_d)); ensure("height_mm", n(src.hub_h) ?? out.thickness_mm ?? 3); break;
-    default: break;
+      ensure("length_mm", n(src.drive_l) ?? 100);
+      ensure("width_mm",  n(src.drive_w) ?? 70);
+      ensure("height_mm", out.thickness_mm ?? n(src.wall) ?? 2);
+      break;
+
+    case "cable_clip":
+      // Mapear explícitamente las dimensiones de la cinta/adhesivo
+      ensure("length_mm",
+        n(src.adhesive_l) ?? n(src.tape_l) ?? n(src.strap_l) ?? n(src.largo_cinta) ?? n(src.length) ?? 24
+      );
+      ensure("width_mm",
+        n(src.adhesive_w) ?? n(src.tape_w) ?? n(src.strap_w) ?? n(src.ancho_cinta) ?? n(src.width) ?? 12
+      );
+      // 2.5D: altura = grosor
+      ensure("height_mm", out.thickness_mm ?? n(src.wall) ?? 2);
+      break;
+
+    case "raspi_case":
+      ensure("length_mm", n(src.board_w));
+      ensure("width_mm",  n(src.board_l));
+      ensure("height_mm", n(src.board_h) ?? (n(src.wall) ?? 2));
+      break;
+
+    case "go_pro_mount":
+      ensure("height_mm", out.thickness_mm ?? n(src.wall) ?? 3);
+      break;
+
+    case "wall_hook":
+      ensure("height_mm", n(src.base_h) ?? out.thickness_mm ?? 3);
+      break;
+
+    case "laptop_stand":
+      ensure("height_mm", n(src.lip_h) ?? out.thickness_mm ?? 4);
+      break;
+
+    case "mic_arm_clip":
+      ensure("height_mm", out.thickness_mm ?? n(src.wall) ?? 3);
+      break;
+
+    case "hub_holder":
+      ensure("length_mm", n(src.hub_w));
+      ensure("width_mm",  n(src.hub_d));
+      ensure("height_mm", n(src.hub_h) ?? out.thickness_mm ?? 3);
+      break;
+
+    default:
+      break;
   }
+
   return out;
 }
-// ------------------------------------------------------------
+// -----------------------------------------------
 
-// ---------- Comprobación de derecho (entitlement) ----------
-type EntitlementRow = {
-  id: string;
-  email: string;
-  plan: "oneoff" | "maker" | "commercial";
-  model_slug: string | null;
-  status: "active" | "canceled" | "expired";
-  expires_at: string | null; // ISO
-};
-
-async function hasEntitlement(email: string, model: string) {
-  if (!SUPABASE_URL) throw new Error("SUPABASE_URL not configured");
-  const { createClient } = await import("@supabase/supabase-js");
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY || NEXT_PUBLIC_SUPABASE_ANON_KEY);
-
-  // 1) Suscripción activa
-  const nowIso = new Date().toISOString();
-  const sub = await supabase
-    .from("entitlements")
-    .select("*")
-    .eq("email", email)
-    .in("plan", ["maker", "commercial"])
-    .eq("status", "active")
-    .gt("expires_at", nowIso)
-    .limit(1)
-    .maybeSingle();
-
-  if (!(sub as any).error && (sub as any).data) return true;
-
-  // 2) Compra única del modelo
-  const one = await supabase
-    .from("entitlements")
-    .select("*")
-    .eq("email", email)
-    .eq("plan", "oneoff")
-    .eq("status", "active")
-    .eq("model_slug", model)
-    .limit(1)
-    .maybeSingle();
-
-  return !(one as any).error && !!(one as any).data;
-}
-
-// -------------------------- Handler -------------------------
 /**
- * Body: { model: string, params: object, holes?: Array<{x_mm,y_mm,d_mm}>, email?: string }
- * Header opcional: x-user-email
+ * Body esperado: { model: string, params: object, holes?: Array<{x_mm,y_mm,d_mm}> }
+ * Devuelve: { ok: true, url, object_key, thumb_url } o { ok: false, error }
  */
 export async function POST(req: Request) {
   try {
-    const body = await req.json().catch(() => ({} as any));
-    const { model, params, holes } = body || {};
+    const { model, params, holes } = await req.json().catch(() => ({} as any));
     if (!model) return cors({ ok: false, error: "Missing 'model'" }, 400);
     if (!BACKEND) return cors({ ok: false, error: "Backend URL not configured" }, 500);
-
-    // --- PAYWALL duro ---
-    if (PAYWALL_PREVIEW) {
-      const email =
-        req.headers.get("x-user-email")?.trim().toLowerCase() ||
-        (typeof body?.email === "string" ? body.email.trim().toLowerCase() : "");
-
-      if (!email) {
-        return cors({ ok: false, error: "No autorizado: falta email (x-user-email)." }, 401);
-      }
-      const entitled = await hasEntitlement(email, String(model));
-      if (!entitled) {
-        return cors({ ok: false, error: "No tienes una compra o suscripción activa para este modelo." }, 403);
-      }
-    }
-    // ---------------------------------------------------------
 
     const normalized = normalizeParams(String(model), params || {});
 
@@ -169,6 +174,7 @@ export async function POST(req: Request) {
       body: JSON.stringify({ model, params: normalized, holes: Array.isArray(holes) ? holes : [] }),
       cache: "no-store",
     });
+
     const genJson = await gen.json().catch(() => ({} as any));
     if (!gen.ok || !genJson?.object_key) {
       return cors({ ok: false, error: toMessage(genJson?.detail || genJson?.error || "Generation failed") }, gen.status || 500);
