@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const API_BASE =
   (process.env.NEXT_PUBLIC_FORGE_API_URL ||
@@ -40,18 +40,22 @@ const MODEL_OPTIONS = [
   { value: "laptop_stand",  label: "Laptop Stand" },
   { value: "mic_arm_clip",  label: "Mic Arm Clip" },
   { value: "camera_plate",  label: 'Camera Plate 1/4"' },
-  { value: "hub_holder",    label: "USB Hub Holder" }
+  { value: "hub_holder",    label: "USB Hub Holder" },
 ];
 
-// conversión robusta (acepta "3,2")
 function n(v: any, def: number): number {
-  if (v === null || v === undefined) return def;
-  const s = String(v).replace(",", ".").trim();
-  const x = Number(s);
+  const x = Number(v);
   return Number.isFinite(x) ? x : def;
 }
 function clamp(x: number, min: number, max: number) {
   return Math.min(max, Math.max(min, x));
+}
+
+// --- pequeño helper para emitir eventos de forma segura ---
+function emit<T = any>(name: string, detail?: T) {
+  try {
+    window.dispatchEvent(new CustomEvent(name, { detail }));
+  } catch {}
 }
 
 export default function ForgeForm({
@@ -63,36 +67,61 @@ export default function ForgeForm({
   const [model, setModel] = useState<string>(initialModel);
 
   const [length_mm, setLength] = useState<number>(initialParams?.length_mm ?? 120);
-  const [width_mm, setWidth] = useState<number>(initialParams?.width_mm ?? 100);
+  const [width_mm,  setWidth]  = useState<number>(initialParams?.width_mm  ?? 100);
   const [height_mm, setHeight] = useState<number>(initialParams?.height_mm ?? 60);
   const [thickness_mm, setThickness] = useState<number>(initialParams?.thickness_mm ?? 3);
-  const [fillet_mm, setFillet] = useState<number>(initialParams?.fillet_mm ?? 0);
+  const [fillet_mm,    setFillet]    = useState<number>(initialParams?.fillet_mm    ?? 0);
 
   const [holes, setHoles] = useState<Hole[]>(initialHoles);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // ---- Broadcast de cambios al visor (para forzar remount/limpieza) ----
+  // Para evitar “spams” al visor cuando tecleas: debounce ligero
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debouncedEmit = useCallback((fn: () => void, ms = 120) => {
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(fn, ms);
+  }, []);
+
+  // ---- sincronización con el visor desde el PRIMER render ----
+  // Handshake inicial (modelo, params y agujeros)
   useEffect(() => {
-    // notifica cambio de modelo
-    window.dispatchEvent(new CustomEvent("forge:set-model", { detail: { model } }));
-    window.dispatchEvent(new CustomEvent("forge:model-changed", { detail: { model } }));
+    const p: Params = {
+      length_mm: clamp(Number(length_mm) || 0, 1, 5000),
+      width_mm:  clamp(Number(width_mm)  || 0, 1, 5000),
+      height_mm: clamp(Number(height_mm) || 0, 1, 5000),
+      thickness_mm: clamp(Number(thickness_mm) || 1, 0.2, 100),
+      fillet_mm:    clamp(Number(fillet_mm)    || 0, 0, 200),
+    };
+    emit("forge:set-model", { model });   // <- ¡modelo primero!
+    emit("forge:set-params", { params: p });
+    emit("forge:set-holes", { holes });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // solo al montar
+
+  // Cuando cambie el modelo, avisa inmediatamente al visor
+  useEffect(() => {
+    emit("forge:set-model", { model });
   }, [model]);
 
-  // Notifica cambios de parámetros (para previsualización en vivo si la tienes)
+  // Cuando cambien parámetros, avisa con debounce
   const params: Params = useMemo(() => {
     const p: Params = {
-      length_mm: clamp(n(length_mm, 120), 1, 5000),
-      width_mm: clamp(n(width_mm, 100), 1, 5000),
-      height_mm: clamp(n(height_mm, 60), 1, 5000),
-      thickness_mm: clamp(n(thickness_mm, 3), 0.2, 100),
-      fillet_mm: clamp(n(fillet_mm, 0), 0, 200),
+      length_mm: clamp(Number(length_mm) || 0, 1, 5000),
+      width_mm:  clamp(Number(width_mm)  || 0, 1, 5000),
+      height_mm: clamp(Number(height_mm) || 0, 1, 5000),
+      thickness_mm: clamp(Number(thickness_mm) || 1, 0.2, 100),
+      fillet_mm:    clamp(Number(fillet_mm)    || 0, 0, 200),
     };
-    // avisamos al visor
-    window.dispatchEvent(new CustomEvent("forge:params-changed", { detail: { model, params: p } }));
+    debouncedEmit(() => emit("forge:set-params", { params: p }));
     return p;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [length_mm, width_mm, height_mm, thickness_mm, fillet_mm, model]);
+  }, [length_mm, width_mm, height_mm, thickness_mm, fillet_mm]);
+
+  // Agujeros -> visor
+  useEffect(() => {
+    debouncedEmit(() => emit("forge:set-holes", { holes }));
+  }, [holes, debouncedEmit]);
 
   // Escucha del visor: ALT+click emite "forge:add-hole"
   useEffect(() => {
@@ -100,7 +129,6 @@ export default function ForgeForm({
       const det = (ev as CustomEvent).detail || {};
       const x = n(det.x_mm, 0);
       const d = n(det.d_mm, 4);
-      // Si no se envía y_mm, centramos a mitad de W
       const y = Number.isFinite(det.y_mm) ? n(det.y_mm, 0) : width_mm / 2;
       setHoles((prev) => [...prev, { x_mm: x, y_mm: y, d_mm: d }]);
     };
@@ -113,28 +141,29 @@ export default function ForgeForm({
   const handleGenerate = useCallback(async () => {
     setError(null);
     if (!canGenerate) {
-      setError(
-        "Falta configurar la variable NEXT_PUBLIC_FORGE_API_URL (o NEXT_PUBLIC_BACKEND_URL) en Vercel."
-      );
+      setError("Falta configurar NEXT_PUBLIC_FORGE_API_URL (o NEXT_PUBLIC_BACKEND_URL) en Vercel.");
       return;
     }
+
+    // Asegura que el visor ya conoce el estado justo antes de generar
+    emit("forge:generate", { model, params, holes });
+
     setBusy(true);
     try {
-      // Enviar parámetros con nombres alternativos por compatibilidad:
       const payload = {
         model,
         params: {
           // nombres “oficiales”
           length_mm: params.length_mm,
-          width_mm: params.width_mm,
+          width_mm:  params.width_mm,
           height_mm: params.height_mm,
           thickness_mm: params.thickness_mm,
-          fillet_mm: params.fillet_mm,
+          fillet_mm:    params.fillet_mm,
           // alias comunes por si el backend los espera
           length: params.length_mm,
-          width: params.width_mm,
+          width:  params.width_mm,
           height: params.height_mm,
-          wall: params.thickness_mm,
+          wall:   params.thickness_mm,
           fillet: params.fillet_mm,
         },
         holes: holes.map((h) => ({
@@ -155,15 +184,13 @@ export default function ForgeForm({
         throw new Error(json?.detail || json?.error || `HTTP ${res.status}`);
       }
 
-      // Soportamos varias respuestas posibles del backend
-      const url: string | undefined =
-        json?.stl_url || json?.signed_url || json?.url;
+      // distintas formas de devolver la URL
+      const url: string | undefined = json?.stl_url || json?.signed_url || json?.url;
       if (url) {
-        if (typeof onGenerated === "function") onGenerated(url);
-        // evento para listeners externos
-        window.dispatchEvent(new CustomEvent("forge:generated-url", { detail: { url, model } }));
+        onGenerated?.(url);
+        emit("forge:generated-url", { url });
       } else if (json?.path) {
-        window.dispatchEvent(new CustomEvent("forge:generated-path", { detail: { path: json.path, model } }));
+        emit("forge:generated-path", { path: json.path });
       } else {
         throw new Error("Respuesta inesperada del backend");
       }
@@ -174,15 +201,11 @@ export default function ForgeForm({
     }
   }, [model, params, holes, onGenerated, canGenerate]);
 
-  // Auto-generar si viene ?autogenerate=1 (y respetar ?model=…)
+  // Auto-generar si viene ?autogenerate=1
   useEffect(() => {
     try {
       const usp = new URLSearchParams(window.location.search);
       const auto = usp.get("autogenerate");
-      const qsModel = usp.get("model");
-      if (qsModel && qsModel !== model) {
-        setModel(qsModel);
-      }
       if (auto === "1") {
         const holesStr = usp.get("holes");
         if (holesStr) {
@@ -191,16 +214,13 @@ export default function ForgeForm({
             if (Array.isArray(parsed)) setHoles(parsed.filter(Boolean));
           } catch {}
         }
-        // esperar un microtick si acabamos de cambiar model
-        setTimeout(() => handleGenerate(), 0);
+        handleGenerate();
       }
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const removeHole = (idx: number) => {
-    setHoles((prev) => prev.filter((_, i) => i !== idx));
-  };
+  const removeHole = (idx: number) => setHoles((prev) => prev.filter((_, i) => i !== idx));
 
   return (
     <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
@@ -211,7 +231,6 @@ export default function ForgeForm({
         <label className="col-span-2 text-sm">
           <span className="mb-1 block text-neutral-600">Modelo</span>
           <select
-            name="model"
             className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2"
             value={model}
             onChange={(e) => setModel(e.target.value)}
@@ -293,7 +312,7 @@ export default function ForgeForm({
             onClick={() =>
               setHoles((prev) => [
                 ...prev,
-                { x_mm: Math.round(n(length_mm, 120) / 2), y_mm: Math.round(n(width_mm, 100) / 2), d_mm: 4 },
+                { x_mm: Math.round(length_mm / 2), y_mm: Math.round(width_mm / 2), d_mm: 4 },
               ])
             }
           >
