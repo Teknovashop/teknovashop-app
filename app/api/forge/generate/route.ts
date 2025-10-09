@@ -1,5 +1,7 @@
 // app/api/forge/generate/route.ts
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -76,13 +78,13 @@ function normalizeParams(model: string, raw: Dict = {}) {
   setIfMissing(out, "thickness_mm",["thickness_mm","thickness","grosor_mm","grosor","wall","clip_t"], src);
   setIfMissing(out, "fillet_mm",   ["fillet_mm","fillet","round","radio","hook_r"], src);
 
-  // fallbacks seguros: si algún *_mm sigue faltando, intenta con otros alias o asegura mínimo 1
+  // fallbacks seguros
   ensureNumber(out, "length_mm",  out.length_mm  ?? n(src.base_w) ?? n(src.width)  ?? n(src.drive_l));
   ensureNumber(out, "width_mm",   out.width_mm   ?? n(src.base_d) ?? n(src.depth)  ?? n(src.drive_w));
   ensureNumber(out, "height_mm",  out.height_mm  ?? n(src.base_h) ?? n(src.height) ?? n(src.stem_h) ?? n(src.wall) ?? 1);
   ensureNumber(out, "thickness_mm", out.thickness_mm ?? n(src.wall) ?? n(src.clip_t) ?? 2);
 
-  // ----- Ajustes por modelo (no sobrescriben lo ya asignado) -----
+  // ----- Ajustes por modelo -----
   const ensure = (k: string, v?: number) => { if (out[k] == null && v != null) out[k] = v; };
 
   switch (model) {
@@ -93,61 +95,42 @@ function normalizeParams(model: string, raw: Dict = {}) {
       ensure("thickness_mm", n(src.wall));
       ensure("fillet_mm", n(src.hook_r));
       break;
-
     case "phone_dock":
-      // ya cubren length/width; altura requerida por backend -> usa grosor si falta
       ensure("height_mm", out.thickness_mm ?? n(src.wall) ?? 4);
       break;
-
     case "tablet_stand":
-      // altura requerida -> usa pestaña (lip_h) o grosor
       ensure("height_mm", n(src.lip_h) ?? out.thickness_mm ?? 4);
       break;
-
     case "ssd_holder":
-      // los *_mm vienen vacíos; forzamos mínimos para Pydantic
       ensure("length_mm", n(src.drive_l) ?? 100);
       ensure("width_mm",  n(src.drive_w) ?? 70);
       ensure("height_mm", out.thickness_mm ?? n(src.wall) ?? 2);
       break;
-
     case "cable_clip":
-      // clip 2.5D: altura = grosor
       ensure("height_mm", out.thickness_mm ?? n(src.wall) ?? 2);
       break;
-
     case "raspi_case":
-      // placa: board_w x board_l x board_h
       ensure("length_mm", n(src.board_w));
       ensure("width_mm",  n(src.board_l));
       ensure("height_mm", n(src.board_h) ?? (n(src.wall) ?? 2));
       break;
-
     case "go_pro_mount":
-      // 2.5D: altura = grosor
       ensure("height_mm", out.thickness_mm ?? n(src.wall) ?? 3);
       break;
-
     case "wall_hook":
-      // usa alto base como altura si falta
       ensure("height_mm", n(src.base_h) ?? out.thickness_mm ?? 3);
       break;
-
     case "laptop_stand":
       ensure("height_mm", n(src.lip_h) ?? out.thickness_mm ?? 4);
       break;
-
     case "mic_arm_clip":
-      // 2.5D: altura = grosor
       ensure("height_mm", out.thickness_mm ?? n(src.wall) ?? 3);
       break;
-
     case "hub_holder":
       ensure("length_mm", n(src.hub_w));
       ensure("width_mm",  n(src.hub_d));
       ensure("height_mm", n(src.hub_h) ?? out.thickness_mm ?? 3);
       break;
-
     default:
       break;
   }
@@ -157,14 +140,64 @@ function normalizeParams(model: string, raw: Dict = {}) {
 // -----------------------------------------------
 
 /**
- * Body esperado: { model: string, params: object, holes?: Array<{x_mm,y_mm,d_mm}> }
- * Devuelve: { ok: true, url, object_key, thumb_url } o { ok: false, error }
+ * Body: { model: string, params: object, holes?: Array<{x_mm,y_mm,d_mm}>, slug?: string }
+ * Respuesta: { ok: true, url, object_key, thumb_url } | { ok: false, error }
  */
 export async function POST(req: Request) {
   try {
-    const { model, params, holes } = await req.json().catch(() => ({} as any));
+    const body = await req.json().catch(() => ({} as any));
+    const { model, params, holes } = body as any;
     if (!model) return cors({ ok: false, error: "Missing 'model'" }, 400);
     if (!BACKEND) return cors({ ok: false, error: "Backend URL not configured" }, 500);
+
+    // ----- GATE DE PERMISOS (Supabase Auth + entitlements) -----
+    const slugFromBody: string | undefined = body?.slug;
+    // si no llega, derivamos del nombre del modelo: snake_case -> kebab-case
+    const slug = (slugFromBody || String(model).replace(/_/g, "-")).toLowerCase();
+
+    const supabase = createRouteHandlerClient({ cookies });
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return cors({ ok: false, error: "Debes iniciar sesión para descargar el STL." }, 401);
+    }
+
+    // ¿Suscripción activa (model_slug IS NULL)?
+    const { data: sub } = await supabase
+      .from("entitlements")
+      .select("id")
+      .eq("user_id", user.id)
+      .eq("active", true)
+      .is("model_slug", null)
+      .maybeSingle();
+
+    let hasAccess = !!sub;
+
+    // ¿Compra única del modelo?
+    if (!hasAccess) {
+      const { data: one } = await supabase
+        .from("entitlements")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("active", true)
+        .eq("model_slug", slug)
+        .maybeSingle();
+      hasAccess = !!one;
+    }
+
+    if (!hasAccess) {
+      return cors(
+        {
+          ok: false,
+          error:
+            "No tienes acceso a este modelo. Compra el STL o activa una suscripción Maker/Comercial.",
+        },
+        403
+      );
+    }
+    // ----- FIN GATE -----
 
     const normalized = normalizeParams(String(model), params || {});
 
@@ -178,22 +211,30 @@ export async function POST(req: Request) {
 
     const genJson = await gen.json().catch(() => ({} as any));
     if (!gen.ok || !genJson?.object_key) {
-      return cors({ ok: false, error: toMessage(genJson?.detail || genJson?.error || "Generation failed") }, gen.status || 500);
+      return cors(
+        { ok: false, error: toMessage(genJson?.detail || genJson?.error || "Generation failed") },
+        gen.status || 500
+      );
     }
 
     // 2) Firmar URL con Supabase
     const { createClient } = await import("@supabase/supabase-js");
     const url = SUPABASE_URL || "";
     const key = SUPABASE_SERVICE_ROLE_KEY || NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-    const supabase = createClient(url, key);
+    const supaSrv = createClient(url, key);
 
     const keyPath = genJson.object_key as string;
-    const signed = await supabase.storage.from(BUCKET).createSignedUrl(keyPath, 60 * 5);
+    const signed = await supaSrv.storage.from(BUCKET).createSignedUrl(keyPath, 60 * 5);
     if (signed.error || !signed.data?.signedUrl) {
       return cors({ ok: false, error: toMessage(signed.error?.message || "Failed to sign URL") }, 500);
     }
 
-    return cors({ ok: true, url: signed.data.signedUrl, object_key: keyPath, thumb_url: genJson?.thumb_url });
+    return cors({
+      ok: true,
+      url: signed.data.signedUrl,
+      object_key: keyPath,
+      thumb_url: genJson?.thumb_url,
+    });
   } catch (err: any) {
     return cors({ ok: false, error: toMessage(err) }, 500);
   }
