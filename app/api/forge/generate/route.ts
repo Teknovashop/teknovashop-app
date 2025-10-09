@@ -104,10 +104,10 @@ async function hasEntitlement(email: string, model: string) {
   const { createClient } = await import("@supabase/supabase-js");
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY || NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
-  // 1) suscripción activa (maker/commercial)
+  // 1) Suscripción activa
   const nowIso = new Date().toISOString();
   const sub = await supabase
-    .from<EntitlementRow>("entitlements")
+    .from("entitlements")
     .select("*")
     .eq("email", email)
     .in("plan", ["maker", "commercial"])
@@ -116,11 +116,11 @@ async function hasEntitlement(email: string, model: string) {
     .limit(1)
     .maybeSingle();
 
-  if (!sub.error && sub.data) return true;
+  if (!(sub as any).error && (sub as any).data) return true;
 
-  // 2) compra única del modelo
+  // 2) Compra única del modelo
   const one = await supabase
-    .from<EntitlementRow>("entitlements")
+    .from("entitlements")
     .select("*")
     .eq("email", email)
     .eq("plan", "oneoff")
@@ -129,7 +129,7 @@ async function hasEntitlement(email: string, model: string) {
     .limit(1)
     .maybeSingle();
 
-  return !one.error && !!one.data;
+  return !(one as any).error && !!(one as any).data;
 }
 
 // -------------------------- Handler -------------------------
@@ -146,7 +146,6 @@ export async function POST(req: Request) {
 
     // --- PAYWALL duro ---
     if (PAYWALL_PREVIEW) {
-      // 1) obtenemos el email del header o del body
       const email =
         req.headers.get("x-user-email")?.trim().toLowerCase() ||
         (typeof body?.email === "string" ? body.email.trim().toLowerCase() : "");
