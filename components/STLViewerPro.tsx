@@ -17,7 +17,8 @@ export default function STLViewerPro({ url, className }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
 
   // refs de estado de la malla actual + tamaño
-  const currentMeshRef = useRef<THREE.Object3D | null>(null);
+  // NOTE: evitamos THREE.Object3D aquí para esquivar el fallo de tipos en algunos setups
+  const currentMeshRef = useRef<any>(null);
   const lastSizeRef = useRef<V3 | null>(null);
 
   // toggles UI
@@ -27,7 +28,7 @@ export default function STLViewerPro({ url, className }: Props) {
   const [clipping, setClipping] = useState(false);
   const [bgLight, setBgLight] = useState(true);
 
-  // MUY IMPORTANTE: saber si hay modelo cargado para ocultar plano/grid/ejes
+  // saber si hay modelo cargado para ocultar plano/grid/ejes
   const [hasModel, setHasModel] = useState(false);
 
   const three = useMemo(() => {
@@ -184,7 +185,7 @@ export default function STLViewerPro({ url, className }: Props) {
     currentMeshRef.current = null;
     lastSizeRef.current = null;
 
-    // si no hay URL -> ocultar plano/grid/ejes y dejar fondo liso
+    // si no hay URL -> ocultar plano/grid/ejes
     if (!url) {
       setHasModel(false);
       three.grid.visible = false;
@@ -289,12 +290,12 @@ export default function STLViewerPro({ url, className }: Props) {
 
       const pWorld = intersects[0].point.clone();
       const pLocal = pWorld.clone();
-      mesh.worldToLocal(pLocal);
+      (mesh as THREE.Object3D).worldToLocal(pLocal);
 
-      const x_mm = pLocal.x + size.x / 2;
-      const y_mm = pLocal.y + size.y / 2;
-      const x_clamped = Math.max(0, Math.min(x_mm, size.x));
-      const y_clamped = Math.max(0, Math.min(y_mm, size.y));
+      const x_mm = pLocal.x + (size as V3).x / 2;
+      const y_mm = pLocal.y + (size as V3).y / 2;
+      const x_clamped = Math.max(0, Math.min(x_mm, (size as V3).x));
+      const y_clamped = Math.max(0, Math.min(y_mm, (size as V3).y));
 
       window.dispatchEvent(
         new CustomEvent("forge:add-hole", {
