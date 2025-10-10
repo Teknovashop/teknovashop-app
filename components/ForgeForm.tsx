@@ -68,6 +68,9 @@ export default function ForgeForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // 🔹 NUEVO: pedir SVG (láser) opcional
+  const [exportSVG, setExportSVG] = useState<boolean>(false);
+
   // debounce pequeño para no spamear el visor al teclear
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const debouncedEmit = useCallback((fn: () => void, ms = 120) => {
@@ -117,17 +120,32 @@ export default function ForgeForm({
     setBusy(true);
     setError(null);
     try {
+      // payload base
+      const payload: any = {
+        model: model.replace(/-/g, "_"), // ✅ aseguramos snake_case al backend
+        params,
+        holes,
+      };
+      // 🔹 NUEVO: si el usuario marca "Export SVG (láser)", pedimos también SVG (retrocompatible)
+      if (exportSVG) {
+        payload.outputs = ["stl", "svg"];
+      }
+
       const res = await fetch(`${API_BASE}/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // ✅ aseguramos snake_case al backend
-        body: JSON.stringify({ model: model.replace(/-/g, "_"), params, holes }),
+        body: JSON.stringify(payload),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Error generando STL");
       const url = json?.stl_url as string;
       onGenerated?.(url);
       emit("forge:stl-url", { url });
+
+      // Si el backend devolvió svg_url, lo notificamos al visor / UI (opcional, no rompe nada)
+      if (json?.svg_url) {
+        emit("forge:svg-url", { url: json.svg_url });
+      }
     } catch (e: any) {
       setError(e?.message || "No se pudo generar el STL");
     } finally {
@@ -311,6 +329,18 @@ export default function ForgeForm({
             Configura <code>NEXT_PUBLIC_FORGE_API_URL</code> para generar.
           </span>
         )}
+      </div>
+
+      {/* 🔹 NUEVO: toggle Export SVG (láser) */}
+      <div className="mt-2 flex items-center gap-3 text-sm text-neutral-700">
+        <label className="inline-flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={exportSVG}
+            onChange={(e) => setExportSVG(e.target.checked)}
+          />
+          Export SVG (láser)
+        </label>
       </div>
 
       {error && <p className="mt-3 text-sm text-red-700">{error}</p>}
