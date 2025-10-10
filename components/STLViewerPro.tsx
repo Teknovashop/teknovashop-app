@@ -16,8 +16,7 @@ type V3 = { x: number; y: number; z: number };
 export default function STLViewerPro({ url, className }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
 
-  // refs de estado de la malla actual + tamaño
-  // NOTE: evitamos THREE.Object3D aquí para esquivar el fallo de tipos en algunos setups
+  // refs de estado de la malla actual + tamaño (evitamos tipos de THREE aquí)
   const currentMeshRef = useRef<any>(null);
   const lastSizeRef = useRef<V3 | null>(null);
 
@@ -144,7 +143,7 @@ export default function STLViewerPro({ url, className }: Props) {
   useEffect(() => {
     three.renderer.shadowMap.enabled = shadows;
     (three.dir as any).castShadow = shadows;
-    three.plane.visible = hasModel && shadows; // <— solo con modelo
+    three.plane.visible = hasModel && shadows; // solo con modelo
   }, [shadows, hasModel, three]);
 
   useEffect(() => {
@@ -276,7 +275,8 @@ export default function STLViewerPro({ url, className }: Props) {
 
     const onClick = (ev: MouseEvent) => {
       if (!ev.altKey) return;
-      const mesh = currentMeshRef.current as THREE.Mesh | null;
+      // ⬇️ Evitamos tipos de THREE aquí para no romper la build
+      const mesh = currentMeshRef.current as any;
       const size = lastSizeRef.current;
       if (!mesh || !size) return;
 
@@ -290,7 +290,7 @@ export default function STLViewerPro({ url, className }: Props) {
 
       const pWorld = intersects[0].point.clone();
       const pLocal = pWorld.clone();
-      (mesh as THREE.Object3D).worldToLocal(pLocal);
+      (mesh as any).worldToLocal(pLocal);
 
       const x_mm = pLocal.x + (size as V3).x / 2;
       const y_mm = pLocal.y + (size as V3).y / 2;
@@ -312,7 +312,12 @@ export default function STLViewerPro({ url, className }: Props) {
   function blobFromExporterOutput(output: unknown): Blob {
     const type = "model/stl";
     if (output instanceof ArrayBuffer) return new Blob([output], { type });
-    if (typeof output === "object" && output !== null && "buffer" in (output as any) && (output as any).buffer instanceof ArrayBuffer) {
+    if (
+      typeof output === "object" &&
+      output !== null &&
+      "buffer" in (output as any) &&
+      (output as any).buffer instanceof ArrayBuffer
+    ) {
       return new Blob([(output as any).buffer as ArrayBuffer], { type });
     }
     if (typeof output === "string") return new Blob([output], { type });
