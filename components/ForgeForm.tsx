@@ -7,6 +7,7 @@ const API_BASE =
     process.env.NEXT_PUBLIC_BACKEND_URL ||
     "").replace(/\/+$/, "");
 
+// -------------------- Tipos --------------------
 type Params = {
   length_mm: number;
   width_mm: number;
@@ -24,17 +25,32 @@ type Props = {
   onGenerated?: (url: string) => void;
 };
 
-const MODEL_OPTIONS = [
+// -------------------- Fallback estático con todos los modelos registrados --------------------
+const STATIC_MODEL_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "cable_tray",    label: "Cable Tray (bandeja)" },
   { value: "vesa_adapter",  label: "VESA Adapter" },
   { value: "router_mount",  label: "Router Mount (L)" },
-  { value: "cable_clip",    label: "Cable Clip" },
+  { value: "camera_mount",  label: "Camera Mount" },
+  { value: "wall_bracket",  label: "Wall Bracket" },
+  { value: "fan_guard",     label: "Fan Guard" },
+  { value: "desk_hook",     label: "Desk Hook" },
+
   { value: "headset_stand", label: "Headset Stand" },
-  { value: "phone_dock",    label: "Phone Dock (USB-C)" },
+  { value: "laptop_stand",  label: "Laptop Stand" },
+  { value: "wall_hook",     label: "Wall Hook" },
+
   { value: "tablet_stand",  label: "Tablet Stand" },
-  // ... (el resto de tus modelos)
+  { value: "ssd_holder",    label: "SSD Holder (2.5\")" },
+  { value: "raspi_case",    label: "Raspberry Pi Case" },
+  { value: "go_pro_mount",  label: "GoPro Mount" },
+  { value: "monitor_stand", label: "Monitor Stand" },
+  { value: "camera_plate",  label: "Camera Plate" },
+  { value: "hub_holder",    label: "Hub Holder" },
+  { value: "mic_arm_clip",  label: "Mic Arm Clip" },
+  { value: "phone_dock",    label: "Phone Dock (USB-C)" },
 ];
 
+// -------------------- Utilidades --------------------
 function n(v: any, fallback = 0) {
   const num = Number(v);
   return Number.isFinite(num) ? num : fallback;
@@ -44,10 +60,37 @@ function clamp(x: number, min: number, max: number) {
   return Math.min(max, Math.max(min, x));
 }
 
-// helper para emitir eventos
+// helper para emitir eventos al visor
 function emit<T = any>(name: string, detail?: T) {
   try { window.dispatchEvent(new CustomEvent(name, { detail })); } catch {}
 }
+
+// helper para etiquetar un modelo (cuando vienen del backend sin label)
+const labelFor = (m: string) =>
+  ({
+    cable_tray: "Cable Tray (bandeja)",
+    vesa_adapter: "VESA Adapter",
+    router_mount: "Router Mount (L)",
+    camera_mount: "Camera Mount",
+    wall_bracket: "Wall Bracket",
+    fan_guard: "Fan Guard",
+    desk_hook: "Desk Hook",
+
+    headset_stand: "Headset Stand",
+    laptop_stand: "Laptop Stand",
+    wall_hook: "Wall Hook",
+
+    tablet_stand: "Tablet Stand",
+    ssd_holder: "SSD Holder (2.5\")",
+    raspi_case: "Raspberry Pi Case",
+    go_pro_mount: "GoPro Mount",
+    monitor_stand: "Monitor Stand",
+    camera_plate: "Camera Plate",
+    hub_holder: "Hub Holder",
+    mic_arm_clip: "Mic Arm Clip",
+    phone_dock: "Phone Dock (USB-C)",
+  } as Record<string, string>)[m] ||
+  m.replace(/_/g, " ").replace(/\b\w/g, (s) => s.toUpperCase());
 
 export default function ForgeForm({
   initialModel = "cable_tray",
@@ -68,27 +111,47 @@ export default function ForgeForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 🔹 NUEVO: pedir SVG (láser) opcional
+  // 🔹 SVG láser opcional
   const [exportSVG, setExportSVG] = useState<boolean>(false);
-  // 🔹 NUEVO: guardar la URL del SVG devuelta por el backend
   const [svgUrl, setSvgUrl] = useState<string | null>(null);
 
-  // debounce pequeño para no spamear el visor al teclear
+  // 🔹 Modelos dinámicos desde el backend (si está disponible)
+  const [serverModels, setServerModels] = useState<string[] | null>(null);
+
+  // Pequeño debounce para no spamear el visor al teclear
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const debouncedEmit = useCallback((fn: () => void, ms = 120) => {
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(fn, ms);
   }, []);
 
-  // Sincroniza modelo al visor
+  // ---- Cargar lista de modelos desde el backend (dinámica) ----
+  useEffect(() => {
+    if (!API_BASE) return;
+    fetch(`${API_BASE}/health`)
+      .then((r) => r.json())
+      .then((j) => {
+        if (Array.isArray(j?.models) && j.models.length) {
+          setServerModels(j.models);
+          // si el modelo actual no está en la lista, no lo cambiamos (no rompemos UX)
+        }
+      })
+      .catch(() => {
+        // silencio: si falla, seguimos con el fallback estático
+      });
+  }, []);
+
+  // ---- Sincroniza modelo al visor ----
   useEffect(() => {
     emit("forge:set-model", { model });
     emit("forge:refresh", { reason: "model-change" });
   }, [model]);
 
-  // Sincroniza parámetros al visor con debounce
+  // ---- Sincroniza parámetros al visor con debounce ----
   useEffect(() => {
-    debouncedEmit(() => emit("forge:set-params", { params: { length_mm, width_mm, height_mm, thickness_mm, fillet_mm } }));
+    debouncedEmit(() =>
+      emit("forge:set-params", { params: { length_mm, width_mm, height_mm, thickness_mm, fillet_mm } })
+    );
   }, [length_mm, width_mm, height_mm, thickness_mm, fillet_mm, debouncedEmit]);
 
   // Parámetros normalizados
@@ -110,8 +173,7 @@ export default function ForgeForm({
     emit("forge:set-model", { model });
     emit("forge:set-params", { params });
     emit("forge:set-holes", { holes });
-    // fuerza al visor a reconstruir nada más cargar
-    emit("forge:refresh", { reason: "initial-handshake" });
+    emit("forge:refresh", { reason: "initial-handshake" }); // reconstruye nada más cargar
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // solo al montar
 
@@ -124,14 +186,11 @@ export default function ForgeForm({
     try {
       // payload base
       const payload: any = {
-        model: model.replace(/-/g, "_"), // ✅ aseguramos snake_case al backend
+        model: model.replace(/-/g, "_"), // ✅ snake_case al backend
         params,
         holes,
       };
-      // 🔹 NUEVO: si el usuario marca "Export SVG (láser)", pedimos también SVG (retrocompatible)
-      if (exportSVG) {
-        payload.outputs = ["stl", "svg"];
-      }
+      if (exportSVG) payload.outputs = ["stl", "svg"]; // pedimos también SVG si procede
 
       const res = await fetch(`${API_BASE}/generate`, {
         method: "POST",
@@ -140,11 +199,11 @@ export default function ForgeForm({
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Error generando STL");
+
       const url = json?.stl_url as string;
       onGenerated?.(url);
       emit("forge:stl-url", { url });
 
-      // 🔹 NUEVO: si el backend devolvió svg_url, lo guardamos y lo emitimos
       if (json?.svg_url) {
         setSvgUrl(json.svg_url);
         emit("forge:svg-url", { url: json.svg_url });
@@ -164,6 +223,10 @@ export default function ForgeForm({
     setHoles((prev) => prev.filter((_, i) => i !== idx));
   };
 
+  // Lista final de modelos para el <select>
+  const selectModels: Array<{ value: string; label: string }> =
+    serverModels?.map((m) => ({ value: m, label: labelFor(m) })) || STATIC_MODEL_OPTIONS;
+
   return (
     <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
       <h2 className="mb-3 text-lg font-semibold">Configurador</h2>
@@ -177,7 +240,7 @@ export default function ForgeForm({
             value={model}
             onChange={(e) => setModel(e.target.value)}
           >
-            {MODEL_OPTIONS.map((o) => (
+            {selectModels.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
               </option>
@@ -336,7 +399,7 @@ export default function ForgeForm({
         )}
       </div>
 
-      {/* 🔹 NUEVO: toggle Export SVG (láser) */}
+      {/* SVG (láser) + enlace si viene del backend */}
       <div className="mt-2 text-sm text-neutral-700">
         <label className="inline-flex items-center gap-2">
           <input
@@ -344,10 +407,9 @@ export default function ForgeForm({
             checked={exportSVG}
             onChange={(e) => setExportSVG(e.target.checked)}
           />
-          Export SVG (láser)
         </label>
+        <span> Export SVG (láser)</span>
 
-        {/* 🔹 NUEVO: enlace visible si el backend devolvió svg_url */}
         {svgUrl && (
           <div className="mt-2">
             <a
