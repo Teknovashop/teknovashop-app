@@ -33,7 +33,7 @@ function parseParams(q: string | null): UrlParams | null {
   return null;
 }
 
-// Convierte slug kebab-case -> snake_case para el backend si hace falta
+// Convierte slug kebab-case -> snake_case para el backend/forma si hace falta
 const toBackendId = (slug: string) => slug.replace(/-/g, "_");
 
 export default function ForgePage({
@@ -47,6 +47,7 @@ export default function ForgePage({
   // Garantiza que sea uno de los modelos que existen
   const model = MODELS.some((m) => m.slug === queryModel) ? queryModel : defaultModel;
 
+  // Lee parámetros desde ?params=<json-encodeURI>
   const params = useMemo(
     () => parseParams(searchParams?.params as string | null),
     [searchParams]
@@ -64,7 +65,7 @@ export default function ForgePage({
         const res = await fetch(`${API_BASE}/generate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          // si tu backend espera snake_case en `model`
+          // el backend espera snake_case en `model`
           body: JSON.stringify({ model: toBackendId(model), params, holes: [] }),
         });
         const json = await res.json();
@@ -77,12 +78,11 @@ export default function ForgePage({
 
   return (
     <div className="space-y-8">
-      <h1 className="sr-only">Forge</h1>
-      <div className="grid gap-6 lg:grid-cols-[360px,1fr]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Columna izquierda: formulario */}
         <div className="w-full">
           <ForgeForm
-            initialModel={model}                          // usamos el slug tal cual
+            initialModel={toBackendId(model)}             // ✅ normalizamos a snake_case para el form
             initialParams={(params ?? undefined) as any}   // evitar choque de tipos con ForgeForm
             onGenerated={(url: string) => setStlUrl(url)}
           />
