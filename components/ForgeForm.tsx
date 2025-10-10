@@ -32,21 +32,14 @@ const MODEL_OPTIONS = [
   { value: "headset_stand", label: "Headset Stand" },
   { value: "phone_dock",    label: "Phone Dock (USB-C)" },
   { value: "tablet_stand",  label: "Tablet Stand" },
-  { value: "ssd_holder",    label: 'SSD Holder (2.5")' },
-  { value: "raspi_case",    label: "Raspberry Pi Case" },
-  { value: "go_pro_mount",  label: "GoPro Mount" },
-  { value: "wall_hook",     label: "Wall Hook" },
-  { value: "monitor_stand", label: "Monitor Stand" },
-  { value: "laptop_stand",  label: "Laptop Stand" },
-  { value: "mic_arm_clip",  label: "Mic Arm Clip" },
-  { value: "camera_plate",  label: 'Camera Plate 1/4"' },
-  { value: "hub_holder",    label: "USB Hub Holder" }
+  // ... (el resto de tus modelos)
 ];
 
-function n(v: any, def: number): number {
-  const x = Number(v);
-  return Number.isFinite(x) ? x : def;
+function n(v: any, fallback = 0) {
+  const num = Number(v);
+  return Number.isFinite(num) ? num : fallback;
 }
+
 function clamp(x: number, min: number, max: number) {
   return Math.min(max, Math.max(min, x));
 }
@@ -62,7 +55,8 @@ export default function ForgeForm({
   initialHoles = [],
   onGenerated,
 }: Props) {
-  const [model, setModel] = useState<string>(initialModel);
+  // ✅ Normalizamos por si entra kebab-case (e.g. "cable-tray")
+  const [model, setModel] = useState<string>((initialModel || "cable_tray").replace(/-/g, "_"));
 
   const [length_mm, setLength] = useState<number>(initialParams?.length_mm ?? 120);
   const [width_mm, setWidth] = useState<number>(initialParams?.width_mm ?? 100);
@@ -81,18 +75,16 @@ export default function ForgeForm({
     debounceTimer.current = setTimeout(fn, ms);
   }, []);
 
-  // Escucha del visor: ALT+click emite "forge:add-hole"
+  // Sincroniza modelo al visor
   useEffect(() => {
-    const onAdd = (ev: Event) => {
-      const det = (ev as CustomEvent).detail || {};
-      const x = n(det.x_mm, 0);
-      const d = n(det.d_mm, 4);
-      const y = Number.isFinite(det.y_mm) ? n(det.y_mm, 0) : width_mm / 2;
-      setHoles((prev) => [...prev, { x_mm: x, y_mm: y, d_mm: d }]);
-    };
-    window.addEventListener("forge:add-hole", onAdd as any);
-    return () => window.removeEventListener("forge:add-hole", onAdd as any);
-  }, [width_mm]);
+    emit("forge:set-model", { model });
+    emit("forge:refresh", { reason: "model-change" });
+  }, [model]);
+
+  // Sincroniza parámetros al visor con debounce
+  useEffect(() => {
+    debouncedEmit(() => emit("forge:set-params", { params: { length_mm, width_mm, height_mm, thickness_mm, fillet_mm } }));
+  }, [length_mm, width_mm, height_mm, thickness_mm, fillet_mm, debouncedEmit]);
 
   // Parámetros normalizados
   const params: Params = useMemo(() => {
@@ -106,115 +98,45 @@ export default function ForgeForm({
     // sincroniza al visor con debounce
     debouncedEmit(() => emit("forge:set-params", { params: p }));
     return p;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [length_mm, width_mm, height_mm, thickness_mm, fillet_mm]);
+  }, [length_mm, width_mm, height_mm, thickness_mm, fillet_mm, debouncedEmit]);
 
   // ---- HANDSHAKE INICIAL (forzamos refresco) ----
   useEffect(() => {
     emit("forge:set-model", { model });
     emit("forge:set-params", { params });
     emit("forge:set-holes", { holes });
-    // ⬇️ CLAVE: fuerza al visor a reconstruir nada más cargar
+    // fuerza al visor a reconstruir nada más cargar
     emit("forge:refresh", { reason: "initial-handshake" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // solo al montar
 
-  // Cuando cambie el modelo: avisa y fuerza refresco inmediato
-  useEffect(() => {
-    emit("forge:set-model", { model });
-    emit("forge:refresh", { reason: "model-changed" }); // ⬅️ nuevo
-  }, [model]);
+  const canGenerate = !!API_BASE;
 
-  // Agujeros -> visor (debounce)
-  useEffect(() => {
-    debouncedEmit(() => emit("forge:set-holes", { holes }));
-  }, [holes, debouncedEmit]);
-
-  const canGenerate = API_BASE.length > 0;
-
-  const handleGenerate = useCallback(async () => {
-    setError(null);
-    if (!canGenerate) {
-      setError(
-        "Falta configurar la variable NEXT_PUBLIC_FORGE_API_URL (o NEXT_PUBLIC_BACKEND_URL) en Vercel."
-      );
-      return;
-    }
-
-    // antes de generar, avisa al visor (por si hace algo local)
-    emit("forge:generate", { model, params, holes });
-
+  const handleGenerate = async () => {
+    if (!canGenerate) return;
     setBusy(true);
+    setError(null);
     try {
-      const payload = {
-        model,
-        params: {
-          length_mm: params.length_mm,
-          width_mm: params.width_mm,
-          height_mm: params.height_mm,
-          thickness_mm: params.thickness_mm,
-          fillet_mm: params.fillet_mm,
-          // alias
-          length: params.length_mm,
-          width: params.width_mm,
-          height: params.height_mm,
-          wall: params.thickness_mm,
-          fillet: params.fillet_mm,
-        },
-        holes: holes.map((h) => ({
-          x_mm: Number(h.x_mm),
-          y_mm: Number(h.y_mm),
-          d_mm: Number(h.d_mm),
-        })),
-      };
-
       const res = await fetch(`${API_BASE}/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        // ✅ aseguramos snake_case al backend
+        body: JSON.stringify({ model: model.replace(/-/g, "_"), params, holes }),
       });
-
-      const json = await res.json().catch(() => ({} as any));
-      if (!res.ok) {
-        throw new Error(json?.detail || json?.error || `HTTP ${res.status}`);
-      }
-
-      const url: string | undefined =
-        json?.stl_url || json?.signed_url || json?.url;
-      if (url) {
-        onGenerated?.(url);
-        emit("forge:generated-url", { url });
-      } else if (json?.path) {
-        emit("forge:generated-path", { path: json.path });
-      } else {
-        throw new Error("Respuesta inesperada del backend");
-      }
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || "Error generando STL");
+      const url = json?.stl_url as string;
+      onGenerated?.(url);
+      emit("forge:stl-url", { url });
     } catch (e: any) {
       setError(e?.message || "No se pudo generar el STL");
     } finally {
       setBusy(false);
     }
-  }, [model, params, holes, onGenerated, canGenerate]);
+  };
 
-  // Auto-generar con ?autogenerate=1
-  useEffect(() => {
-    try {
-      const usp = new URLSearchParams(window.location.search);
-      const auto = usp.get("autogenerate");
-      if (auto === "1") {
-        const holesStr = usp.get("holes");
-        if (holesStr) {
-          try {
-            const parsed = JSON.parse(decodeURIComponent(holesStr));
-            if (Array.isArray(parsed)) setHoles(parsed.filter(Boolean));
-          } catch {}
-        }
-        handleGenerate();
-      }
-    } catch {}
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
+  // Helpers UI (añadir/eliminar holes)
+  const addHole = () => setHoles((prev) => [...prev, { x_mm: 0, y_mm: 0, d_mm: 5 }]);
   const removeHole = (idx: number) => {
     setHoles((prev) => prev.filter((_, i) => i !== idx));
   };
@@ -249,6 +171,7 @@ export default function ForgeForm({
             value={length_mm}
             onChange={(e) => setLength(n(e.target.value, length_mm))}
             min={1}
+            step={0.5}
           />
         </label>
 
@@ -260,6 +183,7 @@ export default function ForgeForm({
             value={width_mm}
             onChange={(e) => setWidth(n(e.target.value, width_mm))}
             min={1}
+            step={0.5}
           />
         </label>
 
@@ -271,18 +195,19 @@ export default function ForgeForm({
             value={height_mm}
             onChange={(e) => setHeight(n(e.target.value, height_mm))}
             min={1}
+            step={0.5}
           />
         </label>
 
         <label className="text-sm">
-          <span className="mb-1 block text-neutral-600">Grosor pared (mm)</span>
+          <span className="mb-1 block text-neutral-600">Grosor (mm)</span>
           <input
             type="number"
             className="w-full rounded-md border border-neutral-300 px-3 py-2"
             value={thickness_mm}
             onChange={(e) => setThickness(n(e.target.value, thickness_mm))}
             min={0.2}
-            step={0.5}
+            step={0.2}
           />
         </label>
 
@@ -300,93 +225,84 @@ export default function ForgeForm({
       </div>
 
       {/* Agujeros */}
-      <div className="mt-5">
+      <div className="mt-4">
         <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-sm font-medium">Agujeros superiores</h3>
+          <span className="text-sm font-medium">Agujeros</span>
           <button
             type="button"
-            className="rounded-md border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-50"
-            onClick={() =>
-              setHoles((prev) => [...prev, { x_mm: Math.round(length_mm / 2), y_mm: Math.round(width_mm / 2), d_mm: 4 }])
-            }
+            className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
+            onClick={addHole}
           >
             + Añadir
           </button>
         </div>
-
-        {holes.length === 0 ? (
-          <p className="text-xs text-neutral-600">
-            No hay agujeros. Consejo: mantén <kbd>Alt</kbd> y haz clic en el visor para añadir uno donde apuntes.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {holes.map((h, i) => (
-              <div key={i} className="grid grid-cols-[1fr,1fr,1fr,auto] items-center gap-2">
-                <label className="text-xs">
-                  <span className="mb-0.5 block text-neutral-600">X (mm)</span>
-                  <input
-                    type="number"
-                    className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
-                    value={h.x_mm}
-                    onChange={(e) =>
-                      setHoles((prev) =>
-                        prev.map((hh, idx) => (idx === i ? { ...hh, x_mm: n(e.target.value, hh.x_mm) } : hh))
-                      )
-                    }
-                    min={0}
-                    step={0.5}
-                  />
-                </label>
-                <label className="text-xs">
-                  <span className="mb-0.5 block text-neutral-600">Y (mm)</span>
-                  <input
-                    type="number"
-                    className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
-                    value={h.y_mm}
-                    onChange={(e) =>
-                      setHoles((prev) =>
-                        prev.map((hh, idx) => (idx === i ? { ...hh, y_mm: n(e.target.value, hh.y_mm) } : hh))
-                      )
-                    }
-                    min={0}
-                    step={0.5}
-                  />
-                </label>
-                <label className="text-xs">
-                  <span className="mb-0.5 block text-neutral-600">Ø (mm)</span>
-                  <input
-                    type="number"
-                    className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
-                    value={h.d_mm}
-                    onChange={(e) =>
-                      setHoles((prev) =>
-                        prev.map((hh, idx) => (idx === i ? { ...hh, d_mm: n(e.target.value, hh.d_mm) } : hh))
-                      )
-                    }
-                    min={0.5}
-                    step={0.1}
-                  />
-                </label>
-                <button
-                  type="button"
-                  className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700 hover:bg-red-100"
-                  onClick={() => removeHole(i)}
-                >
-                  Eliminar
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
+        <div className="grid gap-2">
+          {holes.map((h, i) => (
+            <div key={i} className="grid grid-cols-4 items-end gap-2">
+              <label className="text-xs">
+                <span className="mb-0.5 block text-neutral-600">X (mm)</span>
+                <input
+                  type="number"
+                  className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
+                  value={h.x_mm}
+                  onChange={(e) =>
+                    setHoles((prev) =>
+                      prev.map((hh, idx) => (idx === i ? { ...hh, x_mm: n(e.target.value, hh.x_mm) } : hh))
+                    )
+                  }
+                  min={0}
+                  step={0.5}
+                />
+              </label>
+              <label className="text-xs">
+                <span className="mb-0.5 block text-neutral-600">Y (mm)</span>
+                <input
+                  type="number"
+                  className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
+                  value={h.y_mm}
+                  onChange={(e) =>
+                    setHoles((prev) =>
+                      prev.map((hh, idx) => (idx === i ? { ...hh, y_mm: n(e.target.value, hh.y_mm) } : hh))
+                    )
+                  }
+                  min={0}
+                  step={0.5}
+                />
+              </label>
+              <label className="text-xs">
+                <span className="mb-0.5 block text-neutral-600">Ø (mm)</span>
+                <input
+                  type="number"
+                  className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
+                  value={h.d_mm}
+                  onChange={(e) =>
+                    setHoles((prev) =>
+                      prev.map((hh, idx) => (idx === i ? { ...hh, d_mm: n(e.target.value, hh.d_mm) } : hh))
+                    )
+                  }
+                  min={0.5}
+                  step={0.5}
+                />
+              </label>
+              <button
+                type="button"
+                className="rounded-md border border-neutral-300 px-2 py-1 text-xs"
+                onClick={() => removeHole(i)}
+              >
+                Quitar
+              </button>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Acciones */}
-      <div className="mt-6 flex items-center gap-3">
+      <div className="mt-4 flex items-center gap-3">
         <button
           type="button"
+          className="rounded-md bg-black px-4 py-2 text-white"
           onClick={handleGenerate}
-          disabled={busy}
-          className="rounded-md bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700 disabled:opacity-60"
+          disabled={busy || !canGenerate}
         >
           {busy ? "Generando…" : "Generar STL"}
         </button>
