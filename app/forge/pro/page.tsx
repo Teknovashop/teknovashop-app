@@ -62,7 +62,7 @@ export default function ForgeProPage() {
   const [rulerMode, setRulerMode] = useState(false);
   const [measureDistance, setMeasureDistance] = useState<number | null>(null);
   const [measureLine, setMeasureLine] = useState<any>(null);
-  const rulerPointsRef = useRef<THREE.Vector3[]>([]);
+  const rulerPointsRef = useRef<any[]>([]); // ← sin tipos de THREE para evitar error en Vercel
 
   // Bounding box dims
   const [bboxDims, setBboxDims] = useState<{ x: number; y: number; z: number } | null>(null);
@@ -256,7 +256,7 @@ export default function ForgeProPage() {
           scene.add(line);
           setMeasureLine(line);
 
-          const d = a.distanceTo(b);
+          const d = (a as any).distanceTo(b as any);
           setMeasureDistance(d);
           rulerPointsRef.current = [];
         }
@@ -496,7 +496,6 @@ export default function ForgeProPage() {
           if (result instanceof ArrayBuffer) {
             blob = new Blob([result], { type: "model/gltf-binary" });
           } else {
-            // por si exporta JSON (GLTF)
             const json = JSON.stringify(result);
             blob = new Blob([json], { type: "application/json" });
           }
