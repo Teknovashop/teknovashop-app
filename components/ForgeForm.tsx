@@ -70,6 +70,8 @@ export default function ForgeForm({
 
   // 🔹 NUEVO: pedir SVG (láser) opcional
   const [exportSVG, setExportSVG] = useState<boolean>(false);
+  // 🔹 NUEVO: guardar la URL del SVG devuelta por el backend
+  const [svgUrl, setSvgUrl] = useState<string | null>(null);
 
   // debounce pequeño para no spamear el visor al teclear
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -142,9 +144,12 @@ export default function ForgeForm({
       onGenerated?.(url);
       emit("forge:stl-url", { url });
 
-      // Si el backend devolvió svg_url, lo notificamos al visor / UI (opcional, no rompe nada)
+      // 🔹 NUEVO: si el backend devolvió svg_url, lo guardamos y lo emitimos
       if (json?.svg_url) {
+        setSvgUrl(json.svg_url);
         emit("forge:svg-url", { url: json.svg_url });
+      } else {
+        setSvgUrl(null);
       }
     } catch (e: any) {
       setError(e?.message || "No se pudo generar el STL");
@@ -332,7 +337,7 @@ export default function ForgeForm({
       </div>
 
       {/* 🔹 NUEVO: toggle Export SVG (láser) */}
-      <div className="mt-2 flex items-center gap-3 text-sm text-neutral-700">
+      <div className="mt-2 text-sm text-neutral-700">
         <label className="inline-flex items-center gap-2">
           <input
             type="checkbox"
@@ -341,6 +346,20 @@ export default function ForgeForm({
           />
           Export SVG (láser)
         </label>
+
+        {/* 🔹 NUEVO: enlace visible si el backend devolvió svg_url */}
+        {svgUrl && (
+          <div className="mt-2">
+            <a
+              href={svgUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="underline"
+            >
+              Descargar SVG
+            </a>
+          </div>
+        )}
       </div>
 
       {error && <p className="mt-3 text-sm text-red-700">{error}</p>}
