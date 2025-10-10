@@ -1,818 +1,1016 @@
 "use client";
 
-import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import * as THREE from "three";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-/**
- * Visor Pro con panel lateral
- * - Reacciona a:
- *    - window.dispatchEvent(new CustomEvent("forge:stl-url", { detail: { url } }))
- *    - window.dispatchEvent(new CustomEvent("forge:svg-url", { detail: { url } }))
- * - Incluye: clipping, sombras, HDRI, historial, snapshot PNG, export GLB,
- *   mediciones (bounding box + regla interactiva), ghost layer SVG.
- * - Sin dependencias nuevas (solo three + examples via import dinámico)
- * - Tipado laxo para no fallar en Vercel (refs y casts como `any`)
- */
+const API_BASE =
+  (process.env.NEXT_PUBLIC_FORGE_API_URL ||
+    process.env.NEXT_PUBLIC_BACKEND_URL ||
+    "").replace(/\/+$/, "");
 
-type HistoryItem = { stl?: string | null; svg?: string | null; ts: number };
+/* =========================
+      Tipos
+========================= */
 
-const LS_KEY = "teknovashop.forgepro.history.v1";
+type Params = {
+  length_mm: number;
+  width_mm: number;
+  height_mm: number;
+  thickness_mm?: number;
+  fillet_mm?: number;
+};
 
-export default function ForgeProPage() {
-  // Three core
-  const canvasRef = useRef<any>(null);
-  const rendererRef = useRef<any>(null);
-  const sceneRef = useRef<any>(null);
-  const cameraRef = useRef<any>(null);
-  const controlsRef = useRef<any>(null);
+type Hole = { x_mm: number; y_mm: number; d_mm: number };
 
-  // Objetos escena
-  const meshRef = useRef<any>(null);           // STL cargado
-  const gridRef = useRef<any>(null);
-  const axesRef = useRef<any>(null);
-  const contourGroupRef = useRef<any>(null);   // grupo con líneas del SVG
+// 🔹 Definimos un Operation flexible que cubra todas las herramientas comunes
+type OperationType = "cutout" | "text" | "round" | "array" | "chamfer";
+type CutoutShape = "circle" | "rect" | "polygon";
 
-  // Estados principales
-  const [stlUrl, setStlUrl] = useState<string | null>(null);
+type Operation = {
+  id: string;
+  type: OperationType;
+  title?: string;
+
+  // Posición/medidas comunes
+  x_mm?: number;
+  y_mm?: number;
+  z_mm?: number;
+  depth_mm?: number;
+  size_mm?: number;
+
+  // cutout
+  shape?: CutoutShape;
+  d_mm?: number;
+  w_mm?: number;
+  h_mm?: number;
+  r_mm?: number;
+
+  // text
+  text?: string;
+  font?: string;
+  engrave?: boolean;
+
+  // array
+  start_x_mm?: number;
+  start_y_mm?: number;
+  nx?: number;
+  ny?: number;
+  dx_mm?: number;
+  dy_mm?: number;
+};
+
+type Props = {
+  initialModel?: string;
+  initialParams?: Params;
+  initialHoles?: Hole[];
+  initialOperations?: Operation[];
+  onGenerated?: (url: string) => void;
+};
+
+/* =========================
+      Modelos
+========================= */
+
+const MODEL_OPTIONS = [
+  { value: "cable_tray", label: "Cable Tray (bandeja)" },
+  { value: "vesa_adapter", label: "VESA Adapter" },
+  { value: "router_mount", label: "Router Mount (L)" },
+  { value: "cable_clip", label: "Cable Clip" },
+  { value: "headset_stand", label: "Headset Stand" },
+  { value: "phone_dock", label: "Phone Dock (USB-C)" },
+  { value: "tablet_stand", label: "Tablet Stand" },
+  // añade aquí más opciones si quieres mostrarlas estáticas
+];
+
+/* =========================
+      Helpers
+========================= */
+
+function n(v: any, fallback = 0) {
+  const num = Number(v);
+  return Number.isFinite(num) ? num : fallback;
+}
+
+function clamp(x: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, x));
+}
+
+// emitir eventos al visor
+function emit<T = any>(name: string, detail?: T) {
+  try {
+    window.dispatchEvent(new CustomEvent(name, { detail }));
+  } catch {}
+}
+
+// ids simples para operaciones
+const rid = () => Math.random().toString(36).slice(2);
+
+/* =========================
+      Componente
+========================= */
+
+export default function ForgeForm({
+  initialModel = "cable_tray",
+  initialParams,
+  initialHoles = [],
+  initialOperations = [],
+  onGenerated,
+}: Props) {
+  // ✅ Normalizamos por si entra kebab-case (e.g. "cable-tray")
+  const [model, setModel] = useState<string>(
+    (initialModel || "cable_tray").replace(/-/g, "_")
+  );
+
+  const [length_mm, setLength] = useState<number>(
+    initialParams?.length_mm ?? 120
+  );
+  const [width_mm, setWidth] = useState<number>(
+    initialParams?.width_mm ?? 100
+  );
+  const [height_mm, setHeight] = useState<number>(
+    initialParams?.height_mm ?? 60
+  );
+  const [thickness_mm, setThickness] = useState<number>(
+    initialParams?.thickness_mm ?? 3
+  );
+  const [fillet_mm, setFillet] = useState<number>(
+    initialParams?.fillet_mm ?? 0
+  );
+
+  const [holes, setHoles] = useState<Hole[]>(initialHoles);
+
+  // 🔹 Estado de Operaciones
+  const [operations, setOperations] = useState<Operation[]>(
+    initialOperations.length
+      ? initialOperations
+      : [
+          // ejemplo vacío por defecto (puedes dejarlo [])
+        ]
+  );
+
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // 🔹 Export SVG opcional
+  const [exportSVG, setExportSVG] = useState<boolean>(false);
   const [svgUrl, setSvgUrl] = useState<string | null>(null);
 
-  // UI básicos
-  const [bgLight, setBgLight] = useState(true);
-  const [shadows, setShadows] = useState(true);
+  // debounce pequeño
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debouncedEmit = useCallback((fn: () => void, ms = 120) => {
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(fn, ms);
+  }, []);
 
-  // Clipping
-  const [clipEnabled, setClipEnabled] = useState(false);
-  const [clipX, setClipX] = useState(false);
-  const [clipY, setClipY] = useState(false);
-  const [clipZ, setClipZ] = useState(false);
-  const [clipXConst, setClipXConst] = useState(0);
-  const [clipYConst, setClipYConst] = useState(0);
-  const [clipZConst, setClipZConst] = useState(0);
-
-  // HDRI
-  const [hdriUrl, setHdriUrl] = useState<string>("");
-  const [hdriLoaded, setHdriLoaded] = useState(false);
-
-  // Ghost layer (SVG bajo)
-  const [ghostEnabled, setGhostEnabled] = useState(true);
-  const [ghostOpacity, setGhostOpacity] = useState(0.45);
-  const [ghostYOffset, setGhostYOffset] = useState(0.02);
-
-  // Medición
-  const [rulerMode, setRulerMode] = useState(false);
-  const [measureDistance, setMeasureDistance] = useState<number | null>(null);
-  const [measureLine, setMeasureLine] = useState<any>(null);
-  const rulerPointsRef = useRef<any[]>([]); // ← sin tipos de THREE para evitar error en Vercel
-
-  // Bounding box dims
-  const [bboxDims, setBboxDims] = useState<{ x: number; y: number; z: number } | null>(null);
-
-  // Historial local
-  const [history, setHistory] = useState<HistoryItem[]>([]);
-  const pushHistory = useCallback((item: Partial<HistoryItem>) => {
-    setHistory((prev) => {
-      const next = [{ stl: stlUrl, svg: svgUrl, ts: Date.now(), ...item }, ...prev].slice(0, 40);
-      try { localStorage.setItem(LS_KEY, JSON.stringify(next)); } catch {}
-      return next;
-    });
-  }, [stlUrl, svgUrl]);
-
+  // Sincroniza modelo al visor
   useEffect(() => {
+    emit("forge:set-model", { model });
+    emit("forge:refresh", { reason: "model-change" });
+  }, [model]);
+
+  // Sincroniza parámetros al visor con debounce
+  useEffect(() => {
+    debouncedEmit(() =>
+      emit("forge:set-params", {
+        params: { length_mm, width_mm, height_mm, thickness_mm, fillet_mm },
+      })
+    );
+  }, [length_mm, width_mm, height_mm, thickness_mm, fillet_mm, debouncedEmit]);
+
+  // Parámetros normalizados
+  const params: Params = useMemo(() => {
+    const p: Params = {
+      length_mm: clamp(Number(length_mm) || 0, 1, 5000),
+      width_mm: clamp(Number(width_mm) || 0, 1, 5000),
+      height_mm: clamp(Number(height_mm) || 0, 1, 5000),
+      thickness_mm: clamp(Number(thickness_mm) || 1, 0.2, 100),
+      fillet_mm: clamp(Number(fillet_mm) || 0, 0, 200),
+    };
+    debouncedEmit(() => emit("forge:set-params", { params: p }));
+    return p;
+  }, [length_mm, width_mm, height_mm, thickness_mm, fillet_mm, debouncedEmit]);
+
+  // ---- HANDSHAKE INICIAL ----
+  useEffect(() => {
+    emit("forge:set-model", { model });
+    emit("forge:set-params", { params });
+    emit("forge:set-holes", { holes });
+    emit("forge:refresh", { reason: "initial-handshake" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // solo al montar
+
+  const canGenerate = !!API_BASE;
+
+  // ====== Operaciones: helpers ======
+
+  const addOperation = (kind: OperationType) => {
+    const base: Operation = { id: rid(), type: kind, title: kind.toUpperCase() };
+    // inicializamos campos típicos por tipo
+    if (kind === "cutout") {
+      Object.assign(base, {
+        shape: "circle" as CutoutShape,
+        x_mm: 10,
+        y_mm: 10,
+        d_mm: 6,
+        depth_mm: 5,
+      });
+    } else if (kind === "text") {
+      Object.assign(base, {
+        text: "TEK",
+        x_mm: 10,
+        y_mm: 10,
+        size_mm: 10,
+        depth_mm: 1,
+        engrave: true,
+        font: "sans",
+      });
+    } else if (kind === "round") {
+      Object.assign(base, { r_mm: 2 });
+    } else if (kind === "chamfer") {
+      Object.assign(base, { r_mm: 1 });
+    } else if (kind === "array") {
+      Object.assign(base, {
+        shape: "rect",
+        start_x_mm: 10,
+        start_y_mm: 10,
+        nx: 3,
+        ny: 2,
+        dx_mm: 15,
+        dy_mm: 15,
+        w_mm: 6,
+        h_mm: 10,
+        depth_mm: 3,
+      });
+    }
+    setOperations((prev) => [base, ...prev]);
+  };
+
+  const removeOperation = (id: string) =>
+    setOperations((prev) => prev.filter((op) => op.id !== id));
+
+  // 🔧 Parche genérico — admite cualquier key de Operation (incluye `shape`)
+  function patchOperation<K extends keyof Operation>(
+    id: string,
+    key: K,
+    value: Operation[K]
+  ) {
+    setOperations((prev) =>
+      prev.map((op) => (op.id === id ? { ...op, [key]: value } : op))
+    );
+  }
+
+  // ====== Generar ======
+
+  const handleGenerate = async () => {
+    if (!canGenerate) return;
+    setBusy(true);
+    setError(null);
     try {
-      const raw = localStorage.getItem(LS_KEY);
-      if (raw) setHistory(JSON.parse(raw));
-    } catch {}
-  }, []);
-
-  // Helpers
-  const fitView = useCallback(() => {
-    const cam = cameraRef.current;
-    const obj = meshRef.current;
-    if (!cam || !obj) return;
-    const box = new THREE.Box3().setFromObject(obj);
-    const size = new THREE.Vector3();
-    const center = new THREE.Vector3();
-    box.getSize(size);
-    box.getCenter(center);
-
-    const maxDim = Math.max(size.x, size.y, size.z);
-    const fov = (cam.fov * Math.PI) / 180;
-    let dist = maxDim / (2 * Math.tan(fov / 2));
-    dist *= 1.4;
-
-    const dir = new THREE.Vector3(1, 1, 1).normalize();
-    cam.position.copy(center.clone().add(dir.multiplyScalar(dist)));
-    cam.near = Math.max(0.001, dist / 50);
-    cam.far = dist * 100;
-    cam.updateProjectionMatrix();
-    cam.lookAt(center);
-    controlsRef.current?.target?.copy(center);
-    controlsRef.current?.update?.();
-  }, []);
-
-  const updateBBoxDims = useCallback(() => {
-    if (!meshRef.current) {
-      setBboxDims(null);
-      return;
-    }
-    const box = new THREE.Box3().setFromObject(meshRef.current);
-    const size = new THREE.Vector3();
-    box.getSize(size);
-    setBboxDims({ x: size.x, y: size.y, z: size.z });
-  }, []);
-
-  const clearCurrentMesh = useCallback(() => {
-    if (meshRef.current && sceneRef.current) {
-      sceneRef.current.remove(meshRef.current);
-      meshRef.current.traverse?.((o: any) => {
-        if (o.isMesh) {
-          o.geometry?.dispose?.();
-          if (Array.isArray(o.material)) o.material.forEach((m: any) => m.dispose?.());
-          else o.material?.dispose?.();
-        }
-      });
-      meshRef.current = null;
-    }
-  }, []);
-
-  const clearContours = useCallback(() => {
-    const group = contourGroupRef.current;
-    if (group && sceneRef.current) {
-      group.children.forEach((c: any) => {
-        c.geometry?.dispose?.();
-        c.material?.dispose?.();
-      });
-      sceneRef.current.remove(group);
-      contourGroupRef.current = null;
-    }
-  }, []);
-
-  const clearRuler = useCallback(() => {
-    rulerPointsRef.current = [];
-    setMeasureDistance(null);
-    if (measureLine) {
-      sceneRef.current?.remove(measureLine);
-      measureLine.geometry?.dispose?.();
-      (measureLine.material as any)?.dispose?.();
-      setMeasureLine(null);
-    }
-  }, [measureLine]);
-
-  // Init Three
-  useEffect(() => {
-    const canvas = canvasRef.current!;
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xf5f6f8);
-    sceneRef.current = scene;
-
-    const renderer = new THREE.WebGLRenderer({
-      canvas,
-      antialias: true,
-      alpha: false,
-      powerPreference: "high-performance",
-    } as any);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.localClippingEnabled = true;
-    rendererRef.current = renderer;
-
-    const camera = new THREE.PerspectiveCamera(45, canvas.clientWidth / canvas.clientHeight, 0.1, 10000);
-    camera.position.set(300, 220, 300);
-    cameraRef.current = camera;
-
-    const amb = new THREE.AmbientLight(0xffffff, 0.6);
-    scene.add(amb);
-
-    const dir = new THREE.DirectionalLight(0xffffff, 0.9);
-    dir.position.set(200, 300, 200);
-    dir.castShadow = true;
-    (dir.shadow as any).mapSize?.set?.(1024, 1024);
-    (dir.shadow as any).camera.near = 0.5;
-    (dir.shadow as any).camera.far = 4000;
-    scene.add(dir);
-
-    // Grid + Axes
-    const grid = new THREE.GridHelper(1000, 40, 0x888888 as any, 0xcccccc as any) as any;
-    (grid.material as any).transparent = true;
-    (grid.material as any).opacity = 0.6;
-    scene.add(grid);
-    gridRef.current = grid;
-
-    const axes = new THREE.AxesHelper(80);
-    scene.add(axes);
-    axesRef.current = axes;
-
-    // OrbitControls
-    let raf = 0;
-    const loop = () => {
-      raf = requestAnimationFrame(loop);
-      controlsRef.current?.update?.();
-      renderer.render(scene, camera);
-    };
-    (async () => {
-      const { OrbitControls } = await import("three/examples/jsm/controls/OrbitControls.js");
-      controlsRef.current = new OrbitControls(camera, renderer.domElement);
-      controlsRef.current.enableDamping = true;
-      controlsRef.current.dampingFactor = 0.08;
-      controlsRef.current.enablePan = true;
-      controlsRef.current.minDistance = 5;
-      controlsRef.current.maxDistance = 5000;
-      loop();
-    })();
-
-    // Resize
-    const onResize = () => {
-      const w = canvas.clientWidth;
-      const h = canvas.clientHeight;
-      renderer.setSize(w, h, false);
-      camera.aspect = w / h;
-      camera.updateProjectionMatrix();
-    };
-    const ro = new ResizeObserver(onResize);
-    ro.observe(canvas);
-
-    // Ruler clicks (sobre canvas)
-    const raycaster = new THREE.Raycaster();
-    const onClick = (ev: MouseEvent) => {
-      if (!rulerMode || !meshRef.current) return;
-      const rect = canvas.getBoundingClientRect();
-      const x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
-      const y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
-      raycaster.setFromCamera(new THREE.Vector2(x, y), camera);
-
-      const intersects = raycaster.intersectObject(meshRef.current, true);
-      if (intersects && intersects.length) {
-        const p = intersects[0].point.clone();
-        rulerPointsRef.current.push(p);
-
-        if (rulerPointsRef.current.length === 2) {
-          const [a, b] = rulerPointsRef.current;
-          // Línea
-          const geom = new THREE.BufferGeometry().setFromPoints([a, b]);
-          const mat = new THREE.LineBasicMaterial({ color: 0xff0062, linewidth: 2 } as any);
-          const line = new THREE.Line(geom, mat);
-          scene.add(line);
-          setMeasureLine(line);
-
-          const d = (a as any).distanceTo(b as any);
-          setMeasureDistance(d);
-          rulerPointsRef.current = [];
-        }
-      }
-    };
-    canvas.addEventListener("click", onClick);
-
-    return () => {
-      cancelAnimationFrame(raf);
-      ro.disconnect();
-      canvas.removeEventListener("click", onClick);
-      clearRuler();
-      clearContours();
-      clearCurrentMesh();
-      renderer.dispose();
-      scene.clear();
-      rendererRef.current = null;
-      sceneRef.current = null;
-      cameraRef.current = null;
-      controlsRef.current = null;
-    };
-  }, [clearContours, clearCurrentMesh, clearRuler, rulerMode]);
-
-  // Cargar STL
-  const loadStl = useCallback(
-    (url: string) => {
-      if (!url || !sceneRef.current) return;
-      let disposed = false;
-
-      (async () => {
-        try {
-          const { STLLoader } = await import("three/examples/jsm/loaders/STLLoader.js");
-          const loader: any = new STLLoader();
-          const geometry: any = await new Promise((res, rej) => {
-            loader.load(url, (geom: any) => res(geom), undefined, (err: any) => rej(err));
-          });
-          if (disposed) return;
-
-          geometry.computeVertexNormals();
-          const mat = new THREE.MeshStandardMaterial({
-            color: 0xbfc5cc,
-            metalness: 0.15,
-            roughness: 0.65,
-            side: THREE.DoubleSide,
-            clippingPlanes: [],
-            clipShadows: true,
-          } as any);
-          const mesh = new THREE.Mesh(geometry, mat);
-          mesh.castShadow = true;
-          mesh.receiveShadow = true;
-
-          clearCurrentMesh();
-          sceneRef.current!.add(mesh);
-          meshRef.current = mesh;
-
-          fitView();
-          updateBBoxDims();
-          pushHistory({ stl: url });
-        } catch (e) {
-          console.error("Error cargando STL:", e);
-        }
-      })();
-
-      return () => { disposed = true; };
-    },
-    [clearCurrentMesh, fitView, pushHistory, updateBBoxDims]
-  );
-
-  useEffect(() => {
-    if (!stlUrl) return;
-    loadStl(stlUrl);
-    // limpiar medición al cargar nuevo STL
-    clearRuler();
-  }, [stlUrl, loadStl, clearRuler]);
-
-  // Cargar SVG (contornos)
-  const loadSvgContours = useCallback(
-    async (url: string) => {
-      if (!url || !sceneRef.current) return;
-      clearContours();
-
-      try {
-        const { SVGLoader } = await import("three/examples/jsm/loaders/SVGLoader.js");
-        const loader: any = new SVGLoader();
-        const data: any = await new Promise((res, rej) => {
-          loader.load(url, (d: any) => res(d), undefined, (err: any) => rej(err));
-        });
-
-        const group = new THREE.Group();
-        const material = new THREE.LineBasicMaterial({
-          color: 0x1565c0,
-          transparent: true,
-          opacity: ghostOpacity,
-        } as any);
-
-        for (const path of data.paths) {
-          const toUse = (path.subPaths && path.subPaths.length ? path.subPaths : []) as any[];
-          toUse.forEach((sp: any) => {
-            const points = sp.getPoints(128);
-            if (!points?.length) return;
-            const positions: number[] = [];
-            points.forEach((p: any) => {
-              // SVG (x,y) → plano XZ; Y a ghostYOffset
-              positions.push(p.x, ghostYOffset, -p.y);
-            });
-            const geom = new THREE.BufferGeometry();
-            geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-            const line = new THREE.LineLoop(geom, material);
-            group.add(line);
-          });
-        }
-
-        // Colocación relativa aproximada al STL (debajo)
-        if (meshRef.current) {
-          const box = new THREE.Box3().setFromObject(meshRef.current);
-          const size = new THREE.Vector3();
-          const center = new THREE.Vector3();
-          box.getSize(size);
-          box.getCenter(center);
-          // centra el SVG en X y Z
-          group.position.set(center.x - size.x / 2, 0, center.z);
-        }
-
-        sceneRef.current.add(group);
-        contourGroupRef.current = group;
-
-        pushHistory({ svg: url });
-      } catch (e) {
-        console.error("Error cargando SVG:", e);
-      }
-    },
-    [clearContours, ghostOpacity, ghostYOffset, pushHistory]
-  );
-
-  useEffect(() => {
-    if (!svgUrl) return;
-    loadSvgContours(svgUrl);
-  }, [svgUrl, loadSvgContours]);
-
-  // Eventos del configurador
-  useEffect(() => {
-    const onStl = (e: any) => {
-      const url = e?.detail?.url;
-      if (typeof url === "string") setStlUrl(url);
-    };
-    const onSvg = (e: any) => {
-      const url = e?.detail?.url;
-      if (typeof url === "string") setSvgUrl(url);
-    };
-    window.addEventListener("forge:stl-url", onStl as any);
-    window.addEventListener("forge:svg-url", onSvg as any);
-    return () => {
-      window.removeEventListener("forge:stl-url", onStl as any);
-      window.removeEventListener("forge:svg-url", onSvg as any);
-    };
-  }, []);
-
-  // Fondo claro/oscuro, sombras
-  useEffect(() => {
-    if (!sceneRef.current) return;
-    sceneRef.current.background = new THREE.Color(bgLight ? 0xf5f6f8 : 0x0e1116);
-  }, [bgLight]);
-  useEffect(() => {
-    if (!rendererRef.current) return;
-    rendererRef.current.shadowMap.enabled = !!shadows;
-  }, [shadows]);
-
-  // Clipping
-  const clippingPlanes = useMemo(() => {
-    const planes: any[] = [];
-    if (clipX) planes.push(new THREE.Plane(new THREE.Vector3(-1, 0, 0), clipXConst));
-    if (clipY) planes.push(new THREE.Plane(new THREE.Vector3(0, -1, 0), clipYConst));
-    if (clipZ) planes.push(new THREE.Plane(new THREE.Vector3(0, 0, -1), clipZConst));
-    return planes;
-  }, [clipX, clipY, clipZ, clipXConst, clipYConst, clipZConst]);
-
-  useEffect(() => {
-    if (!rendererRef.current) return;
-    rendererRef.current.clippingPlanes = clipEnabled ? clippingPlanes : [];
-    const mesh = meshRef.current;
-    if (mesh?.material) {
-      const apply = (m: any) => {
-        m.clippingPlanes = clipEnabled ? clippingPlanes : [];
-        m.clipShadows = true;
+      const payload: any = {
+        model: model.replace(/-/g, "_"), // snake_case al backend
+        params,
+        holes,
       };
-      if (Array.isArray(mesh.material)) mesh.material.forEach(apply);
-      else apply(mesh.material);
-    }
-  }, [clipEnabled, clippingPlanes]);
 
-  // HDRI
-  const loadHDRI = async () => {
-    if (!hdriUrl || !sceneRef.current) return;
-    try {
-      const { RGBELoader } = await import("three/examples/jsm/loaders/RGBELoader.js");
-      const loader: any = new RGBELoader();
-      loader.setDataType(THREE.UnsignedByteType);
-      const tex: any = await new Promise((res, rej) => {
-        loader.load(hdriUrl, (t: any) => res(t), undefined, (err: any) => rej(err));
+      // Incluir operations si hay
+      if (operations.length) {
+        // limpiamos títulos para no mandar UI-only
+        const cleanOps = operations.map(({ title, ...rest }) => rest);
+        payload.operations = cleanOps;
+      }
+
+      // pedir también SVG si se marca
+      if (exportSVG) {
+        payload.outputs = ["stl", "svg"];
+      }
+
+      const res = await fetch(`${API_BASE}/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
       });
-      tex.mapping = THREE.EquirectangularReflectionMapping;
-      sceneRef.current.environment = tex;
-      setHdriLoaded(true);
-    } catch (e) {
-      console.error("HDRI error:", e);
-      setHdriLoaded(false);
-    }
-  };
-  const clearHDRI = () => {
-    if (!sceneRef.current) return;
-    const env = sceneRef.current.environment as any;
-    if (env?.dispose) env.dispose();
-    sceneRef.current.environment = null;
-    setHdriLoaded(false);
-  };
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || "Error generando STL");
 
-  // Snapshot PNG
-  const snapshotPNG = () => {
-    if (!rendererRef.current) return;
-    const dataURL = rendererRef.current.domElement.toDataURL("image/png");
-    const a = document.createElement("a");
-    a.href = dataURL;
-    a.download = `forge_snapshot_${Date.now()}.png`;
-    a.click();
-  };
+      const url = json?.stl_url as string;
+      onGenerated?.(url);
+      emit("forge:stl-url", { url });
 
-  // Export GLB
-  const exportGLB = async () => {
-    if (!meshRef.current) return;
-    try {
-      const { GLTFExporter } = await import("three/examples/jsm/exporters/GLTFExporter.js");
-      const exporter: any = new GLTFExporter();
-      exporter.parse(
-        meshRef.current,
-        (result: any) => {
-          let blob: Blob;
-          if (result instanceof ArrayBuffer) {
-            blob = new Blob([result], { type: "model/gltf-binary" });
-          } else {
-            const json = JSON.stringify(result);
-            blob = new Blob([json], { type: "application/json" });
-          }
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = `forge_export_${Date.now()}.glb`;
-          a.click();
-          URL.revokeObjectURL(url);
-        },
-        (err: any) => console.error("GLB export error:", err),
-        { binary: true } // GLB
-      );
-    } catch (e) {
-      console.error("GLB exporter load error:", e);
+      if (json?.svg_url) {
+        setSvgUrl(json.svg_url);
+        emit("forge:svg-url", { url: json.svg_url });
+      } else {
+        setSvgUrl(null);
+      }
+    } catch (e: any) {
+      setError(e?.message || "No se pudo generar el STL");
+    } finally {
+      setBusy(false);
     }
   };
 
-  // UI
+  // Helpers UI (añadir/eliminar holes)
+  const addHole = () =>
+    setHoles((prev) => [...prev, { x_mm: 0, y_mm: 0, d_mm: 5 }]);
+  const removeHole = (idx: number) => {
+    setHoles((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  /* =========================
+        Render
+  ========================= */
+
   return (
-    <div className="flex h-[100dvh] w-full">
-      {/* Panel lateral */}
-      <aside className="w-[320px] shrink-0 border-r bg-white/85 p-3 text-sm">
-        <div className="mb-3">
-          <div className="mb-2 flex items-center justify-between">
-            <strong>Visor Pro</strong>
-            <div className="flex gap-2">
-              <button className="rounded-md border px-2 py-1" onClick={fitView}>
-                Centrar
-              </button>
-              <button
-                className="rounded-md border px-2 py-1"
-                onClick={() => {
-                  // limpiar todo
-                  clearRuler();
-                  clearContours();
-                  clearCurrentMesh();
-                  setStlUrl(null);
-                  setSvgUrl(null);
-                  setBboxDims(null);
-                }}
-              >
-                Limpiar
-              </button>
-            </div>
-          </div>
+    <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
+      <h2 className="mb-3 text-lg font-semibold">Configurador</h2>
 
-          <div className="grid gap-2">
-            <label className="inline-flex items-center justify-between gap-2">
-              <span>Fondo claro</span>
-              <input type="checkbox" checked={bgLight} onChange={(e) => setBgLight(e.target.checked)} />
-            </label>
-
-            <label className="inline-flex items-center justify-between gap-2">
-              <span>Sombras</span>
-              <input type="checkbox" checked={shadows} onChange={(e) => setShadows(e.target.checked)} />
-            </label>
-          </div>
-        </div>
-
-        {/* Clipping */}
-        <div className="mb-4 rounded-lg border p-3">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="font-medium">Clipping</span>
-              <label className="inline-flex items-center gap-2">
-                <input type="checkbox" checked={clipEnabled} onChange={(e) => setClipEnabled(e.target.checked)} />
-                <span>Activo</span>
-              </label>
-            </div>
-
-            <div className="grid gap-3">
-              <div className="rounded-md border p-2">
-                <label className="flex items-center justify-between gap-2">
-                  <span>Plano X</span>
-                  <input type="checkbox" checked={clipX} onChange={(e) => setClipX(e.target.checked)} />
-                </label>
-                <div className="mt-2">
-                  <input
-                    type="range"
-                    min={-200}
-                    max={200}
-                    step={1}
-                    value={clipXConst}
-                    onChange={(e) => setClipXConst(Number(e.target.value))}
-                    className="w-full"
-                  />
-                  <div className="mt-1 text-xs text-neutral-600">Constante: {clipXConst} mm</div>
-                </div>
-              </div>
-
-              <div className="rounded-md border p-2">
-                <label className="flex items-center justify-between gap-2">
-                  <span>Plano Y</span>
-                  <input type="checkbox" checked={clipY} onChange={(e) => setClipY(e.target.checked)} />
-                </label>
-                <div className="mt-2">
-                  <input
-                    type="range"
-                    min={-200}
-                    max={200}
-                    step={1}
-                    value={clipYConst}
-                    onChange={(e) => setClipYConst(Number(e.target.value))}
-                    className="w-full"
-                  />
-                  <div className="mt-1 text-xs text-neutral-600">Constante: {clipYConst} mm</div>
-                </div>
-              </div>
-
-              <div className="rounded-md border p-2">
-                <label className="flex items-center justify-between gap-2">
-                  <span>Plano Z</span>
-                  <input type="checkbox" checked={clipZ} onChange={(e) => setClipZ(e.target.checked)} />
-                </label>
-                <div className="mt-2">
-                  <input
-                    type="range"
-                    min={-200}
-                    max={200}
-                    step={1}
-                    value={clipZConst}
-                    onChange={(e) => setClipZConst(Number(e.target.value))}
-                    className="w-full"
-                  />
-                  <div className="mt-1 text-xs text-neutral-600">Constante: {clipZConst} mm</div>
-                </div>
-              </div>
-            </div>
-        </div>
-
-        {/* HDRI */}
-        <div className="mb-4 rounded-lg border p-3">
-          <div className="mb-2 font-medium">HDRI</div>
-          <input
-            type="url"
-            placeholder="URL .hdr (equirect)"
-            className="w-full rounded-md border px-2 py-1"
-            value={hdriUrl}
-            onChange={(e) => setHdriUrl(e.target.value)}
-          />
-          <div className="mt-2 flex gap-2">
-            <button className="rounded-md border px-2 py-1" onClick={loadHDRI} disabled={!hdriUrl}>
-              Cargar
-            </button>
-            <button className="rounded-md border px-2 py-1" onClick={clearHDRI} disabled={!hdriLoaded}>
-              Quitar
-            </button>
-          </div>
-          <div className="mt-1 text-xs text-neutral-600">
-            {hdriLoaded ? "HDRI activo" : "Sin HDRI"}
-          </div>
-        </div>
-
-        {/* Ghost layer (SVG) */}
-        <div className="mb-4 rounded-lg border p-3">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="font-medium">Ghost layer (SVG)</span>
-            <label className="inline-flex items-center gap-2">
-              <input type="checkbox" checked={ghostEnabled} onChange={(e) => {
-                setGhostEnabled(e.target.checked);
-                if (contourGroupRef.current) {
-                  (contourGroupRef.current as any).visible = e.target.checked;
-                }
-              }} />
-              <span>Visible</span>
-            </label>
-          </div>
-          <div className="grid gap-2">
-            <label className="text-xs">Opacidad: {ghostOpacity.toFixed(2)}</label>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.01}
-              value={ghostOpacity}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                setGhostOpacity(v);
-                if (contourGroupRef.current) {
-                  contourGroupRef.current.traverse((o: any) => {
-                    if (o.material) o.material.opacity = v;
-                  });
-                }
-              }}
-            />
-            <label className="text-xs">Offset Y: {ghostYOffset.toFixed(2)} mm</label>
-            <input
-              type="range"
-              min={-5}
-              max={5}
-              step={0.01}
-              value={ghostYOffset}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                setGhostYOffset(v);
-                if (contourGroupRef.current) {
-                  contourGroupRef.current.traverse((o: any) => {
-                    if (o.geometry) {
-                      const pos = o.geometry.getAttribute("position");
-                      const arr = pos.array as number[];
-                      for (let i = 1; i < arr.length; i += 3) {
-                        // y index
-                        arr[i] = v;
-                      }
-                      pos.needsUpdate = true;
-                      o.geometry.computeBoundingBox?.();
-                      o.geometry.computeBoundingSphere?.();
-                    }
-                  });
-                }
-              }}
-            />
-          </div>
-        </div>
-
-        {/* Mediciones */}
-        <div className="mb-4 rounded-lg border p-3">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="font-medium">Mediciones</span>
-            <button className={`rounded-md border px-2 py-1 ${rulerMode ? "bg-black text-white" : ""}`} onClick={() => {
-              setRulerMode(v => !v);
-              if (rulerMode) clearRuler();
-            }}>
-              Regla {rulerMode ? "ON" : "OFF"}
-            </button>
-          </div>
-          {bboxDims ? (
-            <div className="grid grid-cols-3 gap-2 text-xs">
-              <div><span className="text-neutral-500">X:</span> {bboxDims.x.toFixed(2)} mm</div>
-              <div><span className="text-neutral-500">Y:</span> {bboxDims.y.toFixed(2)} mm</div>
-              <div><span className="text-neutral-500">Z:</span> {bboxDims.z.toFixed(2)} mm</div>
-            </div>
-          ) : (
-            <div className="text-xs text-neutral-500">Sin objeto.</div>
-          )}
-          <div className="mt-2 text-xs">
-            {measureDistance != null ? (
-              <div>Distancia: <strong>{measureDistance.toFixed(2)} mm</strong></div>
-            ) : (
-              <div className="text-neutral-500">Haz clic en 2 puntos del modelo.</div>
-            )}
-          </div>
-          <div className="mt-2 flex gap-2">
-            <button className="rounded-md border px-2 py-1 text-xs" onClick={updateBBoxDims}>
-              Recalcular bbox
-            </button>
-            <button className="rounded-md border px-2 py-1 text-xs" onClick={clearRuler} disabled={!measureLine}>
-              Limpiar regla
-            </button>
-          </div>
-        </div>
-
-        {/* Acciones */}
-        <div className="mb-4 rounded-lg border p-3">
-          <div className="mb-2 font-medium">Acciones</div>
-          <div className="flex flex-wrap gap-2">
-            <button className="rounded-md border px-2 py-1" onClick={snapshotPNG}>
-              Snapshot PNG
-            </button>
-            <button className="rounded-md border px-2 py-1" onClick={exportGLB} disabled={!meshRef.current}>
-              Export GLB
-            </button>
-          </div>
-        </div>
-
-        {/* Historial */}
-        <div className="rounded-lg border p-3">
-          <div className="mb-2 font-medium">Historial</div>
-          <div className="max-h-[220px] space-y-2 overflow-auto">
-            {history.length === 0 && <div className="text-xs text-neutral-500">Vacío por ahora.</div>}
-            {history.map((h, i) => (
-              <div key={h.ts + ":" + i} className="rounded-md border p-2">
-                <div className="mb-1 flex items-center justify-between text-xs text-neutral-500">
-                  <span>{new Date(h.ts).toLocaleString()}</span>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {h.stl && (
-                    <button className="rounded-md border px-2 py-1 text-xs" onClick={() => setStlUrl(h.stl || null)}>
-                      Cargar STL
-                    </button>
-                  )}
-                  {h.svg && (
-                    <button className="rounded-md border px-2 py-1 text-xs" onClick={() => setSvgUrl(h.svg || null)}>
-                      Cargar SVG
-                    </button>
-                  )}
-                </div>
-                <div className="mt-1 break-all text-[10px] text-neutral-500">
-                  {h.stl && <div>STL: {h.stl}</div>}
-                  {h.svg && <div>SVG: {h.svg}</div>}
-                </div>
-              </div>
+      <div className="grid grid-cols-2 gap-3">
+        {/* Modelo */}
+        <label className="col-span-2 text-sm">
+          <span className="mb-1 block text-neutral-600">Modelo</span>
+          <select
+            className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2"
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+          >
+            {MODEL_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
             ))}
-          </div>
-          {history.length > 0 && (
+          </select>
+        </label>
+
+        {/* Parámetros */}
+        <label className="text-sm">
+          <span className="mb-1 block text-neutral-600">Largo (mm)</span>
+          <input
+            type="number"
+            className="w-full rounded-md border border-neutral-300 px-3 py-2"
+            value={length_mm}
+            onChange={(e) => setLength(n(e.target.value, length_mm))}
+            min={1}
+            step={0.5}
+          />
+        </label>
+
+        <label className="text-sm">
+          <span className="mb-1 block text-neutral-600">Ancho (mm)</span>
+          <input
+            type="number"
+            className="w-full rounded-md border border-neutral-300 px-3 py-2"
+            value={width_mm}
+            onChange={(e) => setWidth(n(e.target.value, width_mm))}
+            min={1}
+            step={0.5}
+          />
+        </label>
+
+        <label className="text-sm">
+          <span className="mb-1 block text-neutral-600">Alto (mm)</span>
+          <input
+            type="number"
+            className="w-full rounded-md border border-neutral-300 px-3 py-2"
+            value={height_mm}
+            onChange={(e) => setHeight(n(e.target.value, height_mm))}
+            min={1}
+            step={0.5}
+          />
+        </label>
+
+        <label className="text-sm">
+          <span className="mb-1 block text-neutral-600">Grosor (mm)</span>
+          <input
+            type="number"
+            className="w-full rounded-md border border-neutral-300 px-3 py-2"
+            value={thickness_mm}
+            onChange={(e) => setThickness(n(e.target.value, thickness_mm))}
+            min={0.2}
+            step={0.2}
+          />
+        </label>
+
+        <label className="text-sm">
+          <span className="mb-1 block text-neutral-600">Fillet (mm)</span>
+          <input
+            type="number"
+            className="w-full rounded-md border border-neutral-300 px-3 py-2"
+            value={fillet_mm}
+            onChange={(e) => setFillet(n(e.target.value, fillet_mm))}
+            min={0}
+            step={0.5}
+          />
+        </label>
+      </div>
+
+      {/* Agujeros */}
+      <div className="mt-4">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-sm font-medium">Agujeros</span>
+          <button
+            type="button"
+            className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
+            onClick={addHole}
+          >
+            + Añadir
+          </button>
+        </div>
+        <div className="grid gap-2">
+          {holes.map((h, i) => (
+            <div key={i} className="grid grid-cols-4 items-end gap-2">
+              <label className="text-xs">
+                <span className="mb-0.5 block text-neutral-600">X (mm)</span>
+                <input
+                  type="number"
+                  className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
+                  value={h.x_mm}
+                  onChange={(e) =>
+                    setHoles((prev) =>
+                      prev.map((hh, idx) =>
+                        idx === i ? { ...hh, x_mm: n(e.target.value, hh.x_mm) } : hh
+                      )
+                    )
+                  }
+                  min={0}
+                  step={0.5}
+                />
+              </label>
+              <label className="text-xs">
+                <span className="mb-0.5 block text-neutral-600">Y (mm)</span>
+                <input
+                  type="number"
+                  className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
+                  value={h.y_mm}
+                  onChange={(e) =>
+                    setHoles((prev) =>
+                      prev.map((hh, idx) =>
+                        idx === i ? { ...hh, y_mm: n(e.target.value, hh.y_mm) } : hh
+                      )
+                    )
+                  }
+                  min={0}
+                  step={0.5}
+                />
+              </label>
+              <label className="text-xs">
+                <span className="mb-0.5 block text-neutral-600">Ø (mm)</span>
+                <input
+                  type="number"
+                  className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
+                  value={h.d_mm}
+                  onChange={(e) =>
+                    setHoles((prev) =>
+                      prev.map((hh, idx) =>
+                        idx === i ? { ...hh, d_mm: n(e.target.value, hh.d_mm) } : hh
+                      )
+                    )
+                  }
+                  min={0.5}
+                  step={0.5}
+                />
+              </label>
+              <button
+                type="button"
+                className="rounded-md border border-neutral-300 px-2 py-1 text-xs"
+                onClick={() => removeHole(i)}
+              >
+                Quitar
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* =========================
+            Operaciones (Pro)
+      ========================= */}
+      <div className="mt-6 rounded-xl border border-neutral-200 p-3">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-sm font-semibold">Operaciones</span>
+          <div className="flex gap-2">
             <button
-              className="mt-2 w-full rounded-md border px-2 py-1 text-xs"
-              onClick={() => {
-                setHistory([]);
-                try { localStorage.removeItem(LS_KEY); } catch {}
-              }}
+              className="rounded-md border px-2 py-1 text-xs"
+              onClick={() => addOperation("cutout")}
             >
-              Limpiar historial
+              + Cutout
             </button>
+            <button
+              className="rounded-md border px-2 py-1 text-xs"
+              onClick={() => addOperation("text")}
+            >
+              + Text
+            </button>
+            <button
+              className="rounded-md border px-2 py-1 text-xs"
+              onClick={() => addOperation("round")}
+            >
+              + Round
+            </button>
+            <button
+              className="rounded-md border px-2 py-1 text-xs"
+              onClick={() => addOperation("array")}
+            >
+              + Array
+            </button>
+          </div>
+        </div>
+
+        {operations.length === 0 && (
+          <p className="text-xs text-neutral-500">
+            No hay operaciones. Añade una con los botones de arriba.
+          </p>
+        )}
+
+        <div className="grid gap-3">
+          {operations.map((op) => (
+            <div key={op.id} className="rounded-lg border p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <select
+                    className="rounded-md border px-2 py-1 text-xs"
+                    value={op.type}
+                    onChange={(e) =>
+                      patchOperation(op.id, "type", e.target.value as OperationType)
+                    }
+                  >
+                    <option value="cutout">cutout</option>
+                    <option value="text">text</option>
+                    <option value="round">round</option>
+                    <option value="array">array</option>
+                    <option value="chamfer">chamfer</option>
+                  </select>
+                  <input
+                    className="w-52 rounded-md border px-2 py-1 text-xs"
+                    placeholder="Título (opcional)"
+                    value={op.title || ""}
+                    onChange={(e) => patchOperation(op.id, "title", e.target.value)}
+                  />
+                </div>
+
+                <button
+                  className="rounded-md border px-2 py-1 text-xs"
+                  onClick={() => removeOperation(op.id)}
+                >
+                  Quitar
+                </button>
+              </div>
+
+              {/* Campos por tipo */}
+              {op.type === "cutout" && (
+                <div className="grid grid-cols-6 gap-2 text-xs">
+                  <label className="col-span-2">
+                    <span className="mb-0.5 block text-neutral-600">Forma</span>
+                    <select
+                      className="w-full rounded-md border px-2 py-1"
+                      value={op.shape || "circle"}
+                      onChange={(e) =>
+                        patchOperation(op.id, "shape", e.target.value as CutoutShape)
+                      }
+                    >
+                      <option value="circle">circle</option>
+                      <option value="rect">rect</option>
+                      <option value="polygon">polygon</option>
+                    </select>
+                  </label>
+
+                  <label>
+                    <span className="mb-0.5 block text-neutral-600">X (mm)</span>
+                    <input
+                      type="number"
+                      className="w-full rounded-md border px-2 py-1"
+                      value={op.x_mm ?? 0}
+                      onChange={(e) =>
+                        patchOperation(op.id, "x_mm", n(e.target.value, op.x_mm ?? 0))
+                      }
+                      step={0.5}
+                    />
+                  </label>
+                  <label>
+                    <span className="mb-0.5 block text-neutral-600">Y (mm)</span>
+                    <input
+                      type="number"
+                      className="w-full rounded-md border px-2 py-1"
+                      value={op.y_mm ?? 0}
+                      onChange={(e) =>
+                        patchOperation(op.id, "y_mm", n(e.target.value, op.y_mm ?? 0))
+                      }
+                      step={0.5}
+                    />
+                  </label>
+                  <label>
+                    <span className="mb-0.5 block text-neutral-600">Prof. (mm)</span>
+                    <input
+                      type="number"
+                      className="w-full rounded-md border px-2 py-1"
+                      value={op.depth_mm ?? 1}
+                      onChange={(e) =>
+                        patchOperation(
+                          op.id,
+                          "depth_mm",
+                          n(e.target.value, op.depth_mm ?? 1)
+                        )
+                      }
+                      step={0.5}
+                    />
+                  </label>
+
+                  {/* Dimensiones según forma */}
+                  {op.shape === "circle" && (
+                    <label>
+                      <span className="mb-0.5 block text-neutral-600">Ø (mm)</span>
+                      <input
+                        type="number"
+                        className="w-full rounded-md border px-2 py-1"
+                        value={op.d_mm ?? 6}
+                        onChange={(e) =>
+                          patchOperation(op.id, "d_mm", n(e.target.value, op.d_mm ?? 6))
+                        }
+                        step={0.5}
+                      />
+                    </label>
+                  )}
+
+                  {op.shape === "rect" && (
+                    <>
+                      <label>
+                        <span className="mb-0.5 block text-neutral-600">W (mm)</span>
+                        <input
+                          type="number"
+                          className="w-full rounded-md border px-2 py-1"
+                          value={op.w_mm ?? 6}
+                          onChange={(e) =>
+                            patchOperation(
+                              op.id,
+                              "w_mm",
+                              n(e.target.value, op.w_mm ?? 6)
+                            )
+                          }
+                          step={0.5}
+                        />
+                      </label>
+                      <label>
+                        <span className="mb-0.5 block text-neutral-600">H (mm)</span>
+                        <input
+                          type="number"
+                          className="w-full rounded-md border px-2 py-1"
+                          value={op.h_mm ?? 6}
+                          onChange={(e) =>
+                            patchOperation(
+                              op.id,
+                              "h_mm",
+                              n(e.target.value, op.h_mm ?? 6)
+                            )
+                          }
+                          step={0.5}
+                        />
+                      </label>
+                      <label>
+                        <span className="mb-0.5 block text-neutral-600">
+                          Esquinas R (mm)
+                        </span>
+                        <input
+                          type="number"
+                          className="w-full rounded-md border px-2 py-1"
+                          value={op.r_mm ?? 0}
+                          onChange={(e) =>
+                            patchOperation(
+                              op.id,
+                              "r_mm",
+                              n(e.target.value, op.r_mm ?? 0)
+                            )
+                          }
+                          step={0.5}
+                        />
+                      </label>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {op.type === "text" && (
+                <div className="grid grid-cols-6 gap-2 text-xs">
+                  <label className="col-span-3">
+                    <span className="mb-0.5 block text-neutral-600">Texto</span>
+                    <input
+                      className="w-full rounded-md border px-2 py-1"
+                      value={op.text || ""}
+                      onChange={(e) => patchOperation(op.id, "text", e.target.value)}
+                    />
+                  </label>
+                  <label>
+                    <span className="mb-0.5 block text-neutral-600">X (mm)</span>
+                    <input
+                      type="number"
+                      className="w-full rounded-md border px-2 py-1"
+                      value={op.x_mm ?? 0}
+                      onChange={(e) =>
+                        patchOperation(op.id, "x_mm", n(e.target.value, op.x_mm ?? 0))
+                      }
+                      step={0.5}
+                    />
+                  </label>
+                  <label>
+                    <span className="mb-0.5 block text-neutral-600">Y (mm)</span>
+                    <input
+                      type="number"
+                      className="w-full rounded-md border px-2 py-1"
+                      value={op.y_mm ?? 0}
+                      onChange={(e) =>
+                        patchOperation(op.id, "y_mm", n(e.target.value, op.y_mm ?? 0))
+                      }
+                      step={0.5}
+                    />
+                  </label>
+                  <label>
+                    <span className="mb-0.5 block text-neutral-600">Size (mm)</span>
+                    <input
+                      type="number"
+                      className="w-full rounded-md border px-2 py-1"
+                      value={op.size_mm ?? 10}
+                      onChange={(e) =>
+                        patchOperation(
+                          op.id,
+                          "size_mm",
+                          n(e.target.value, op.size_mm ?? 10)
+                        )
+                      }
+                      step={0.5}
+                    />
+                  </label>
+
+                  <label>
+                    <span className="mb-0.5 block text-neutral-600">Prof. (mm)</span>
+                    <input
+                      type="number"
+                      className="w-full rounded-md border px-2 py-1"
+                      value={op.depth_mm ?? 1}
+                      onChange={(e) =>
+                        patchOperation(
+                          op.id,
+                          "depth_mm",
+                          n(e.target.value, op.depth_mm ?? 1)
+                        )
+                      }
+                      step={0.5}
+                    />
+                  </label>
+                  <label className="col-span-2 mt-[22px] inline-flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={!!op.engrave}
+                      onChange={(e) => patchOperation(op.id, "engrave", e.target.checked)}
+                    />
+                    <span>Engrave</span>
+                  </label>
+                </div>
+              )}
+
+              {(op.type === "round" || op.type === "chamfer") && (
+                <div className="grid grid-cols-6 gap-2 text-xs">
+                  <label className="col-span-2">
+                    <span className="mb-0.5 block text-neutral-600">
+                      {op.type === "round" ? "Radio (mm)" : "Chaflán (mm)"}
+                    </span>
+                    <input
+                      type="number"
+                      className="w-full rounded-md border px-2 py-1"
+                      value={op.r_mm ?? 1}
+                      onChange={(e) =>
+                        patchOperation(op.id, "r_mm", n(e.target.value, op.r_mm ?? 1))
+                      }
+                      step={0.5}
+                    />
+                  </label>
+                </div>
+              )}
+
+              {op.type === "array" && (
+                <div className="grid grid-cols-6 gap-2 text-xs">
+                  <label>
+                    <span className="mb-0.5 block text-neutral-600">Forma</span>
+                    <select
+                      className="w-full rounded-md border px-2 py-1"
+                      value={op.shape || "rect"}
+                      onChange={(e) =>
+                        patchOperation(op.id, "shape", e.target.value as CutoutShape)
+                      }
+                    >
+                      <option value="rect">rect</option>
+                      <option value="circle">circle</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span className="mb-0.5 block text-neutral-600">Start X</span>
+                    <input
+                      type="number"
+                      className="w-full rounded-md border px-2 py-1"
+                      value={op.start_x_mm ?? 10}
+                      onChange={(e) =>
+                        patchOperation(
+                          op.id,
+                          "start_x_mm",
+                          n(e.target.value, op.start_x_mm ?? 10)
+                        )
+                      }
+                      step={0.5}
+                    />
+                  </label>
+                  <label>
+                    <span className="mb-0.5 block text-neutral-600">Start Y</span>
+                    <input
+                      type="number"
+                      className="w-full rounded-md border px-2 py-1"
+                      value={op.start_y_mm ?? 10}
+                      onChange={(e) =>
+                        patchOperation(
+                          op.id,
+                          "start_y_mm",
+                          n(e.target.value, op.start_y_mm ?? 10)
+                        )
+                      }
+                      step={0.5}
+                    />
+                  </label>
+                  <label>
+                    <span className="mb-0.5 block text-neutral-600">nx</span>
+                    <input
+                      type="number"
+                      className="w-full rounded-md border px-2 py-1"
+                      value={op.nx ?? 3}
+                      onChange={(e) =>
+                        patchOperation(op.id, "nx", n(e.target.value, op.nx ?? 3))
+                      }
+                      step={1}
+                      min={1}
+                    />
+                  </label>
+                  <label>
+                    <span className="mb-0.5 block text-neutral-600">ny</span>
+                    <input
+                      type="number"
+                      className="w-full rounded-md border px-2 py-1"
+                      value={op.ny ?? 2}
+                      onChange={(e) =>
+                        patchOperation(op.id, "ny", n(e.target.value, op.ny ?? 2))
+                      }
+                      step={1}
+                      min={1}
+                    />
+                  </label>
+
+                  <label>
+                    <span className="mb-0.5 block text-neutral-600">dx (mm)</span>
+                    <input
+                      type="number"
+                      className="w-full rounded-md border px-2 py-1"
+                      value={op.dx_mm ?? 15}
+                      onChange={(e) =>
+                        patchOperation(
+                          op.id,
+                          "dx_mm",
+                          n(e.target.value, op.dx_mm ?? 15)
+                        )
+                      }
+                      step={0.5}
+                    />
+                  </label>
+                  <label>
+                    <span className="mb-0.5 block text-neutral-600">dy (mm)</span>
+                    <input
+                      type="number"
+                      className="w-full rounded-md border px-2 py-1"
+                      value={op.dy_mm ?? 15}
+                      onChange={(e) =>
+                        patchOperation(
+                          op.id,
+                          "dy_mm",
+                          n(e.target.value, op.dy_mm ?? 15)
+                        )
+                      }
+                      step={0.5}
+                    />
+                  </label>
+
+                  {/* Dimensiones de cada instancia */}
+                  {op.shape === "rect" ? (
+                    <>
+                      <label>
+                        <span className="mb-0.5 block text-neutral-600">W (mm)</span>
+                        <input
+                          type="number"
+                          className="w-full rounded-md border px-2 py-1"
+                          value={op.w_mm ?? 6}
+                          onChange={(e) =>
+                            patchOperation(
+                              op.id,
+                              "w_mm",
+                              n(e.target.value, op.w_mm ?? 6)
+                            )
+                          }
+                          step={0.5}
+                        />
+                      </label>
+                      <label>
+                        <span className="mb-0.5 block text-neutral-600">H (mm)</span>
+                        <input
+                          type="number"
+                          className="w-full rounded-md border px-2 py-1"
+                          value={op.h_mm ?? 10}
+                          onChange={(e) =>
+                            patchOperation(
+                              op.id,
+                              "h_mm",
+                              n(e.target.value, op.h_mm ?? 10)
+                            )
+                          }
+                          step={0.5}
+                        />
+                      </label>
+                    </>
+                  ) : (
+                    <label>
+                      <span className="mb-0.5 block text-neutral-600">Ø (mm)</span>
+                      <input
+                        type="number"
+                        className="w-full rounded-md border px-2 py-1"
+                        value={op.d_mm ?? 6}
+                        onChange={(e) =>
+                          patchOperation(
+                            op.id,
+                            "d_mm",
+                            n(e.target.value, op.d_mm ?? 6)
+                          )
+                        }
+                        step={0.5}
+                      />
+                    </label>
+                  )}
+
+                  <label>
+                    <span className="mb-0.5 block text-neutral-600">Prof. (mm)</span>
+                    <input
+                      type="number"
+                      className="w-full rounded-md border px-2 py-1"
+                      value={op.depth_mm ?? 3}
+                      onChange={(e) =>
+                        patchOperation(
+                          op.id,
+                          "depth_mm",
+                          n(e.target.value, op.depth_mm ?? 3)
+                        )
+                      }
+                      step={0.5}
+                    />
+                  </label>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Acciones principales */}
+      <div className="mt-4 flex flex-col gap-3">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            className="rounded-md bg-black px-4 py-2 text-white"
+            onClick={handleGenerate}
+            disabled={busy || !canGenerate}
+          >
+            {busy ? "Generando…" : "Generar STL"}
+          </button>
+          {!canGenerate && (
+            <span className="text-xs text-neutral-500">
+              Configura <code>NEXT_PUBLIC_FORGE_API_URL</code> para generar.
+            </span>
           )}
         </div>
-      </aside>
 
-      {/* Lienzo */}
-      <div className="relative flex-1">
-        <canvas ref={canvasRef} className="block h-full w-full" />
-        {!stlUrl && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-neutral-500">
-            Genera un STL para visualizarlo aquí.
-          </div>
-        )}
+        {/* Export SVG (láser) */}
+        <div className="flex items-center gap-4 text-sm text-neutral-700">
+          <label className="inline-flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={exportSVG}
+              onChange={(e) => setExportSVG(e.target.checked)}
+            />
+            Export SVG (láser)
+          </label>
+
+          {svgUrl && (
+            <a
+              href={svgUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-blue-600 underline"
+            >
+              Descargar SVG
+            </a>
+          )}
+        </div>
       </div>
+
+      {error && <p className="mt-3 text-sm text-red-700">{error}</p>}
     </div>
   );
 }
