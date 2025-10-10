@@ -1,190 +1,293 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { OrbitControls, Environment, ContactShadows, Html } from "@react-three/drei";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import * as THREE from "three";
 
-// --- Cargador STL lazy para evitar SSR issues
-function useSTLLoader() {
-  const loaderRef = useRef<THREE.Loader | null>(null);
-  const get = async () => {
-    if (!loaderRef.current) {
-      const { STLLoader } = await import("three/examples/jsm/loaders/STLLoader.js");
-      loaderRef.current = new STLLoader();
-    }
-    return loaderRef.current as any;
-  };
-  return get;
-}
+/**
+ * Visor Pro (autónomo) — no añade deps nuevas.
+ * - Renderiza en <canvas> con Three.js
+ * - OrbitControls y STLLoader via dynamic import
+ * - Reacciona a window events:
+ *    - "forge:stl-url"  => { detail: { url: string } }
+ */
 
-function Model({ url, clipPlane, color = "#d1d5db" }: { url: string; clipPlane: THREE.Plane | null; color?: string }) {
-  const [geom, setGeom] = useState<THREE.BufferGeometry | null>(null);
-  const getLoader = useSTLLoader();
+export default function ForgeProPage() {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const controlsRef = useRef<any>(null);
+  const meshRef = useRef<THREE.Object3D | null>(null);
+  const gridRef = useRef<THREE.GridHelper | null>(null);
+  const axesRef = useRef<THREE.AxesHelper | null>(null);
 
-  useEffect(() => {
-    if (!url) return;
-    let alive = true;
-    (async () => {
-      const loader = await getLoader();
-      loader.load(
-        url,
-        (g: THREE.BufferGeometry) => {
-          if (!alive) return;
-          g.center();
-          g.computeVertexNormals();
-          setGeom(g);
-        },
-        undefined,
-        () => setGeom(null)
-      );
-    })();
-    return () => { alive = false; };
-  }, [url, getLoader]);
-
-  const mat = useMemo(() => {
-    const m = new THREE.MeshPhysicalMaterial({
-      color,
-      metalness: 0.05,
-      roughness: 0.6,
-      clearcoat: 0.04,
-      transparent: false,
-    });
-    if (clipPlane) m.clippingPlanes = [clipPlane];
-    m.clipShadows = true;
-    return m;
-  }, [clipPlane, color]);
-
-  if (!geom) return null;
-  return <mesh geometry={geom} material={mat} castShadow receiveShadow />;
-}
-
-function HUD({ text }: { text: string }) {
-  return (
-    <div className="pointer-events-none absolute left-3 top-3 rounded-md bg-white/80 px-2 py-1 text-xs text-black shadow">
-      {text}
-    </div>
-  );
-}
-
-function Toolbar({
-  onScreenshot,
-  onToggleFull,
-  clipping,
-  setClipping,
-  tone,
-  setTone,
-}: {
-  onScreenshot: () => void;
-  onToggleFull: () => void;
-  clipping: boolean;
-  setClipping: (v: boolean) => void;
-  tone: "aces" | "linear";
-  setTone: (t: "aces" | "linear") => void;
-}) {
-  return (
-    <div className="absolute right-3 top-3 flex gap-2">
-      <button className="rounded bg-white/90 px-3 py-1 text-sm shadow" onClick={onScreenshot}>📸 Screenshot</button>
-      <button className="rounded bg-white/90 px-3 py-1 text-sm shadow" onClick={onToggleFull}>⛶ Fullscreen</button>
-      <button className="rounded bg-white/90 px-3 py-1 text-sm shadow" onClick={() => setClipping(!clipping)}>
-        {clipping ? "✂️ Clipping ON" : "✂️ Clipping OFF"}
-      </button>
-      <button className="rounded bg-white/90 px-3 py-1 text-sm shadow" onClick={() => setTone(tone === "aces" ? "linear" : "aces")}>
-        Tone: {tone}
-      </button>
-    </div>
-  );
-}
-
-function Scene({ stlUrl }: { stlUrl: string | null }) {
-  const [clipping, setClipping] = useState(false);
-  const [tone, setTone] = useState<"aces" | "linear">("aces");
-  const [plane, setPlane] = useState<THREE.Plane | null>(null);
-  const { gl, scene } = useThree();
-
-  useEffect(() => {
-    gl.localClippingEnabled = clipping;
-    if (clipping) setPlane(new THREE.Plane(new THREE.Vector3(0, 0, -1), 0));
-    else setPlane(null);
-  }, [clipping, gl]);
-
-  useEffect(() => {
-    gl.toneMapping = tone === "aces" ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
-  }, [tone, gl]);
-
-  // simple grid helper
-  useEffect(() => {
-    const grid = new THREE.GridHelper(200, 40, 0x888888, 0xcccccc);
-    scene.add(grid);
-    return () => { scene.remove(grid); };
-  }, [scene]);
-
-  return (
-    <>
-      <ambientLight intensity={0.4} />
-      <directionalLight position={[5, 10, 8]} castShadow intensity={0.8} />
-      <Environment preset="city" />
-      {stlUrl ? (
-        <Model url={stlUrl} clipPlane={plane} />
-      ) : (
-        <Html center>
-          <div className="rounded bg-white/90 px-3 py-2 text-sm shadow">Carga un STL desde el configurador</div>
-        </Html>
-      )}
-      <ContactShadows opacity={0.45} scale={80} blur={1.8} far={50} />
-      <OrbitControls makeDefault />
-    </>
-  );
-}
-
-export default function ProForgePage() {
   const [stlUrl, setStlUrl] = useState<string | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [bgLight, setBgLight] = useState(true);
+  const [shadows, setShadows] = useState(true);
 
-  // Escucha el evento del configurador
+  // Helpers
+  const fitView = useCallback(() => {
+    const cam = cameraRef.current;
+    const obj = meshRef.current;
+    if (!cam || !obj) return;
+    const box = new THREE.Box3().setFromObject(obj);
+    const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
+    box.getSize(size);
+    box.getCenter(center);
+
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const fov = (cam.fov * Math.PI) / 180;
+    let dist = maxDim / (2 * Math.tan(fov / 2));
+    dist *= 1.4; // margen
+
+    const dir = new THREE.Vector3(1, 1, 1).normalize();
+    cam.position.copy(center.clone().add(dir.multiplyScalar(dist)));
+    cam.near = dist / 50;
+    cam.far = dist * 100;
+    cam.updateProjectionMatrix();
+    cam.lookAt(center);
+    controlsRef.current?.target?.copy(center);
+    controlsRef.current?.update?.();
+  }, []);
+
+  const clearCurrentMesh = useCallback(() => {
+    if (meshRef.current && sceneRef.current) {
+      sceneRef.current.remove(meshRef.current);
+      meshRef.current.traverse?.((o: any) => {
+        if (o.isMesh) {
+          o.geometry?.dispose?.();
+          if (Array.isArray(o.material)) {
+            o.material.forEach((m: any) => m.dispose?.());
+          } else {
+            o.material?.dispose?.();
+          }
+        }
+      });
+      meshRef.current = null;
+    }
+  }, []);
+
+  // Inicialización básica
   useEffect(() => {
-    const onStl = (e: any) => setStlUrl(e?.detail?.url || null);
+    const canvas = canvasRef.current!;
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xf5f6f8);
+    sceneRef.current = scene;
+
+    const renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+      alpha: false,
+      powerPreference: "high-performance",
+    });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    rendererRef.current = renderer;
+
+    const camera = new THREE.PerspectiveCamera(
+      45,
+      canvas.clientWidth / canvas.clientHeight,
+      0.1,
+      10_000
+    );
+    camera.position.set(300, 220, 300);
+    cameraRef.current = camera;
+
+    // Luces
+    const amb = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(amb);
+
+    const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+    dir.position.set(200, 300, 200);
+    dir.castShadow = true;
+    dir.shadow.mapSize.set(1024, 1024);
+    dir.shadow.camera.near = 0.5;
+    dir.shadow.camera.far = 2000;
+    scene.add(dir);
+
+    // Grid + Ejes
+    const grid = new THREE.GridHelper(1000, 40, 0x888888, 0xcccccc);
+    (grid.material as THREE.Material).transparent = true;
+    (grid.material as THREE.Material).opacity = 0.6;
+    scene.add(grid);
+    gridRef.current = grid;
+
+    const axes = new THREE.AxesHelper(80);
+    scene.add(axes);
+    axesRef.current = axes;
+
+    let raf = 0;
+
+    const loop = () => {
+      raf = requestAnimationFrame(loop);
+      controlsRef.current?.update?.();
+      renderer.render(scene, camera);
+    };
+
+    // OrbitControls (dynamic import)
+    (async () => {
+      const { OrbitControls } = await import(
+        "three/examples/jsm/controls/OrbitControls.js"
+      );
+      controlsRef.current = new OrbitControls(camera, renderer.domElement);
+      controlsRef.current.enableDamping = true;
+      controlsRef.current.dampingFactor = 0.08;
+      controlsRef.current.enablePan = true;
+      controlsRef.current.minDistance = 5;
+      controlsRef.current.maxDistance = 5000;
+      loop();
+    })();
+
+    // Resize
+    const onResize = () => {
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    };
+    const ro = new ResizeObserver(onResize);
+    ro.observe(canvas);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+      clearCurrentMesh();
+      renderer.dispose();
+      scene.clear();
+      rendererRef.current = null;
+      sceneRef.current = null;
+      cameraRef.current = null;
+      controlsRef.current = null;
+    };
+  }, [clearCurrentMesh]);
+
+  // Carga del STL cuando cambia la URL
+  useEffect(() => {
+    if (!stlUrl || !sceneRef.current) return;
+
+    let disposed = false;
+    (async () => {
+      try {
+        const { STLLoader } = await import(
+          "three/examples/jsm/loaders/STLLoader.js"
+        );
+        const loader: any = new STLLoader();
+        const geometry: THREE.BufferGeometry = await new Promise((res, rej) => {
+          loader.load(
+            stlUrl,
+            (geom: THREE.BufferGeometry) => res(geom),
+            undefined,
+            (err: any) => rej(err)
+          );
+        });
+        if (disposed) return;
+
+        geometry.computeVertexNormals();
+        const material = new THREE.MeshStandardMaterial({
+          color: 0xbfc5cc,
+          metalness: 0.15,
+          roughness: 0.65,
+          side: THREE.DoubleSide,
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+
+        clearCurrentMesh();
+        sceneRef.current!.add(mesh);
+        meshRef.current = mesh;
+
+        // Ajustar vista
+        fitView();
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error("Error cargando STL:", e);
+      }
+    })();
+
+    return () => {
+      disposed = true;
+    };
+  }, [stlUrl, clearCurrentMesh, fitView]);
+
+  // Suscripción a eventos del configurador
+  useEffect(() => {
+    const onStl = (e: any) => {
+      const url = e?.detail?.url;
+      if (typeof url === "string") setStlUrl(url);
+    };
     window.addEventListener("forge:stl-url", onStl as any);
     return () => window.removeEventListener("forge:stl-url", onStl as any);
   }, []);
 
-  const takeScreenshot = () => {
-    if (!containerRef.current) return;
-    const canvas = containerRef.current.querySelector("canvas");
-    if (!canvas) return;
-    const link = document.createElement("a");
-    link.download = "preview.png";
-    link.href = (canvas as HTMLCanvasElement).toDataURL("image/png");
-    link.click();
-  };
+  // Toggles de UI
+  useEffect(() => {
+    if (!sceneRef.current) return;
+    sceneRef.current.background = new THREE.Color(bgLight ? 0xf5f6f8 : 0x0e1116);
+  }, [bgLight]);
 
-  const toggleFullscreen = () => {
-    const el = containerRef.current;
-    if (!el) return;
-    if (!document.fullscreenElement) el.requestFullscreen().catch(() => {});
-    else document.exitFullscreen().catch(() => {});
-  };
+  useEffect(() => {
+    if (!rendererRef.current) return;
+    rendererRef.current.shadowMap.enabled = !!shadows;
+  }, [shadows]);
 
   return (
-    <div className="relative h-[calc(100vh-60px)] w-full" ref={containerRef}>
-      <Toolbar
-        onScreenshot={takeScreenshot}
-        onToggleFull={toggleFullscreen}
-        clipping={false}
-        setClipping={() => {}}
-        tone={"aces"}
-        setTone={() => {}}
-      />
-      {/* Nota: los toggles reales de clipping y tone viven dentro de Scene.
-          Si quieres controlarlos desde la toolbar, puedes levantar el estado. */}
-      <Canvas
-        shadows
-        dpr={[1, 2]}
-        camera={{ position: [3, 3, 6], fov: 45 }}
-      >
-        <Scene stlUrl={stlUrl} />
-      </Canvas>
-      <HUD text={stlUrl ? "STL cargado desde el configurador" : "Esperando STL…"} />
+    <div className="flex h-[100dvh] w-full flex-col">
+      {/* Barra de controles simple */}
+      <div className="flex items-center gap-3 border-b px-3 py-2 text-sm">
+        <strong className="mr-2">Visor Pro</strong>
+        <label className="inline-flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={bgLight}
+            onChange={(e) => setBgLight(e.target.checked)}
+          />
+          Fondo claro
+        </label>
+        <label className="inline-flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={shadows}
+            onChange={(e) => setShadows(e.target.checked)}
+          />
+          Sombras
+        </label>
+        <button
+          className="ml-auto rounded-md border px-3 py-1"
+          onClick={() => {
+            fitView();
+          }}
+        >
+        Centrar
+        </button>
+        <button
+          className="rounded-md border px-3 py-1"
+          onClick={() => {
+            clearCurrentMesh();
+            setStlUrl(null);
+          }}
+        >
+          Limpiar
+        </button>
+      </div>
+
+      {/* Lienzo */}
+      <div className="relative flex-1">
+        <canvas
+          ref={canvasRef}
+          className="h-full w-full block"
+          style={{ display: "block" }}
+        />
+        {!stlUrl && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-neutral-500">
+            Genera un STL para visualizarlo aquí.
+          </div>
+        )}
+      </div>
     </div>
   );
 }
