@@ -1,3 +1,4 @@
+// components/STLViewerPro.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -9,22 +10,25 @@ import { STLExporter } from "three/examples/jsm/exporters/STLExporter.js";
 
 type Props = { url?: string | null; className?: string };
 
+// Pequeña ayuda de tipos para no pelear con Vercel
+type V3 = { x: number; y: number; z: number };
+
 export default function STLViewerPro({ url, className }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
 
-  // Compatibilidad de tipos en Vercel
-  const currentMeshRef = useRef<any>(null);
-  const lastSizeRef = useRef<any>(null); // { x, y, z } del bounding box centrado
+  // refs de estado de la malla actual + tamaño
+  const currentMeshRef = useRef<THREE.Object3D | null>(null);
+  const lastSizeRef = useRef<V3 | null>(null);
 
+  // toggles UI
   const [shadows, setShadows] = useState(true);
   const [tone, setTone] = useState(1.0);
   const [preset, setPreset] = useState<"studio" | "neutral" | "night">("studio");
   const [clipping, setClipping] = useState(false);
   const [bgLight, setBgLight] = useState(true);
 
-  // URL interna que puede venir por props o por eventos del configurador
-  const [internalUrl, setInternalUrl] = useState<string | null>(url ?? null);
-  useEffect(() => setInternalUrl(url ?? null), [url]);
+  // MUY IMPORTANTE: saber si hay modelo cargado para ocultar plano/grid/ejes
+  const [hasModel, setHasModel] = useState(false);
 
   const three = useMemo(() => {
     const scene = new THREE.Scene();
@@ -80,6 +84,7 @@ export default function STLViewerPro({ url, className }: Props) {
     dir.shadow.mapSize.set(2048, 2048);
     scene.add(dir);
 
+    // Plano receptor de sombras
     const plane = new THREE.Mesh(
       new THREE.PlaneGeometry(2000, 2000),
       new THREE.ShadowMaterial({ opacity: 0.25 })
@@ -138,8 +143,8 @@ export default function STLViewerPro({ url, className }: Props) {
   useEffect(() => {
     three.renderer.shadowMap.enabled = shadows;
     (three.dir as any).castShadow = shadows;
-    three.plane.visible = shadows;
-  }, [shadows, three]);
+    three.plane.visible = hasModel && shadows; // <— solo con modelo
+  }, [shadows, hasModel, three]);
 
   useEffect(() => {
     three.renderer.toneMappingExposure = tone;
@@ -170,55 +175,31 @@ export default function STLViewerPro({ url, className }: Props) {
     three.renderer.clippingPlanes = clipping ? three.planes : [];
   }, [clipping, three]);
 
-  // ------------ Bus de eventos del configurador -------------
-  useEffect(() => {
-    const onGenUrl = (ev: Event) => {
-      const detail = (ev as CustomEvent).detail || {};
-      if (detail?.url) setInternalUrl(String(detail.url));
-    };
-    const onLoadUrl = (ev: Event) => {
-      const detail = (ev as CustomEvent).detail || {};
-      if (detail?.url) setInternalUrl(String(detail.url));
-    };
-    const onClear = () => {
-      setInternalUrl(null);
-      const { group } = three;
-      group.clear();
-      currentMeshRef.current = null;
-      lastSizeRef.current = null;
-    };
-
-    window.addEventListener("forge:generated-url", onGenUrl as any);
-    window.addEventListener("forge:load-url", onLoadUrl as any);
-    window.addEventListener("forge:clear", onClear as any);
-
-    return () => {
-      window.removeEventListener("forge:generated-url", onGenUrl as any);
-      window.removeEventListener("forge:load-url", onLoadUrl as any);
-      window.removeEventListener("forge:clear", onClear as any);
-    };
-  }, [three]);
-
-  // Carga STL (desde internalUrl)
+  // Carga STL
   useEffect(() => {
     const { group, scene, camera, controls, renderer } = three;
 
-    // limpia todo lo previo
+    // limpiar SIEMPRE
     group.clear();
     currentMeshRef.current = null;
     lastSizeRef.current = null;
-    if (!internalUrl) return;
+
+    // si no hay URL -> ocultar plano/grid/ejes y dejar fondo liso
+    if (!url) {
+      setHasModel(false);
+      three.grid.visible = false;
+      three.axes.visible = false;
+      three.plane.visible = false;
+      renderer.render(scene, camera);
+      return;
+    }
 
     const loader = new STLLoader();
     let aborted = false;
 
     (async () => {
       try {
-        // Bust de caché para evitar ver el STL anterior (CDN/proxy)
-        const bust = internalUrl.includes("?") ? `&t=${Date.now()}` : `?t=${Date.now()}`;
-        const finalUrl = internalUrl + bust;
-
-        const res = await fetch(finalUrl, { mode: "cors", cache: "no-store" });
+        const res = await fetch(url, { mode: "cors" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const buf = await res.arrayBuffer();
         if (aborted) return;
@@ -249,6 +230,12 @@ export default function STLViewerPro({ url, className }: Props) {
         group.add(mesh);
         currentMeshRef.current = mesh;
 
+        // Mostrar ayudas SOLO con modelo
+        setHasModel(true);
+        three.grid.visible = true;
+        three.axes.visible = true;
+        three.plane.visible = shadows; // respeta toggle de sombras
+
         // Encuadre cámara
         const radius = size.length() * 0.5 || 1;
         const fov = camera.fov * (Math.PI / 180);
@@ -264,13 +251,19 @@ export default function STLViewerPro({ url, className }: Props) {
         renderer.render(scene, camera);
       } catch (e) {
         console.error("Error cargando STL:", e);
+        // en error, oculta ayudas para evitar “placa”
+        setHasModel(false);
+        three.grid.visible = false;
+        three.axes.visible = false;
+        three.plane.visible = false;
+        renderer.render(scene, camera);
       }
     })();
 
     return () => {
       aborted = true;
     };
-  }, [internalUrl, three]);
+  }, [url, shadows, three]);
 
   // ALT + clic → añade agujero
   useEffect(() => {
@@ -282,7 +275,7 @@ export default function STLViewerPro({ url, className }: Props) {
 
     const onClick = (ev: MouseEvent) => {
       if (!ev.altKey) return;
-      const mesh = currentMeshRef.current;
+      const mesh = currentMeshRef.current as THREE.Mesh | null;
       const size = lastSizeRef.current;
       if (!mesh || !size) return;
 
@@ -317,28 +310,11 @@ export default function STLViewerPro({ url, className }: Props) {
   // --- Helper: crea un Blob válido desde la salida del STLExporter ---
   function blobFromExporterOutput(output: unknown): Blob {
     const type = "model/stl";
-
-    // 1) ArrayBuffer
-    if (output instanceof ArrayBuffer) {
-      return new Blob([output], { type });
-    }
-
-    // 2) DataView-like (duck-typing: objeto con .buffer ArrayBuffer)
-    if (
-      typeof output === "object" &&
-      output !== null &&
-      "buffer" in (output as any) &&
-      (output as any).buffer instanceof ArrayBuffer
-    ) {
+    if (output instanceof ArrayBuffer) return new Blob([output], { type });
+    if (typeof output === "object" && output !== null && "buffer" in (output as any) && (output as any).buffer instanceof ArrayBuffer) {
       return new Blob([(output as any).buffer as ArrayBuffer], { type });
     }
-
-    // 3) string
-    if (typeof output === "string") {
-      return new Blob([output], { type });
-    }
-
-    // 4) último recurso: intentar crear el blob directamente
+    if (typeof output === "string") return new Blob([output], { type });
     try {
       return new Blob([output as any], { type });
     } catch {
@@ -346,7 +322,6 @@ export default function STLViewerPro({ url, className }: Props) {
     }
   }
 
-  // Exportar a STL lo que se ve
   function downloadCurrentSTL(fileName = "modelo.stl") {
     try {
       const exporter = new STLExporter();
@@ -411,7 +386,6 @@ export default function STLViewerPro({ url, className }: Props) {
           <input type="checkbox" checked={bgLight} onChange={(e) => setBgLight(e.target.checked)} />
         </label>
 
-        {/* Descargar STL del viewer */}
         <button
           onClick={() => downloadCurrentSTL()}
           className="px-3 py-1 rounded bg-neutral-900/80 text-white hover:bg-neutral-900 border border-neutral-700"
@@ -419,6 +393,16 @@ export default function STLViewerPro({ url, className }: Props) {
           Descargar STL
         </button>
       </div>
+
+      {/* Overlay amable cuando no hay modelo */}
+      {!hasModel && (
+        <div className="pointer-events-none absolute inset-0 grid place-items-center text-center text-neutral-400">
+          <div className="rounded-xl bg-neutral-900/60 px-4 py-3 border border-neutral-800">
+            <p className="text-sm">Sin modelo aún</p>
+            <p className="text-xs opacity-80">Pulsa “Generar STL” para previsualizar aquí.</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
