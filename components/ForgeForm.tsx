@@ -17,25 +17,41 @@ type Params = {
 
 type Hole = { x_mm: number; y_mm: number; d_mm: number };
 
+// ---- Operaciones universales ----
 type OpBase = { id: string; type: "cutout" | "text" | "round" | "array"; title: string };
 type OpCutout = OpBase & {
   type: "cutout";
   shape: "circle" | "rect";
-  x_mm: number; y_mm: number;
-  d_mm?: number; w_mm?: number; h_mm?: number;
+  x_mm: number;
+  y_mm: number;
+  d_mm?: number;
+  w_mm?: number;
+  h_mm?: number;
   depth_mm?: number;
 };
 type OpText = OpBase & {
   type: "text";
-  text: string; x_mm: number; y_mm: number; size_mm: number; depth_mm?: number; engrave?: boolean;
+  text: string;
+  x_mm: number;
+  y_mm: number;
+  size_mm: number;
+  depth_mm?: number;
+  engrave?: boolean;
 };
 type OpRound = OpBase & { type: "round"; r_mm: number };
 type OpArray = OpBase & {
   type: "array";
   shape: "circle" | "rect";
-  start_x_mm: number; start_y_mm: number;
-  nx: number; ny: number; dx_mm: number; dy_mm: number;
-  w_mm?: number; h_mm?: number; d_mm?: number; depth_mm?: number;
+  start_x_mm: number;
+  start_y_mm: number;
+  nx: number;
+  ny: number;
+  dx_mm: number;
+  dy_mm: number;
+  w_mm?: number;
+  h_mm?: number;
+  d_mm?: number;
+  depth_mm?: number;
 };
 type Operation = OpCutout | OpText | OpRound | OpArray;
 
@@ -47,13 +63,13 @@ type Props = {
 };
 
 const MODEL_OPTIONS = [
-  { value: "cable_tray",    label: "Cable Tray (bandeja)" },
-  { value: "vesa_adapter",  label: "VESA Adapter" },
-  { value: "router_mount",  label: "Router Mount (L)" },
-  { value: "cable_clip",    label: "Cable Clip" },
+  { value: "cable_tray", label: "Cable Tray (bandeja)" },
+  { value: "vesa_adapter", label: "VESA Adapter" },
+  { value: "router_mount", label: "Router Mount (L)" },
+  { value: "cable_clip", label: "Cable Clip" },
   { value: "headset_stand", label: "Headset Stand" },
-  { value: "phone_dock",    label: "Phone Dock (USB-C)" },
-  { value: "tablet_stand",  label: "Tablet Stand" },
+  { value: "phone_dock", label: "Phone Dock (USB-C)" },
+  { value: "tablet_stand", label: "Tablet Stand" },
 ];
 
 function n(v: any, fallback = 0) {
@@ -64,7 +80,9 @@ function clamp(x: number, min: number, max: number) {
   return Math.min(max, Math.max(min, x));
 }
 function emit<T = any>(name: string, detail?: T) {
-  try { window.dispatchEvent(new CustomEvent(name, { detail })); } catch {}
+  try {
+    window.dispatchEvent(new CustomEvent(name, { detail }));
+  } catch {}
 }
 
 export default function ForgeForm({
@@ -73,6 +91,7 @@ export default function ForgeForm({
   initialHoles = [],
   onGenerated,
 }: Props) {
+  // Modelo y parámetros
   const [model, setModel] = useState<string>((initialModel || "cable_tray").replace(/-/g, "_"));
   const [length_mm, setLength] = useState<number>(initialParams?.length_mm ?? 120);
   const [width_mm, setWidth] = useState<number>(initialParams?.width_mm ?? 100);
@@ -80,24 +99,26 @@ export default function ForgeForm({
   const [thickness_mm, setThickness] = useState<number>(initialParams?.thickness_mm ?? 3);
   const [fillet_mm, setFillet] = useState<number>(initialParams?.fillet_mm ?? 0);
 
+  // Agujeros y operaciones
   const [holes, setHoles] = useState<Hole[]>(initialHoles);
+  const [operations, setOperations] = useState<Operation[]>([]);
+
+  // Estado UI
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Láser / SVG
+  // SVG (láser)
   const [exportSVG, setExportSVG] = useState<boolean>(false);
   const [svgUrl, setSvgUrl] = useState<string | null>(null);
 
-  // Operaciones universales
-  const [operations, setOperations] = useState<Operation[]>([]);
-
-  // debounce → visor
+  // Debounce para enviar al visor
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const debouncedEmit = useCallback((fn: () => void, ms = 120) => {
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(fn, ms);
   }, []);
 
+  // Sync con visor
   useEffect(() => {
     emit("forge:set-model", { model });
     emit("forge:refresh", { reason: "model-change" });
@@ -121,6 +142,7 @@ export default function ForgeForm({
     return p;
   }, [length_mm, width_mm, height_mm, thickness_mm, fillet_mm, debouncedEmit]);
 
+  // Handshake inicial con visor
   useEffect(() => {
     emit("forge:set-model", { model });
     emit("forge:set-params", { params });
@@ -131,6 +153,7 @@ export default function ForgeForm({
 
   const canGenerate = !!API_BASE;
 
+  // ---------- Generate ----------
   const handleGenerate = async () => {
     if (!canGenerate) return;
     setBusy(true);
@@ -140,7 +163,7 @@ export default function ForgeForm({
         model: model.replace(/-/g, "_"),
         params,
         holes,
-        operations: operations.map(o => {
+        operations: operations.map((o) => {
           const { id, title, ...rest } = o as any;
           return rest;
         }),
@@ -154,9 +177,11 @@ export default function ForgeForm({
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Error generando STL");
+
       const url = json?.stl_url as string;
       onGenerated?.(url);
       emit("forge:stl-url", { url });
+
       if (json?.svg_url) {
         setSvgUrl(json.svg_url);
         emit("forge:svg-url", { url: json.svg_url });
@@ -170,42 +195,86 @@ export default function ForgeForm({
     }
   };
 
-  const addHole = () => setHoles(prev => [...prev, { x_mm: 0, y_mm: 0, d_mm: 5 }]);
-  const removeHole = (idx: number) => setHoles(prev => prev.filter((_, i) => i !== idx));
+  // ---------- Agujeros ----------
+  const addHole = () => setHoles((prev) => [...prev, { x_mm: 0, y_mm: 0, d_mm: 5 }]);
+  const removeHole = (idx: number) => setHoles((prev) => prev.filter((_, i) => i !== idx));
 
-  // ---------- UI de operaciones ----------
-
+  // ---------- Operaciones ----------
   const addOp = (type: Operation["type"]) => {
     const id = Math.random().toString(36).slice(2, 9);
     if (type === "cutout") {
-      setOperations(prev => [...prev, {
-        id, type, title: "CUTOUT",
-        shape: "circle", x_mm: 10, y_mm: 10, d_mm: 6, depth_mm: params.height_mm
-      } as OpCutout]);
+      setOperations((prev) => [
+        ...prev,
+        {
+          id,
+          type,
+          title: "CUTOUT",
+          shape: "circle",
+          x_mm: 10,
+          y_mm: 10,
+          d_mm: 6,
+          depth_mm: params.height_mm,
+        } as OpCutout,
+      ]);
     } else if (type === "text") {
-      setOperations(prev => [...prev, {
-        id, type, title: "TEXT", text: "TEK", x_mm: 10, y_mm: 10, size_mm: 10, depth_mm: 1, engrave: true
-      } as OpText]);
+      setOperations((prev) => [
+        ...prev,
+        {
+          id,
+          type,
+          title: "TEXT",
+          text: "TEK",
+          x_mm: 10,
+          y_mm: 10,
+          size_mm: 10,
+          depth_mm: 1,
+          engrave: true,
+        } as OpText,
+      ]);
     } else if (type === "round") {
-      setOperations(prev => [...prev, { id, type, title: "ROUND", r_mm: 2 } as OpRound]);
+      setOperations((prev) => [...prev, { id, type, title: "ROUND", r_mm: 2 } as OpRound]);
     } else {
-      setOperations(prev => [...prev, {
-        id, type, title: "ARRAY", shape: "rect",
-        start_x_mm: 20, start_y_mm: 20, nx: 3, ny: 2, dx_mm: 15, dy_mm: 15, w_mm: 6, h_mm: 8, depth_mm: params.height_mm
-      } as OpArray]);
+      setOperations((prev) => [
+        ...prev,
+        {
+          id,
+          type,
+          title: "ARRAY",
+          shape: "rect",
+          start_x_mm: 20,
+          start_y_mm: 20,
+          nx: 3,
+          ny: 2,
+          dx_mm: 15,
+          dy_mm: 15,
+          w_mm: 6,
+          h_mm: 8,
+          depth_mm: params.height_mm,
+        } as OpArray,
+      ]);
     }
   };
-  const removeOp = (id: string) => setOperations(prev => prev.filter(o => o.id !== id));
-  const patchOp = <K extends keyof Operation>(id: string, key: K, value: any) =>
-    setOperations(prev => prev.map(o => (o.id === id ? { ...(o as any), [key]: value } : o)));
 
-  // --------------- RENDER ---------------
+  const removeOp = (id: string) => setOperations((prev) => prev.filter((o) => o.id !== id));
 
+  // 🔧 FIX TS: aceptamos cualquier key (string) y escribimos con cast interno
+  const patchOp = (id: string, key: string, value: any) =>
+    setOperations((prev) =>
+      prev.map((o) => {
+        if (o.id !== id) return o;
+        const copy: any = { ...o };
+        copy[key] = value;
+        return copy as Operation;
+      })
+    );
+
+  // ---------- UI ----------
   return (
     <div className="min-w-[380px] max-w-[560px] shrink-0 rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
       <h2 className="mb-3 text-lg font-semibold">Configurador</h2>
 
       <div className="grid grid-cols-2 gap-3">
+        {/* Modelo */}
         <label className="col-span-2 text-sm">
           <span className="mb-1 block text-neutral-600">Modelo</span>
           <select
@@ -214,39 +283,72 @@ export default function ForgeForm({
             onChange={(e) => setModel(e.target.value)}
           >
             {MODEL_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
             ))}
           </select>
         </label>
 
+        {/* Parámetros */}
         <label className="text-sm">
           <span className="mb-1 block text-neutral-600">Largo (mm)</span>
-          <input type="number" className="w-full rounded-md border border-neutral-300 px-3 py-2"
-            value={length_mm} onChange={(e) => setLength(n(e.target.value, length_mm))} min={1} step={0.5} />
+          <input
+            type="number"
+            className="w-full rounded-md border border-neutral-300 px-3 py-2"
+            value={length_mm}
+            onChange={(e) => setLength(n(e.target.value, length_mm))}
+            min={1}
+            step={0.5}
+          />
         </label>
 
         <label className="text-sm">
           <span className="mb-1 block text-neutral-600">Ancho (mm)</span>
-          <input type="number" className="w-full rounded-md border border-neutral-300 px-3 py-2"
-            value={width_mm} onChange={(e) => setWidth(n(e.target.value, width_mm))} min={1} step={0.5} />
+          <input
+            type="number"
+            className="w-full rounded-md border border-neutral-300 px-3 py-2"
+            value={width_mm}
+            onChange={(e) => setWidth(n(e.target.value, width_mm))}
+            min={1}
+            step={0.5}
+          />
         </label>
 
         <label className="text-sm">
           <span className="mb-1 block text-neutral-600">Alto (mm)</span>
-          <input type="number" className="w-full rounded-md border border-neutral-300 px-3 py-2"
-            value={height_mm} onChange={(e) => setHeight(n(e.target.value, height_mm))} min={1} step={0.5} />
+          <input
+            type="number"
+            className="w-full rounded-md border border-neutral-300 px-3 py-2"
+            value={height_mm}
+            onChange={(e) => setHeight(n(e.target.value, height_mm))}
+            min={1}
+            step={0.5}
+          />
         </label>
 
         <label className="text-sm">
           <span className="mb-1 block text-neutral-600">Grosor (mm)</span>
-          <input type="number" className="w-full rounded-md border border-neutral-300 px-3 py-2"
-            value={thickness_mm} onChange={(e) => setThickness(n(e.target.value, thickness_mm))} min={0.2} step={0.2} />
+          <input
+            type="number"
+            className="w-full rounded-md border border-neutral-300 px-3 py-2"
+            value={thickness_mm}
+            onChange={(e) => setThickness(n(e.target.value, thickness_mm))}
+            min={0.2}
+            step={0.2}
+          />
         </label>
 
         <label className="text-sm">
           <span className="mb-1 block text-neutral-600">Fillet (mm)</span>
-          <input type="number" className="w-full rounded-md border border-neutral-300 px-3 py-2"
-            value={fillet_mm} onChange={(e) => setFillet(n(e.target.value, fillet_mm))} min={0} step={0.5} />
+          <input
+            type="number"
+            className="w-full rounded-md border border-neutral-300 px-3 py-2"
+            value={fillet_mm}
+            onChange={(e) => setFillet(n(e.target.value, fillet_mm))}
+            min={0}
+            step={0.5}
+          />
         </label>
       </div>
 
@@ -254,33 +356,69 @@ export default function ForgeForm({
       <div className="mt-4">
         <div className="mb-2 flex items-center justify-between">
           <span className="text-sm font-medium">Agujeros</span>
-          <button type="button" className="rounded-md border border-neutral-300 px-2 py-1 text-sm" onClick={addHole}>+ Añadir</button>
+          <button
+            type="button"
+            className="rounded-md border border-neutral-300 px-2 py-1 text-sm"
+            onClick={addHole}
+          >
+            + Añadir
+          </button>
         </div>
         <div className="grid gap-2">
           {holes.map((h, i) => (
             <div key={i} className="grid grid-cols-4 items-end gap-2">
               <label className="text-xs">
                 <span className="mb-0.5 block text-neutral-600">X (mm)</span>
-                <input type="number" className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
+                <input
+                  type="number"
+                  className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
                   value={h.x_mm}
-                  onChange={(e) => setHoles(prev => prev.map((hh, idx) => (idx === i ? { ...hh, x_mm: n(e.target.value, hh.x_mm) } : hh)) )}
-                  min={0} step={0.5} />
+                  onChange={(e) =>
+                    setHoles((prev) =>
+                      prev.map((hh, idx) => (idx === i ? { ...hh, x_mm: n(e.target.value, hh.x_mm) } : hh))
+                    )
+                  }
+                  min={0}
+                  step={0.5}
+                />
               </label>
               <label className="text-xs">
                 <span className="mb-0.5 block text-neutral-600">Y (mm)</span>
-                <input type="number" className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
+                <input
+                  type="number"
+                  className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
                   value={h.y_mm}
-                  onChange={(e) => setHoles(prev => prev.map((hh, idx) => (idx === i ? { ...hh, y_mm: n(e.target.value, hh.y_mm) } : hh)) )}
-                  min={0} step={0.5} />
+                  onChange={(e) =>
+                    setHoles((prev) =>
+                      prev.map((hh, idx) => (idx === i ? { ...hh, y_mm: n(e.target.value, hh.y_mm) } : hh))
+                    )
+                  }
+                  min={0}
+                  step={0.5}
+                />
               </label>
               <label className="text-xs">
                 <span className="mb-0.5 block text-neutral-600">Ø (mm)</span>
-                <input type="number" className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
+                <input
+                  type="number"
+                  className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
                   value={h.d_mm}
-                  onChange={(e) => setHoles(prev => prev.map((hh, idx) => (idx === i ? { ...hh, d_mm: n(e.target.value, hh.d_mm) } : hh)) )}
-                  min={0.5} step={0.5} />
+                  onChange={(e) =>
+                    setHoles((prev) =>
+                      prev.map((hh, idx) => (idx === i ? { ...hh, d_mm: n(e.target.value, hh.d_mm) } : hh))
+                    )
+                  }
+                  min={0.5}
+                  step={0.5}
+                />
               </label>
-              <button type="button" className="rounded-md border border-neutral-300 px-2 py-1 text-xs" onClick={() => removeHole(i)}>Quitar</button>
+              <button
+                type="button"
+                className="rounded-md border border-neutral-300 px-2 py-1 text-xs"
+                onClick={() => removeHole(i)}
+              >
+                Quitar
+              </button>
             </div>
           ))}
         </div>
@@ -291,21 +429,29 @@ export default function ForgeForm({
         <div className="mb-2 flex items-center justify-between">
           <span className="text-sm font-medium">Operaciones</span>
           <div className="flex gap-2">
-            <button className="rounded-md border px-2 py-1 text-xs" onClick={() => addOp("cutout")}>+ Cutout</button>
-            <button className="rounded-md border px-2 py-1 text-xs" onClick={() => addOp("text")}>+ Text</button>
-            <button className="rounded-md border px-2 py-1 text-xs" onClick={() => addOp("round")}>+ Round</button>
-            <button className="rounded-md border px-2 py-1 text-xs" onClick={() => addOp("array")}>+ Array</button>
+            <button className="rounded-md border px-2 py-1 text-xs" onClick={() => addOp("cutout")}>
+              + Cutout
+            </button>
+            <button className="rounded-md border px-2 py-1 text-xs" onClick={() => addOp("text")}>
+              + Text
+            </button>
+            <button className="rounded-md border px-2 py-1 text-xs" onClick={() => addOp("round")}>
+              + Round
+            </button>
+            <button className="rounded-md border px-2 py-1 text-xs" onClick={() => addOp("array")}>
+              + Array
+            </button>
           </div>
         </div>
 
         <div className="space-y-3">
-          {operations.map(op => (
+          {operations.map((op) => (
             <div key={op.id} className="rounded-md border border-neutral-200 p-2">
               <div className="mb-2 flex items-center gap-2">
                 <select
                   className="rounded-md border px-2 py-1 text-xs"
                   value={op.type}
-                  onChange={(e) => patchOp(op.id, "type", e.target.value as any)}
+                  onChange={(e) => patchOp(op.id, "type", e.target.value)}
                 >
                   <option value="cutout">cutout</option>
                   <option value="text">text</option>
@@ -315,59 +461,84 @@ export default function ForgeForm({
                 <input
                   className="w-full rounded-md border px-2 py-1 text-xs"
                   value={op.title}
-                  onChange={(e) => patchOp(op.id, "title" as any, e.target.value)}
+                  onChange={(e) => patchOp(op.id, "title", e.target.value)}
                 />
-                <button className="rounded-md border px-2 py-1 text-xs" onClick={() => removeOp(op.id)}>Quitar</button>
+                <button className="rounded-md border px-2 py-1 text-xs" onClick={() => removeOp(op.id)}>
+                  Quitar
+                </button>
               </div>
 
-              {/* Campos dinámicos */}
+              {/* ROUND */}
               {op.type === "round" && (
                 <div className="grid grid-cols-3 gap-2">
                   <label className="text-xs">
                     <span className="mb-0.5 block text-neutral-600">Radio (mm)</span>
-                    <input type="number" className="w-full rounded-md border px-2 py-1 text-sm"
+                    <input
+                      type="number"
+                      className="w-full rounded-md border px-2 py-1 text-sm"
                       value={(op as OpRound).r_mm}
                       onChange={(e) => patchOp(op.id, "r_mm", n(e.target.value, (op as OpRound).r_mm))}
-                      min={0} step={0.5} />
+                      min={0}
+                      step={0.5}
+                    />
                   </label>
                 </div>
               )}
 
+              {/* TEXT */}
               {op.type === "text" && (
                 <div className="grid grid-cols-5 gap-2">
                   <label className="col-span-2 text-xs">
                     <span className="mb-0.5 block text-neutral-600">Texto</span>
-                    <input className="w-full rounded-md border px-2 py-1 text-sm"
+                    <input
+                      className="w-full rounded-md border px-2 py-1 text-sm"
                       value={(op as OpText).text}
-                      onChange={(e) => patchOp(op.id, "text", e.target.value)} />
+                      onChange={(e) => patchOp(op.id, "text", e.target.value)}
+                    />
                   </label>
                   <label className="text-xs">
                     <span className="mb-0.5 block text-neutral-600">X (mm)</span>
-                    <input type="number" className="w-full rounded-md border px-2 py-1 text-sm"
+                    <input
+                      type="number"
+                      className="w-full rounded-md border px-2 py-1 text-sm"
                       value={(op as OpText).x_mm}
                       onChange={(e) => patchOp(op.id, "x_mm", n(e.target.value, (op as OpText).x_mm))}
-                      min={0} step={0.5} />
+                      min={0}
+                      step={0.5}
+                    />
                   </label>
                   <label className="text-xs">
                     <span className="mb-0.5 block text-neutral-600">Y (mm)</span>
-                    <input type="number" className="w-full rounded-md border px-2 py-1 text-sm"
+                    <input
+                      type="number"
+                      className="w-full rounded-md border px-2 py-1 text-sm"
                       value={(op as OpText).y_mm}
                       onChange={(e) => patchOp(op.id, "y_mm", n(e.target.value, (op as OpText).y_mm))}
-                      min={0} step={0.5} />
+                      min={0}
+                      step={0.5}
+                    />
                   </label>
                   <label className="text-xs">
                     <span className="mb-0.5 block text-neutral-600">Size (mm)</span>
-                    <input type="number" className="w-full rounded-md border px-2 py-1 text-sm"
+                    <input
+                      type="number"
+                      className="w-full rounded-md border px-2 py-1 text-sm"
                       value={(op as OpText).size_mm}
                       onChange={(e) => patchOp(op.id, "size_mm", n(e.target.value, (op as OpText).size_mm))}
-                      min={1} step={0.5} />
+                      min={1}
+                      step={0.5}
+                    />
                   </label>
                   <label className="text-xs">
                     <span className="mb-0.5 block text-neutral-600">Prof. (mm)</span>
-                    <input type="number" className="w-full rounded-md border px-2 py-1 text-sm"
+                    <input
+                      type="number"
+                      className="w-full rounded-md border px-2 py-1 text-sm"
                       value={(op as OpText).depth_mm ?? 1}
                       onChange={(e) => patchOp(op.id, "depth_mm", n(e.target.value, (op as OpText).depth_mm ?? 1))}
-                      min={0.2} step={0.2} />
+                      min={0.2}
+                      step={0.2}
+                    />
                   </label>
                   <label className="col-span-2 mt-[22px] inline-flex items-center gap-2 text-xs">
                     <input
@@ -380,14 +551,15 @@ export default function ForgeForm({
                 </div>
               )}
 
-              {(op.type === "cutout") && (
+              {/* CUTOUT */}
+              {op.type === "cutout" && (
                 <div className="grid grid-cols-6 gap-2">
                   <label className="text-xs col-span-2">
                     <span className="mb-0.5 block text-neutral-600">Forma</span>
                     <select
                       className="w-full rounded-md border px-2 py-1 text-sm"
                       value={(op as OpCutout).shape}
-                      onChange={(e) => patchOp(op.id, "shape", e.target.value as any)}
+                      onChange={(e) => patchOp(op.id, "shape", e.target.value)}
                     >
                       <option value="circle">Circle</option>
                       <option value="rect">Rect</option>
@@ -395,56 +567,87 @@ export default function ForgeForm({
                   </label>
                   <label className="text-xs">
                     <span className="mb-0.5 block text-neutral-600">X (mm)</span>
-                    <input type="number" className="w-full rounded-md border px-2 py-1 text-sm"
+                    <input
+                      type="number"
+                      className="w-full rounded-md border px-2 py-1 text-sm"
                       value={(op as OpCutout).x_mm}
                       onChange={(e) => patchOp(op.id, "x_mm", n(e.target.value, (op as OpCutout).x_mm))}
-                      min={0} step={0.5} />
+                      min={0}
+                      step={0.5}
+                    />
                   </label>
                   <label className="text-xs">
                     <span className="mb-0.5 block text-neutral-600">Y (mm)</span>
-                    <input type="number" className="w-full rounded-md border px-2 py-1 text-sm"
+                    <input
+                      type="number"
+                      className="w-full rounded-md border px-2 py-1 text-sm"
                       value={(op as OpCutout).y_mm}
                       onChange={(e) => patchOp(op.id, "y_mm", n(e.target.value, (op as OpCutout).y_mm))}
-                      min={0} step={0.5} />
+                      min={0}
+                      step={0.5}
+                    />
                   </label>
 
                   {(op as OpCutout).shape === "circle" ? (
                     <label className="text-xs">
                       <span className="mb-0.5 block text-neutral-600">Ø (mm)</span>
-                      <input type="number" className="w-full rounded-md border px-2 py-1 text-sm"
+                      <input
+                        type="number"
+                        className="w-full rounded-md border px-2 py-1 text-sm"
                         value={(op as OpCutout).d_mm ?? 6}
                         onChange={(e) => patchOp(op.id, "d_mm", n(e.target.value, (op as OpCutout).d_mm ?? 6))}
-                        min={0.5} step={0.5} />
+                        min={0.5}
+                        step={0.5}
+                      />
                     </label>
                   ) : (
                     <>
                       <label className="text-xs">
                         <span className="mb-0.5 block text-neutral-600">W (mm)</span>
-                        <input type="number" className="w-full rounded-md border px-2 py-1 text-sm"
+                        <input
+                          type="number"
+                          className="w-full rounded-md border px-2 py-1 text-sm"
                           value={(op as OpCutout).w_mm ?? 6}
                           onChange={(e) => patchOp(op.id, "w_mm", n(e.target.value, (op as OpCutout).w_mm ?? 6))}
-                          min={0.5} step={0.5} />
+                          min={0.5}
+                          step={0.5}
+                        />
                       </label>
                       <label className="text-xs">
                         <span className="mb-0.5 block text-neutral-600">H (mm)</span>
-                        <input type="number" className="w-full rounded-md border px-2 py-1 text-sm"
+                        <input
+                          type="number"
+                          className="w-full rounded-md border px-2 py-1 text-sm"
                           value={(op as OpCutout).h_mm ?? 8}
                           onChange={(e) => patchOp(op.id, "h_mm", n(e.target.value, (op as OpCutout).h_mm ?? 8))}
-                          min={0.5} step={0.5} />
+                          min={0.5}
+                          step={0.5}
+                        />
                       </label>
                     </>
                   )}
 
                   <label className="text-xs">
                     <span className="mb-0.5 block text-neutral-600">Prof. (mm)</span>
-                    <input type="number" className="w-full rounded-md border px-2 py-1 text-sm"
+                    <input
+                      type="number"
+                      className="w-full rounded-md border px-2 py-1 text-sm"
                       value={(op as OpCutout).depth_mm ?? params.height_mm}
-                      onChange={(e) => patchOp(op.id, "depth_mm", n(e.target.value, (op as OpCutout).depth_mm ?? params.height_mm))}
-                      min={0.5} step={0.5} />
+                      onChange={(e) =>
+                        patchOp(
+                          op.id,
+                          "depth_mm",
+                          n(e.target.value, (op as OpCutout).depth_mm ?? params.height_mm)
+                        )
+                      }
+                      min={0.5}
+                      step={0.5}
+                    />
                   </label>
                 </div>
               )}
 
+              {/* ARRAY */}
               {op.type === "array" && (
                 <div className="grid grid-cols-6 gap-2">
                   <label className="text-xs col-span-2">
@@ -452,7 +655,7 @@ export default function ForgeForm({
                     <select
                       className="w-full rounded-md border px-2 py-1 text-sm"
                       value={(op as OpArray).shape}
-                      onChange={(e) => patchOp(op.id, "shape", e.target.value as any)}
+                      onChange={(e) => patchOp(op.id, "shape", e.target.value)}
                     >
                       <option value="rect">Rect</option>
                       <option value="circle">Circle</option>
@@ -460,80 +663,126 @@ export default function ForgeForm({
                   </label>
                   <label className="text-xs">
                     <span className="mb-0.5 block text-neutral-600">Inicio X</span>
-                    <input type="number" className="w-full rounded-md border px-2 py-1 text-sm"
+                    <input
+                      type="number"
+                      className="w-full rounded-md border px-2 py-1 text-sm"
                       value={(op as OpArray).start_x_mm}
                       onChange={(e) => patchOp(op.id, "start_x_mm", n(e.target.value, (op as OpArray).start_x_mm))}
-                      min={0} step={0.5} />
+                      min={0}
+                      step={0.5}
+                    />
                   </label>
                   <label className="text-xs">
                     <span className="mb-0.5 block text-neutral-600">Inicio Y</span>
-                    <input type="number" className="w-full rounded-md border px-2 py-1 text-sm"
+                    <input
+                      type="number"
+                      className="w-full rounded-md border px-2 py-1 text-sm"
                       value={(op as OpArray).start_y_mm}
                       onChange={(e) => patchOp(op.id, "start_y_mm", n(e.target.value, (op as OpArray).start_y_mm))}
-                      min={0} step={0.5} />
+                      min={0}
+                      step={0.5}
+                    />
                   </label>
                   <label className="text-xs">
                     <span className="mb-0.5 block text-neutral-600">nx</span>
-                    <input type="number" className="w-full rounded-md border px-2 py-1 text-sm"
+                    <input
+                      type="number"
+                      className="w-full rounded-md border px-2 py-1 text-sm"
                       value={(op as OpArray).nx}
                       onChange={(e) => patchOp(op.id, "nx", n(e.target.value, (op as OpArray).nx))}
-                      min={1} step={1} />
+                      min={1}
+                      step={1}
+                    />
                   </label>
                   <label className="text-xs">
                     <span className="mb-0.5 block text-neutral-600">ny</span>
-                    <input type="number" className="w-full rounded-md border px-2 py-1 text-sm"
+                    <input
+                      type="number"
+                      className="w-full rounded-md border px-2 py-1 text-sm"
                       value={(op as OpArray).ny}
                       onChange={(e) => patchOp(op.id, "ny", n(e.target.value, (op as OpArray).ny))}
-                      min={1} step={1} />
+                      min={1}
+                      step={1}
+                    />
                   </label>
                   <label className="text-xs">
                     <span className="mb-0.5 block text-neutral-600">dx (mm)</span>
-                    <input type="number" className="w-full rounded-md border px-2 py-1 text-sm"
+                    <input
+                      type="number"
+                      className="w-full rounded-md border px-2 py-1 text-sm"
                       value={(op as OpArray).dx_mm}
                       onChange={(e) => patchOp(op.id, "dx_mm", n(e.target.value, (op as OpArray).dx_mm))}
-                      min={0.5} step={0.5} />
+                      min={0.5}
+                      step={0.5}
+                    />
                   </label>
                   <label className="text-xs">
                     <span className="mb-0.5 block text-neutral-600">dy (mm)</span>
-                    <input type="number" className="w-full rounded-md border px-2 py-1 text-sm"
+                    <input
+                      type="number"
+                      className="w-full rounded-md border px-2 py-1 text-sm"
                       value={(op as OpArray).dy_mm}
                       onChange={(e) => patchOp(op.id, "dy_mm", n(e.target.value, (op as OpArray).dy_mm))}
-                      min={0.5} step={0.5} />
+                      min={0.5}
+                      step={0.5}
+                    />
                   </label>
 
                   {(op as OpArray).shape === "circle" ? (
                     <label className="text-xs">
                       <span className="mb-0.5 block text-neutral-600">Ø (mm)</span>
-                      <input type="number" className="w-full rounded-md border px-2 py-1 text-sm"
+                      <input
+                        type="number"
+                        className="w-full rounded-md border px-2 py-1 text-sm"
                         value={(op as OpArray).d_mm ?? 6}
                         onChange={(e) => patchOp(op.id, "d_mm", n(e.target.value, (op as OpArray).d_mm ?? 6))}
-                        min={0.5} step={0.5} />
+                        min={0.5}
+                        step={0.5}
+                      />
                     </label>
                   ) : (
                     <>
                       <label className="text-xs">
                         <span className="mb-0.5 block text-neutral-600">W (mm)</span>
-                        <input type="number" className="w-full rounded-md border px-2 py-1 text-sm"
+                        <input
+                          type="number"
+                          className="w-full rounded-md border px-2 py-1 text-sm"
                           value={(op as OpArray).w_mm ?? 6}
                           onChange={(e) => patchOp(op.id, "w_mm", n(e.target.value, (op as OpArray).w_mm ?? 6))}
-                          min={0.5} step={0.5} />
+                          min={0.5}
+                          step={0.5}
+                        />
                       </label>
                       <label className="text-xs">
                         <span className="mb-0.5 block text-neutral-600">H (mm)</span>
-                        <input type="number" className="w-full rounded-md border px-2 py-1 text-sm"
+                        <input
+                          type="number"
+                          className="w-full rounded-md border px-2 py-1 text-sm"
                           value={(op as OpArray).h_mm ?? 8}
                           onChange={(e) => patchOp(op.id, "h_mm", n(e.target.value, (op as OpArray).h_mm ?? 8))}
-                          min={0.5} step={0.5} />
+                          min={0.5}
+                          step={0.5}
+                        />
                       </label>
                     </>
                   )}
 
                   <label className="text-xs">
                     <span className="mb-0.5 block text-neutral-600">Prof. (mm)</span>
-                    <input type="number" className="w-full rounded-md border px-2 py-1 text-sm"
+                    <input
+                      type="number"
+                      className="w-full rounded-md border px-2 py-1 text-sm"
                       value={(op as OpArray).depth_mm ?? params.height_mm}
-                      onChange={(e) => patchOp(op.id, "depth_mm", n(e.target.value, (op as OpArray).depth_mm ?? params.height_mm))}
-                      min={0.5} step={0.5} />
+                      onChange={(e) =>
+                        patchOp(
+                          op.id,
+                          "depth_mm",
+                          n(e.target.value, (op as OpArray).depth_mm ?? params.height_mm)
+                        )
+                      }
+                      min={0.5}
+                      step={0.5}
+                    />
                   </label>
                 </div>
               )}
@@ -567,7 +816,9 @@ export default function ForgeForm({
         </label>
         {svgUrl && (
           <div className="mt-2">
-            <a href={svgUrl} target="_blank" rel="noreferrer" className="underline">Descargar SVG</a>
+            <a href={svgUrl} target="_blank" rel="noreferrer" className="underline">
+              Descargar SVG
+            </a>
           </div>
         )}
       </div>
