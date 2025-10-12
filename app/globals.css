@@ -1,11 +1,77 @@
+/* app/globals.css */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Ajustes finos */
-:root {
-  --ink: #0b1526;
-  --muted: #6b7280;
+/* Header fijo y limpio */
+.site-header {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  background: #ffffff;
+  border-bottom: 1px solid rgba(0,0,0,.06);
+  z-index: 50;
+}
+.site-header .container {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.brand {
+  font-weight: 700;
+  letter-spacing: .2px;
+}
+.navlink {
+  color: #334155;
+  font-size: 14px;
+}
+.navlink:hover { color: #111827; }
+
+/* Deja hueco debajo del header fijo */
+.header-spacer {
+  height: 56px;
 }
 
-html, body { scroll-behavior: smooth; }
+/* Contenido principal con margen respirable */
+.site-main {
+  padding: 16px;
+}
+
+/* ------- Ajustes del Forge ------- */
+/* Que la barra flotante del visor no tape cabecera */
+.forge-toolbar {
+  position: sticky;      /* se queda bajo el header */
+  top: 8px;              /* separadito del header */
+  z-index: 40;
+}
+
+/* Lado del canvas ocupa todo el alto visible sin pisar el header */
+.forge-canvas {
+  height: calc(100vh - 72px);
+  min-height: 420px;
+}
+
+/* Botones flotantes dentro del visor (descargar, sombras, etc.) */
+.forge-overlay {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  z-index: 30;
+}
+
+/* Aseguramos que el panel izquierdo haga scroll sin invadir el visor */
+.forge-left {
+  max-height: calc(100vh - 88px);
+  overflow: auto;
+  padding-bottom: 24px;
+}
