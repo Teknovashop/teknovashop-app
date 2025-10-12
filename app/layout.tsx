@@ -1,39 +1,40 @@
 // app/layout.tsx
 import "./globals.css";
-import type { Metadata, Viewport } from "next";
+import Link from "next/link";
 
-export const metadata: Metadata = {
+export const metadata = {
   title: "TeknovaShop",
-  description: "Generador paramétrico de piezas – TeknovaShop",
-};
-
-export const viewport: Viewport = {
-  width: "device-width",
-  initialScale: 1,
-  viewportFit: "cover",
-  themeColor: "#ffffff",
+  description: "Configurador TeknovaShop",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es" className="h-full">
-      <body className="min-h-screen bg-neutral-50 text-neutral-900 antialiased">
-        {/* Header fijo para que no tape el contenido */}
-        <header className="site-header">
-          <div className="container">
-            <a href="/" className="brand">TeknovaShop</a>
-            <nav className="gap-4 hidden md:flex">
-              <a className="navlink" href="/forge">Forge</a>
-              <a className="navlink" href="/forge/pro">Forge Pro</a>
+    <html lang="es">
+      <body className="min-h-screen bg-neutral-50 text-neutral-900">
+        {/* Header */}
+        <header className="w-full border-b bg-white">
+          <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
+            <div className="flex items-center gap-3">
+              {/* Tu logo puede ser una imagen si quieres */}
+              <span className="text-lg font-bold">TeknovaShop</span>
+            </div>
+            <nav className="flex items-center gap-6 text-sm">
+              <Link href="/forge" className="hover:underline">
+                Forge
+              </Link>
+              {/* Mantenemos el enlace pero Pro redirige a /forge (ver archivo de abajo) */}
+              <Link href="/forge/pro" className="hover:underline">
+                Forge Pro
+              </Link>
             </nav>
           </div>
         </header>
 
-        {/* Espaciador del header fijo */}
-        <div className="header-spacer" />
+        {/* Aquí anclamos la HUD (barra) para que nunca tape el header */}
+        <div id="viewer-hud-slot" className="sticky top-0 z-30 w-full border-b bg-white/90 backdrop-blur" />
 
-        {/* Contenido de las páginas */}
-        <main className="site-main">{children}</main>
+        {/* Página */}
+        <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>
       </body>
     </html>
   );
