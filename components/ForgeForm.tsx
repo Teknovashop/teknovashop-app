@@ -1,4 +1,3 @@
-// components/ForgeForm.tsx
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -192,7 +191,9 @@ export default function ForgeForm({
     ]);
 
   const removeOp = (id: string) => setOperations((ops) => ops.filter((o) => o.id !== id));
-  const patchOp = <K extends keyof Operation>(id: string, key: K, value: any) =>
+
+  /** 👇 FIX TS: permitir cualquier clave de operación */
+  const patchOp = (id: string, key: string, value: any) =>
     setOperations((ops) => ops.map((o) => (o.id === id ? ({ ...o, [key]: value } as Operation) : o)));
 
   /** --------- generar ---------- */
