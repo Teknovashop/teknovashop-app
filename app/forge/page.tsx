@@ -26,6 +26,7 @@ type UrlParams = {
   height_mm?: number;
   thickness_mm?: number;
   fillet_mm?: number;
+  // otros campos opcionales si los usas
 };
 
 function parseParams(q: string | null): UrlParams | null {
@@ -37,7 +38,7 @@ function parseParams(q: string | null): UrlParams | null {
   return null;
 }
 
-/** ✅ Toolbar que sí queremos dejar (anclada al panel del visor) */
+/** Toolbar compacta anclada al panel del visor (no toca el header) */
 function ViewerToolbar() {
   const emit = (name: string, detail?: any) => {
     try { window.dispatchEvent(new CustomEvent(name, { detail })); } catch {}
@@ -57,10 +58,9 @@ function ViewerToolbar() {
         Tone
         <input
           type="range"
-          min={0.3}
-          max={1.8}
-          step={0.05}
-          defaultValue={1.0}
+          min={0}
+          max={100}
+          defaultValue={50}
           onChange={(e) => emit("forge:tone", { value: Number(e.target.value) })}
         />
       </label>
@@ -72,8 +72,8 @@ function ViewerToolbar() {
         title="Iluminación"
       >
         <option value="studio">studio</option>
-        <option value="neutral">neutral</option>
-        <option value="night">night</option>
+        <option value="hdr1">hdr 1</option>
+        <option value="hdr2">hdr 2</option>
       </select>
 
       <button
@@ -150,13 +150,12 @@ export default function ForgePage({
           />
         </div>
 
-        {/* Columna derecha: visor + toolbar (no toca el header) */}
+        {/* Columna derecha: visor + toolbar (no toca el header ni el logo) */}
         <div className="rounded-2xl border border-neutral-200 bg-white p-3">
           <ViewerToolbar />
           <STLViewerPro
             url={stlUrl}
             className="h-[520px] w-full rounded-xl bg-black/90"
-            showHud={false}   // ⛔ desactiva la barra superpuesta del visor
           />
         </div>
       </div>
