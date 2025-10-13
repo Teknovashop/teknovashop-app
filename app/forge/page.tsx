@@ -26,7 +26,6 @@ type UrlParams = {
   height_mm?: number;
   thickness_mm?: number;
   fillet_mm?: number;
-  // otros campos opcionales si los usas
 };
 
 function parseParams(q: string | null): UrlParams | null {
@@ -38,91 +37,22 @@ function parseParams(q: string | null): UrlParams | null {
   return null;
 }
 
-/** Toolbar compacta anclada al panel del visor (no toca el header) */
-function ViewerToolbar() {
-  const emit = (name: string, detail?: any) => {
-    try { window.dispatchEvent(new CustomEvent(name, { detail })); } catch {}
-  };
-
-  return (
-    <div className="mb-2 flex flex-wrap items-center gap-2">
-      <button
-        className="rounded-md border px-2 py-1 text-xs"
-        onClick={() => emit("forge:toggle-shadows")}
-        title="Sombras ON/OFF"
-      >
-        Sombras
-      </button>
-
-      <label className="flex items-center gap-2 text-xs">
-        Tone
-        <input
-          type="range"
-          min={0}
-          max={100}
-          defaultValue={50}
-          onChange={(e) => emit("forge:tone", { value: Number(e.target.value) })}
-        />
-      </label>
-
-      <select
-        className="rounded-md border bg-white px-2 py-1 text-xs"
-        onChange={(e) => emit("forge:studio", { preset: e.target.value })}
-        defaultValue="studio"
-        title="Iluminación"
-      >
-        <option value="studio">studio</option>
-        <option value="hdr1">hdr 1</option>
-        <option value="hdr2">hdr 2</option>
-      </select>
-
-      <button
-        className="rounded-md border px-2 py-1 text-xs"
-        onClick={() => emit("forge:toggle-clipping")}
-        title="Clipping ON/OFF"
-      >
-        Clipping
-      </button>
-
-      <label className="inline-flex items-center gap-1 text-xs">
-        <input
-          type="checkbox"
-          defaultChecked
-          onChange={(e) => emit("forge:bg", { light: e.target.checked })}
-        />
-        Fondo claro
-      </label>
-
-      <button
-        className="rounded-md border px-2 py-1 text-xs"
-        onClick={() => emit("forge:download-stl")}
-        title="Descargar STL"
-      >
-        Descargar STL
-      </button>
-    </div>
-  );
-}
-
 export default function ForgePage({
   searchParams,
 }: {
   searchParams?: Record<string, string | string[] | undefined>;
 }) {
-  // Modelo por defecto desde tu tabla de modelos
   const defaultModel = MODELS[0]?.slug ?? "vesa-adapter";
   const queryModel   = (searchParams?.model as string) || defaultModel;
   const model        = MODELS.some((m) => m.slug === queryModel) ? queryModel : defaultModel;
 
-  // Lee parámetros desde ?params=<json-encodeURI>
   const params   = useMemo(() => parseParams(searchParams?.params as string | null), [searchParams]);
   const autogen  = (searchParams?.generate as string) === "1";
   const [stlUrl, setStlUrl] = useState<string | null>(null);
 
-  // Auto-generar STL si vienen model+params y generate=1
+  // Auto-generar STL
   useEffect(() => {
     if (!API_BASE || !params || !autogen) return;
-
     (async () => {
       try {
         const res = await fetch(`${API_BASE}/generate`, {
@@ -132,9 +62,7 @@ export default function ForgePage({
         });
         const json = await res.json();
         if (res.ok && json?.stl_url) setStlUrl(json.stl_url);
-      } catch {
-        // silencio: el usuario puede generar desde el formulario
-      }
+      } catch {}
     })();
   }, [model, params, autogen]);
 
@@ -144,15 +72,14 @@ export default function ForgePage({
         {/* Columna izquierda: formulario */}
         <div className="w-full">
           <ForgeForm
-            initialModel={toBackendId(model)}            // normalizamos a snake_case para el backend
+            initialModel={toBackendId(model)}
             initialParams={(params ?? undefined) as any}
             onGenerated={(url: string) => setStlUrl(url)}
           />
         </div>
 
-        {/* Columna derecha: visor + toolbar (no toca el header ni el logo) */}
+        {/* Columna derecha: visor (HUD ya está dentro de STLViewerPro) */}
         <div className="rounded-2xl border border-neutral-200 bg-white p-3">
-          <ViewerToolbar />
           <STLViewerPro
             url={stlUrl}
             className="h-[520px] w-full rounded-xl bg-black/90"
