@@ -1,23 +1,40 @@
 // app/api/forge/generate/route.ts
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
-export const runtime = "nodejs";
+export const runtime = "nodejs"; // evita edge-cache en Vercel
 export const dynamic = "force-dynamic";
 
-const BACKEND = (process.env.NEXT_PUBLIC_FORGE_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "").replace(/\/+$/, "");
-const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-const NEXT_PUBLIC_SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-const BUCKET = process.env.NEXT_PUBLIC_SUPABASE_BUCKET || "forge-stl";
+function getSupabaseServer() {
+  // Preferimos credenciales de servidor; si no están, caemos a públicas
+  const url =
+    process.env.SUPABASE_URL ||
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    "";
+  const key =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    "";
+  if (!url || !key) {
+    throw new Error("Supabase URL/KEY no configurados");
+  }
+  return createClient(url, key);
+}
 
-function cors(body: any, status = 200) {
-  return new NextResponse(JSON.stringify(body), {
+const BUCKET =
+  process.env.SUPABASE_BUCKET ||
+  process.env.NEXT_PUBLIC_SUPABASE_BUCKET ||
+  "forge-stl";
+
+// CORS básico por si algún día sirves desde subdominio distinto
+function cors(json: any, status = 200) {
+  return new NextResponse(JSON.stringify(json), {
     status,
     headers: {
-      "content-type": "application/json",
+      "content-type": "application/json; charset=utf-8",
       "access-control-allow-origin": "*",
-      "access-control-allow-methods": "GET,POST,OPTIONS",
-      "access-control-allow-headers": "content-type,authorization",
+      "access-control-allow-methods": "POST, OPTIONS",
+      "access-control-allow-headers": "content-type",
     },
   });
 }
@@ -26,174 +43,45 @@ export async function OPTIONS() {
   return cors({ ok: true });
 }
 
-function toMessage(err: any): string {
-  if (!err) return "Error";
-  if (typeof err === "string") return err;
-  if (Array.isArray(err)) return err.map(toMessage).join(" · ");
-  if (err?.message) return String(err.message);
-  if (err?.detail) return toMessage(err.detail);
-  try { return JSON.stringify(err); } catch { return String(err); }
-}
-
-// --------- Normalización de parámetros ---------
-type Dict = Record<string, any>;
-const n = (v: any): number | undefined => {
-  if (v === null || v === undefined) return undefined;
-  if (typeof v === "number") return isFinite(v) ? v : undefined;
-  const s = String(v).trim().replace(",", "."); // 3,2 -> 3.2
-  const num = Number(s);
-  return isFinite(num) ? num : undefined;
-};
-
-function setIfMissing(out: Dict, dst: string, candidates: string[], src: Dict) {
-  if (out[dst] == null) {
-    for (const key of candidates) {
-      if (src[key] != null) { out[dst] = n(src[key]); break; }
-    }
-  } else {
-    out[dst] = n(out[dst]);
-  }
-}
-
-function ensureNumber(out: Dict, key: string, fallback?: number) {
-  const v = n(out[key]);
-  if (v == null) out[key] = fallback ?? 1;
-  else out[key] = v;
-}
-
-// Mapea nombres del formulario -> *_mm esperados por el backend
-function normalizeParams(model: string, raw: Dict = {}) {
-  const src: Dict = {};
-  for (const k of Object.keys(raw)) src[k] = n(raw[k]) ?? raw[k];
-
-  const out: Dict = { ...src };
-
-  // genéricos
-  setIfMissing(out, "length_mm",    ["length_mm","length","base_w","ancho_mm","ancho","width","largo","drive_l","hub_w","slot_l","tape_l","strap_l","largo_cinta"], src);
-  setIfMissing(out, "width_mm",     ["width_mm","width","depth","fondo_mm","fondo","base_d","drive_w","hub_d","slot_w","tape_w","strap_w","ancho_cinta","adhesive_w"], src);
-  setIfMissing(out, "height_mm",    ["height_mm","height","base_h","alto_mm","alto","altura","stem_h","hub_h","board_h"], src);
-  setIfMissing(out, "thickness_mm", ["thickness_mm","thickness","grosor_mm","grosor","wall","clip_t"], src);
-  setIfMissing(out, "fillet_mm",    ["fillet_mm","fillet","round","radio","hook_r"], src);
-
-  // fallbacks seguros
-  ensureNumber(out, "length_mm",    out.length_mm  ?? n(src.base_w) ?? n(src.width)  ?? n(src.drive_l));
-  ensureNumber(out, "width_mm",     out.width_mm   ?? n(src.base_d) ?? n(src.depth)  ?? n(src.drive_w));
-  ensureNumber(out, "height_mm",    out.height_mm  ?? n(src.base_h) ?? n(src.height) ?? n(src.stem_h) ?? n(src.wall) ?? 1);
-  ensureNumber(out, "thickness_mm", out.thickness_mm ?? n(src.wall) ?? n(src.clip_t) ?? 2);
-
-  // ----- Ajustes por modelo -----
-  const ensure = (k: string, v?: number) => { if (out[k] == null && v != null) out[k] = v; };
-
-  switch (model) {
-    case "headset_stand":
-      ensure("length_mm", n(src.base_w));
-      ensure("width_mm",  n(src.base_d));
-      ensure("height_mm", n(src.stem_h));
-      ensure("thickness_mm", n(src.wall));
-      ensure("fillet_mm", n(src.hook_r));
-      break;
-
-    case "phone_dock":
-      ensure("height_mm", out.thickness_mm ?? n(src.wall) ?? 4);
-      break;
-
-    case "tablet_stand":
-      ensure("height_mm", n(src.lip_h) ?? out.thickness_mm ?? 4);
-      break;
-
-    case "ssd_holder":
-      ensure("length_mm", n(src.drive_l) ?? 100);
-      ensure("width_mm",  n(src.drive_w) ?? 70);
-      ensure("height_mm", out.thickness_mm ?? n(src.wall) ?? 2);
-      break;
-
-    case "cable_clip":
-      // Mapear explícitamente las dimensiones de la cinta/adhesivo
-      ensure("length_mm",
-        n(src.adhesive_l) ?? n(src.tape_l) ?? n(src.strap_l) ?? n(src.largo_cinta) ?? n(src.length) ?? 24
-      );
-      ensure("width_mm",
-        n(src.adhesive_w) ?? n(src.tape_w) ?? n(src.strap_w) ?? n(src.ancho_cinta) ?? n(src.width) ?? 12
-      );
-      // 2.5D: altura = grosor
-      ensure("height_mm", out.thickness_mm ?? n(src.wall) ?? 2);
-      break;
-
-    case "raspi_case":
-      ensure("length_mm", n(src.board_w));
-      ensure("width_mm",  n(src.board_l));
-      ensure("height_mm", n(src.board_h) ?? (n(src.wall) ?? 2));
-      break;
-
-    case "go_pro_mount":
-      ensure("height_mm", out.thickness_mm ?? n(src.wall) ?? 3);
-      break;
-
-    case "wall_hook":
-      ensure("height_mm", n(src.base_h) ?? out.thickness_mm ?? 3);
-      break;
-
-    case "laptop_stand":
-      ensure("height_mm", n(src.lip_h) ?? out.thickness_mm ?? 4);
-      break;
-
-    case "mic_arm_clip":
-      ensure("height_mm", out.thickness_mm ?? n(src.wall) ?? 3);
-      break;
-
-    case "hub_holder":
-      ensure("length_mm", n(src.hub_w));
-      ensure("width_mm",  n(src.hub_d));
-      ensure("height_mm", n(src.hub_h) ?? out.thickness_mm ?? 3);
-      break;
-
-    default:
-      break;
-  }
-
-  return out;
-}
-// -----------------------------------------------
-
 /**
- * Body esperado: { model: string, params: object, holes?: Array<{x_mm,y_mm,d_mm}> }
- * Devuelve: { ok: true, url, object_key, thumb_url } o { ok: false, error }
+ * Espera un body:
+ * {
+ *   "slug": "cable-tray",   // obligatorio
+ *   "params": {...}         // opcional (por ahora lo ignoramos)
+ * }
+ * Devuelve: { url: "https://signed-url" }
  */
 export async function POST(req: Request) {
   try {
-    const { model, params, holes } = await req.json().catch(() => ({} as any));
-    if (!model) return cors({ ok: false, error: "Missing 'model'" }, 400);
-    if (!BACKEND) return cors({ ok: false, error: "Backend URL not configured" }, 500);
-
-    const normalized = normalizeParams(String(model), params || {});
-
-    // 1) Generar en backend
-    const gen = await fetch(`${BACKEND}/generate`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ model, params: normalized, holes: Array.isArray(holes) ? holes : [] }),
-      cache: "no-store",
-    });
-
-    const genJson = await gen.json().catch(() => ({} as any));
-    if (!gen.ok || !genJson?.object_key) {
-      return cors({ ok: false, error: toMessage(genJson?.detail || genJson?.error || "Generation failed") }, gen.status || 500);
+    const { slug } = await req.json().catch(() => ({} as any));
+    if (!slug || typeof slug !== "string") {
+      return cors({ error: "Missing 'slug' in body" }, 400);
     }
 
-    // 2) Firmar URL con Supabase
-    const { createClient } = await import("@supabase/supabase-js");
-    const url = SUPABASE_URL || "";
-    const key = SUPABASE_SERVICE_ROLE_KEY || NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-    const supabase = createClient(url, key);
+    // El STL “resultado” lo estamos guardando como forge-output.stl dentro de cada carpeta
+    const key = `${slug}/forge-output.stl`;
 
-    const keyPath = genJson.object_key as string;
-    const signed = await supabase.storage.from(BUCKET).createSignedUrl(keyPath, 60 * 5);
+    const supabase = getSupabaseServer();
+
+    // (Opcional) Comprobación rápida de existencia
+    const pathStem = slug.replace(/^\/+/, "");
+    const list = await supabase.storage.from(BUCKET).list(pathStem, { limit: 100 });
+    const exists = list.data?.some((f) => f.name === "forge-output.stl");
+    if (!exists) {
+      return cors({ error: `No existe '${key}' en bucket '${BUCKET}'` }, 404);
+    }
+
+    // Firmamos URL temporal (5 min)
+    const signed = await supabase.storage
+      .from(BUCKET)
+      .createSignedUrl(key, 60 * 5);
+
     if (signed.error || !signed.data?.signedUrl) {
-      return cors({ ok: false, error: toMessage(signed.error?.message || "Failed to sign URL") }, 500);
+      return cors({ error: signed.error?.message || "No se pudo firmar URL" }, 500);
     }
 
-    return cors({ ok: true, url: signed.data.signedUrl, object_key: keyPath, thumb_url: genJson?.thumb_url });
+    return cors({ url: signed.data.signedUrl });
   } catch (err: any) {
-    return cors({ ok: false, error: toMessage(err) }, 500);
+    return cors({ error: err?.message || "Unexpected error" }, 500);
   }
 }

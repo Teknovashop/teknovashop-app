@@ -2,17 +2,11 @@
 export const dynamic = 'force-dynamic';
 
 import Link from 'next/link';
-import HeroVideo from '@/components/HeroVideo';
+import HeroPreview from '@/components/HeroPreview';
 import ModelGrid from '@/components/ModelGrid';
 import Pricing from '@/components/Pricing';
 
 const CONFIGURATOR_HREF = '/forge'; // <-- tu configurador real
-
-// Si defines estas vars en Vercel, se usarán; si no, tiramos de /public/hero
-const HERO_VIDEO_SRC =
-  process.env.NEXT_PUBLIC_HERO_VIDEO_URL || '/hero/hero.mp4';
-const HERO_VIDEO_POSTER =
-  process.env.NEXT_PUBLIC_HERO_POSTER_URL || '/hero/hero.png';
 
 export default function Page() {
   return (
@@ -74,14 +68,8 @@ export default function Page() {
               </div>
             </div>
 
-            {/* Panel derecho del hero: vídeo centrado */}
-            <div className="flex items-center justify-center">
-              <HeroVideo
-                src={HERO_VIDEO_SRC}
-                poster={HERO_VIDEO_POSTER}
-                className="w-full"
-              />
-            </div>
+            {/* Tu preview existente (no lo toco) */}
+            <HeroPreview />
           </div>
         </div>
       </section>
