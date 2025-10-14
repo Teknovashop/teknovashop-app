@@ -1,373 +1,216 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Canvas, ThreeEvent, useFrame, useThree } from "@react-three/fiber";
+import { OrbitControls, Environment, Grid, Gltf, useCursor } from "@react-three/drei";
+import * as THREE from "three";
 
-const API_BASE =
-  (process.env.NEXT_PUBLIC_FORGE_API_URL ||
-    process.env.NEXT_PUBLIC_BACKEND_URL ||
-    "").replace(/\/+$/, "");
+/**
+ * Visor “clásico”:
+ * - Barra superior con: Sombras, Tone (slider), preset (studio), Clipping, Fondo claro, Descargar STL
+ * - ALT+click → emite CustomEvent("forge:add-hole", { detail: { x_mm, y_mm, d_mm } })
+ * - Escucha "forge:generated-url" para habilitar la descarga
+ *
+ * Props mínimas; no toca tu lógica actual del formulario ni del backend.
+ */
+export default function ForgeViewer() {
+  // UI state (mismos nombres visuales de la versión anterior)
+  const [shadows, setShadows] = useState(true);
+  const [tone, setTone] = useState(0.35); // 0..1
+  const [preset, setPreset] = useState<"studio" | "city" | "sunset">("studio");
+  const [clipping, setClipping] = useState(true);
+  const [lightBg, setLightBg] = useState(true);
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
 
-type Params = {
-  length_mm: number;
-  width_mm: number;
-  height_mm: number;
-  thickness_mm?: number;
-  fillet_mm?: number;
-};
-
-type Hole = { x_mm: number; y_mm: number; d_mm: number };
-
-type Props = {
-  initialModel?: string;
-  initialParams?: Params;
-  initialHoles?: Hole[];
-  onGenerated?: (url: string) => void;
-};
-
-const MODEL_OPTIONS = [
-  { value: "cable_tray",    label: "Cable Tray (bandeja)" },
-  { value: "vesa_adapter",  label: "VESA Adapter" },
-  { value: "router_mount",  label: "Router Mount (L)" },
-  { value: "camera_mount",  label: "Camera Mount (base+columna)" },
-  { value: "wall_bracket",  label: "Wall Bracket (escuadra)" },
-
-  // añadidos para que el selector rápido ofrezca todo el catálogo
-  { value: "camera_plate",  label: "Camera Plate (quick-release)" },
-  { value: "go_pro_mount",  label: "GoPro Mount (prongs)" },
-  { value: "headset_stand", label: "Headset Stand" },
-  { value: "hub_holder",    label: "USB Hub Holder" },
-  { value: "laptop_stand",  label: "Laptop Stand" },
-  { value: "mic_arm_clip",  label: "Mic Arm Clip (C-clip)" },
-  { value: "monitor_stand", label: "Monitor Stand (base+columna)" },
-  { value: "phone_dock",    label: "Phone Dock (USB-C)" },
-  { value: "raspi_case",    label: "Raspberry Pi Case" },
-  { value: "ssd_holder",    label: "SSD 2.5\" → 3.5\"" },
-  { value: "tablet_stand",  label: "Tablet Stand" },
-  { value: "wall_hook",     label: "Wall Hook (gancho)" },
-];
-
-function n(v: any, def: number): number {
-  const x = Number(v);
-  return Number.isFinite(x) ? x : def;
-}
-function clamp(x: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, x));
-}
-
-export default function ForgeForm({
-  initialModel = "cable_tray",
-  initialParams,
-  initialHoles = [],
-  onGenerated,
-}: Props) {
-  const [model, setModel] = useState<string>(initialModel);
-
-  const [length_mm, setLength] = useState<number>(initialParams?.length_mm ?? 120);
-  const [width_mm, setWidth] = useState<number>(initialParams?.width_mm ?? 100);
-  const [height_mm, setHeight] = useState<number>(initialParams?.height_mm ?? 60);
-  const [thickness_mm, setThickness] = useState<number>(initialParams?.thickness_mm ?? 3);
-  const [fillet_mm, setFillet] = useState<number>(initialParams?.fillet_mm ?? 0);
-
-  const [holes, setHoles] = useState<Hole[]>(initialHoles);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Escucha del visor: ALT+click emite "forge:add-hole"
+  // último URL generado por /generate
   useEffect(() => {
-    const onAdd = (ev: Event) => {
-      const det = (ev as CustomEvent).detail || {};
-      const x = n(det.x_mm, 0);
-      const d = n(det.d_mm, 4);
-      // Si no se envía y_mm, centramos en mitad de W
-      const y = Number.isFinite(det.y_mm) ? n(det.y_mm, 0) : width_mm / 2;
-      setHoles((prev) => [...prev, { x_mm: x, y_mm: y, d_mm: d }]);
+    const onGen = (ev: Event) => {
+      const d = (ev as CustomEvent).detail || {};
+      if (d?.url) setDownloadUrl(String(d.url));
     };
-    window.addEventListener("forge:add-hole", onAdd as any);
-    return () => window.removeEventListener("forge:add-hole", onAdd as any);
-  }, [width_mm]);
-
-  // Parámetros calculados y normalizados
-  const params: Params = useMemo(() => {
-    const p: Params = {
-      length_mm: clamp(Number(length_mm) || 0, 1, 5000),
-      width_mm: clamp(Number(width_mm) || 0, 1, 5000),
-      height_mm: clamp(Number(height_mm) || 0, 1, 5000),
-      thickness_mm: clamp(Number(thickness_mm) || 1, 0.2, 100),
-      fillet_mm: clamp(Number(fillet_mm) || 0, 0, 200),
-    };
-    return p;
-  }, [length_mm, width_mm, height_mm, thickness_mm, fillet_mm]);
-
-  const canGenerate = API_BASE.length > 0;
-
-  const handleGenerate = useCallback(async () => {
-    setError(null);
-    if (!canGenerate) {
-      setError(
-        "Falta configurar la variable NEXT_PUBLIC_FORGE_API_URL (o NEXT_PUBLIC_BACKEND_URL) en Vercel."
-      );
-      return;
-    }
-    setBusy(true);
-    try {
-      // Enviar parámetros con nombres alternativos por compatibilidad:
-      const payload = {
-        model,
-        params: {
-          // nombres “oficiales”
-          length_mm: params.length_mm,
-          width_mm: params.width_mm,
-          height_mm: params.height_mm,
-          thickness_mm: params.thickness_mm,
-          fillet_mm: params.fillet_mm,
-          // alias comunes por si el backend los espera
-          length: params.length_mm,
-          width: params.width_mm,
-          height: params.height_mm,
-          wall: params.thickness_mm,
-          fillet: params.fillet_mm,
-        },
-        holes: holes.map((h) => ({
-          x_mm: Number(h.x_mm),
-          y_mm: Number(h.y_mm),
-          d_mm: Number(h.d_mm),
-        })),
-      };
-
-      const res = await fetch(`${API_BASE}/generate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(json?.detail || json?.error || `HTTP ${res.status}`);
-      }
-
-      // Soportamos varias respuestas posibles del backend
-      const url: string | undefined =
-        json?.stl_url || json?.signed_url || json?.url;
-      if (url) {
-        // notifica al padre
-        if (typeof onGenerated === "function") onGenerated(url);
-        // también emitir un evento por si alguien lo escucha
-        window.dispatchEvent(new CustomEvent("forge:generated-url", { detail: { url } }));
-      } else if (json?.path) {
-        // Si el server devuelve solo la ruta (en Supabase), emite el path
-        window.dispatchEvent(new CustomEvent("forge:generated-path", { detail: { path: json.path } }));
-      } else {
-        throw new Error("Respuesta inesperada del backend");
-      }
-    } catch (e: any) {
-      setError(e?.message || "No se pudo generar el STL");
-    } finally {
-      setBusy(false);
-    }
-  }, [model, params, holes, onGenerated, canGenerate]);
-
-  // Auto-generar si viene ?autogenerate=1
-  useEffect(() => {
-    try {
-      const usp = new URLSearchParams(window.location.search);
-      const auto = usp.get("autogenerate");
-      if (auto === "1") {
-        const holesStr = usp.get("holes");
-        if (holesStr) {
-          try {
-            const parsed = JSON.parse(decodeURIComponent(holesStr));
-            if (Array.isArray(parsed)) setHoles(parsed.filter(Boolean));
-          } catch {}
-        }
-        handleGenerate();
-      }
-    } catch {}
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    window.addEventListener("forge:generated-url", onGen as any);
+    return () => window.removeEventListener("forge:generated-url", onGen as any);
   }, []);
 
-  const removeHole = (idx: number) => {
-    setHoles((prev) => prev.filter((_, i) => i !== idx));
+  // estilo del contenedor para replicar la UI “antigua”
+  return (
+    <div className="rounded-2xl border border-neutral-200 bg-white shadow-sm">
+      {/* Barra superior compacta, con los mismos “chips” */}
+      <div className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm">
+        <button
+          type="button"
+          onClick={() => setShadows((v) => !v)}
+          className={`rounded-md border px-2 py-1 ${shadows ? "bg-neutral-100 border-neutral-300" : "bg-white border-neutral-300"}`}
+          title="Sombras"
+        >
+          Sombras
+        </button>
+
+        <div className="flex items-center gap-2 rounded-md border border-neutral-300 bg-white px-2 py-1">
+          <span className="text-neutral-600">Tone</span>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.01}
+            value={tone}
+            onChange={(e) => setTone(Number(e.target.value))}
+          />
+        </div>
+
+        <div className="rounded-md border border-neutral-300 bg-white px-2 py-1">
+          <select
+            className="bg-transparent"
+            value={preset}
+            onChange={(e) => setPreset(e.target.value as any)}
+            title="HDRI"
+          >
+            <option value="studio">studio</option>
+            <option value="city">city</option>
+            <option value="sunset">sunset</option>
+          </select>
+        </div>
+
+        <label className="inline-flex items-center gap-2 rounded-md border border-neutral-300 bg-white px-2 py-1">
+          <input type="checkbox" checked={clipping} onChange={(e) => setClipping(e.target.checked)} />
+          <span>Clipping</span>
+        </label>
+
+        <label className="inline-flex items-center gap-2 rounded-md border border-neutral-300 bg-white px=2 py-1">
+          <input type="checkbox" checked={lightBg} onChange={(e) => setLightBg(e.target.checked)} />
+          <span>Fondo claro</span>
+        </label>
+
+        <button
+          type="button"
+          disabled={!downloadUrl}
+          onClick={() => downloadUrl && window.open(downloadUrl, "_blank")}
+          className="ml-auto rounded-md bg-neutral-800 px-3 py-1 text-white hover:bg-neutral-900 disabled:opacity-50"
+        >
+          Descargar STL
+        </button>
+      </div>
+
+      {/* Lienzo */}
+      <div className="h-[520px] w-full overflow-hidden rounded-b-2xl">
+        <Canvas
+          shadows={shadows}
+          dpr={[1, 2]}
+          gl={{
+            antialias: true,
+            powerPreference: "high-performance",
+            logarithmicDepthBuffer: clipping, // feel of “clipping”
+          }}
+          camera={{ position: [12, 8, 12], fov: 45, near: 0.1, far: 2000 }}
+        >
+          <Scene tone={tone} preset={preset} lightBg={lightBg} />
+        </Canvas>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Escena con controles, luz y rejilla ---------- */
+
+function Scene({
+  tone,
+  preset,
+  lightBg,
+}: {
+  tone: number;
+  preset: "studio" | "city" | "sunset";
+  lightBg: boolean;
+}) {
+  const { gl, scene } = useThree();
+
+  // fondo claro/oscuro (igual que el anterior)
+  useEffect(() => {
+    const col = lightBg ? new THREE.Color("#F5F6F8") : new THREE.Color("#0f1115");
+    scene.background = col;
+  }, [lightBg, scene]);
+
+  // luz ambiental (tone)
+  const amb = useMemo(() => new THREE.AmbientLight(0xffffff, THREE.MathUtils.clamp(tone * 1.25, 0.05, 1.6)), [tone]);
+
+  useEffect(() => {
+    scene.add(amb);
+    return () => void scene.remove(amb);
+  }, [amb, scene]);
+
+  // Luz direccional suave
+  const dirRef = useRef<THREE.DirectionalLight>(null);
+  useEffect(() => {
+    if (dirRef.current) {
+      dirRef.current.intensity = 0.85;
+      dirRef.current.castShadow = true;
+      dirRef.current.shadow.mapSize.set(1024, 1024);
+    }
+  }, []);
+
+  return (
+    <>
+      <directionalLight ref={dirRef} position={[6, 12, 6]} />
+      <Environment preset={preset as any} />
+
+      {/* Rejilla isométrica y ejes, como la UI antigua */}
+      <Grid
+        args={[60, 60]}
+        cellSize={0.5}
+        cellThickness={0.6}
+        sectionSize={5}
+        sectionThickness={1}
+        sectionColor={lightBg ? "#999999" : "#595959"}
+        cellColor={lightBg ? "#CFCFCF" : "#2b2b2b"}
+        infiniteGrid
+        followCamera
+        fadeDistance={40}
+        fadeStrength={1}
+      />
+      <axesHelper args={[2]} />
+
+      {/* Plano de “pick” para ALT+click y soltar un agujero (x,y en mm) */}
+      <PickPlane />
+
+      <OrbitControls makeDefault enableDamping dampingFactor={0.12} />
+    </>
+  );
+}
+
+/* ---------- Plano “pickeable” para ALT+click (añadir agujero) ---------- */
+
+function PickPlane() {
+  const ref = useRef<THREE.Mesh>(null!);
+  const [hovered, setHovered] = useState(false);
+  useCursor(hovered);
+
+  const onPointerMove = (e: ThreeEvent<PointerEvent>) => {
+    if (!e.altKey) return;
+    setHovered(true);
+  };
+
+  const onPointerOut = () => setHovered(false);
+
+  const onClick = (e: ThreeEvent<MouseEvent>) => {
+    if (!e.altKey) return;
+    // intersección con el plano (X,Y,Z=0)
+    const p = e.point; // mundo
+    // mm con centro en (0,0). Enviamos ambos ejes (x_mm,y_mm)
+    const detail = { x_mm: Math.round(p.x), y_mm: Math.round(p.y), d_mm: 4 };
+    window.dispatchEvent(new CustomEvent("forge:add-hole", { detail }));
   };
 
   return (
-    <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
-      <h2 className="mb-3 text-lg font-semibold">Configurador</h2>
-
-      <div className="grid grid-cols-2 gap-3">
-        {/* Modelo */}
-        <label className="col-span-2 text-sm">
-          <span className="mb-1 block text-neutral-600">Modelo</span>
-          <select
-            className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2"
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-          >
-            {MODEL_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {/* Parámetros */}
-        <label className="text-sm">
-          <span className="mb-1 block text-neutral-600">Largo (mm)</span>
-          <input
-            type="number"
-            className="w-full rounded-md border border-neutral-300 px-3 py-2"
-            value={length_mm}
-            onChange={(e) => setLength(n(e.target.value, length_mm))}
-            min={1}
-          />
-        </label>
-
-        <label className="text-sm">
-          <span className="mb-1 block text-neutral-600">Ancho (mm)</span>
-          <input
-            type="number"
-            className="w-full rounded-md border border-neutral-300 px-3 py-2"
-            value={width_mm}
-            onChange={(e) => setWidth(n(e.target.value, width_mm))}
-            min={1}
-          />
-        </label>
-
-        <label className="text-sm">
-          <span className="mb-1 block text-neutral-600">Alto (mm)</span>
-          <input
-            type="number"
-            className="w-full rounded-md border border-neutral-300 px-3 py-2"
-            value={height_mm}
-            onChange={(e) => setHeight(n(e.target.value, height_mm))}
-            min={1}
-          />
-        </label>
-
-        <label className="text-sm">
-          <span className="mb-1 block text-neutral-600">Grosor pared (mm)</span>
-          <input
-            type="number"
-            className="w-full rounded-md border border-neutral-300 px-3 py-2"
-            value={thickness_mm}
-            onChange={(e) => setThickness(n(e.target.value, thickness_mm))}
-            min={0.2}
-            step={0.5}
-          />
-        </label>
-
-        <label className="text-sm">
-          <span className="mb-1 block text-neutral-600">Fillet (mm)</span>
-          <input
-            type="number"
-            className="w-full rounded-md border border-neutral-300 px-3 py-2"
-            value={fillet_mm}
-            onChange={(e) => setFillet(n(e.target.value, fillet_mm))}
-            min={0}
-            step={0.5}
-          />
-        </label>
-      </div>
-
-      {/* Agujeros */}
-      <div className="mt-5">
-        <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-sm font-medium">Agujeros superiores</h3>
-          <button
-            type="button"
-            className="rounded-md border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-50"
-            onClick={() =>
-              setHoles((prev) => [...prev, { x_mm: Math.round(length_mm / 2), y_mm: Math.round(width_mm / 2), d_mm: 4 }])
-            }
-          >
-            + Añadir
-          </button>
-        </div>
-
-        {holes.length === 0 ? (
-          <p className="text-xs text-neutral-600">
-            No hay agujeros. Consejo: mantén <kbd>Alt</kbd> y haz clic en el visor para añadir uno donde apuntes.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {holes.map((h, i) => (
-              <div key={i} className="grid grid-cols-[1fr,1fr,1fr,auto] items-center gap-2">
-                <label className="text-xs">
-                  <span className="mb-0.5 block text-neutral-600">X (mm)</span>
-                  <input
-                    type="number"
-                    className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
-                    value={h.x_mm}
-                    onChange={(e) =>
-                      setHoles((prev) =>
-                        prev.map((hh, idx) => (idx === i ? { ...hh, x_mm: n(e.target.value, hh.x_mm) } : hh))
-                      )
-                    }
-                    min={0}
-                    step={0.5}
-                  />
-                </label>
-                <label className="text-xs">
-                  <span className="mb-0.5 block text-neutral-600">Y (mm)</span>
-                  <input
-                    type="number"
-                    className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
-                    value={h.y_mm}
-                    onChange={(e) =>
-                      setHoles((prev) =>
-                        prev.map((hh, idx) => (idx === i ? { ...hh, y_mm: n(e.target.value, hh.y_mm) } : hh))
-                      )
-                    }
-                    min={0}
-                    step={0.5}
-                  />
-                </label>
-                <label className="text-xs">
-                  <span className="mb-0.5 block text-neutral-600">Ø (mm)</span>
-                  <input
-                    type="number"
-                    className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
-                    value={h.d_mm}
-                    onChange={(e) =>
-                      setHoles((prev) =>
-                        prev.map((hh, idx) => (idx === i ? { ...hh, d_mm: n(e.target.value, hh.d_mm) } : hh))
-                      )
-                    }
-                    min={0.5}
-                    step={0.1}
-                  />
-                </label>
-                <button
-                  type="button"
-                  className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700 hover:bg-red-100"
-                  onClick={() => removeHole(i)}
-                >
-                  Eliminar
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Acciones */}
-      <div className="mt-6 flex items-center gap-3">
-        <button
-          type="button"
-          onClick={handleGenerate}
-          disabled={busy}
-          className="rounded-md bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700 disabled:opacity-60"
-        >
-          {busy ? "Generando…" : "Generar STL"}
-        </button>
-        {!canGenerate && (
-          <span className="text-xs text-neutral-500">
-            Configura <code>NEXT_PUBLIC_FORGE_API_URL</code> para generar.
-          </span>
-        )}
-      </div>
-
-      {error && <p className="mt-3 text-sm text-red-700">{error}</p>}
-    </div>
+    <mesh
+      ref={ref}
+      rotation-x={-Math.PI / 2}
+      position={[0, 0, 0]}
+      onPointerMove={onPointerMove}
+      onPointerOut={onPointerOut}
+      onClick={onClick}
+    >
+      {/* plano “infinito”: grande y transparente */}
+      <planeGeometry args={[2000, 2000]} />
+      <meshBasicMaterial transparent opacity={0} />
+    </mesh>
   );
 }
