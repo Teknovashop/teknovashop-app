@@ -25,11 +25,25 @@ type Props = {
 };
 
 const MODEL_OPTIONS = [
-  { value: "cable_tray", label: "Cable Tray (bandeja)" },
-  { value: "vesa_adapter", label: "VESA Adapter" },
-  { value: "router_mount", label: "Router Mount (L)" },
-  { value: "camera_mount", label: "Camera Mount (base+columna)" },
-  { value: "wall_bracket", label: "Wall Bracket (escuadra)" },
+  { value: "cable_tray",    label: "Cable Tray (bandeja)" },
+  { value: "vesa_adapter",  label: "VESA Adapter" },
+  { value: "router_mount",  label: "Router Mount (L)" },
+  { value: "camera_mount",  label: "Camera Mount (base+columna)" },
+  { value: "wall_bracket",  label: "Wall Bracket (escuadra)" },
+
+  // añadidos para que el selector rápido ofrezca todo el catálogo
+  { value: "camera_plate",  label: "Camera Plate (quick-release)" },
+  { value: "go_pro_mount",  label: "GoPro Mount (prongs)" },
+  { value: "headset_stand", label: "Headset Stand" },
+  { value: "hub_holder",    label: "USB Hub Holder" },
+  { value: "laptop_stand",  label: "Laptop Stand" },
+  { value: "mic_arm_clip",  label: "Mic Arm Clip (C-clip)" },
+  { value: "monitor_stand", label: "Monitor Stand (base+columna)" },
+  { value: "phone_dock",    label: "Phone Dock (USB-C)" },
+  { value: "raspi_case",    label: "Raspberry Pi Case" },
+  { value: "ssd_holder",    label: "SSD 2.5\" → 3.5\"" },
+  { value: "tablet_stand",  label: "Tablet Stand" },
+  { value: "wall_hook",     label: "Wall Hook (gancho)" },
 ];
 
 function n(v: any, def: number): number {
@@ -221,7 +235,7 @@ export default function ForgeForm({
 
         <label className="text-sm">
           <span className="mb-1 block text-neutral-600">Alto (mm)</span>
-        <input
+          <input
             type="number"
             className="w-full rounded-md border border-neutral-300 px-3 py-2"
             value={height_mm}
