@@ -1,8 +1,11 @@
-/* app/globals.css */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Ajustes sutiles */
-* { box-sizing: border-box; }
-input, select, button { outline: none; }
+/* Ajustes finos */
+:root {
+  --ink: #0b1526;
+  --muted: #6b7280;
+}
+
+html, body { scroll-behavior: smooth; }
