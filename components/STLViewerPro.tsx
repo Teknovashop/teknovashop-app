@@ -1,63 +1,48 @@
 // components/STLViewerPro.tsx
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { STLExporter } from "three/examples/jsm/exporters/STLExporter.js";
-import { createCheckout } from "@/lib/payments";
 
-type Props = {
-  url?: string | null;
-  className?: string;
-  paywallPreview?: boolean;
-};
+type Props = { url?: string | null; className?: string };
 
-function isEntitled(): boolean {
-  // Simple: marca local tras success=1 (puedes sustituir por tu verificación real con Supabase)
-  if (typeof window === "undefined") return false;
-  const params = new URLSearchParams(window.location.search);
-  if (params.get("success") === "1") {
-    localStorage.setItem("entitled", "1");
-    // limpia la query para no dejar el success
-    params.delete("success");
-    const url = `${window.location.pathname}?${params.toString()}`;
-    window.history.replaceState({}, "", url.endsWith("?") ? url.slice(0, -1) : url);
-  }
-  return localStorage.getItem("entitled") === "1";
-}
-
-export default function STLViewerPro({ url, className, paywallPreview }: Props) {
+export default function STLViewerPro({ url, className }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
+
+  // Sin tipos THREE.* para evitar problemas en build
   const currentMeshRef = useRef<any>(null);
   const sceneRef = useRef<any>(null);
   const rendererRef = useRef<any>(null);
   const cameraRef = useRef<any>(null);
   const controlsRef = useRef<any>(null);
 
+  // UI state
   const [bgLight, setBgLight] = useState(true);
   const [tone, setTone] = useState(0.5);
   const [showShadow, setShowShadow] = useState(true);
-  const [size, setSize] = useState({ w: 0, h: 0 });
 
-  const entitled = useMemo(() => isEntitled(), []);
-
-  const handleDownload = () => {
-    if (paywallPreview && !entitled) {
-      // bloquear descarga → abrir Stripe
-      createCheckout("maker");
-      return;
-    }
+  // Descargar lo que se ve (export desde el mesh actual)
+  const downloadCurrentSTL = () => {
     const mesh = currentMeshRef.current;
     if (!mesh) return;
+
     const exporter = new STLExporter();
     const parsed = exporter.parse(mesh, { binary: true }) as unknown;
+
+    // Normalizamos a Uint8Array
     const bytes =
-      parsed instanceof ArrayBuffer ? new Uint8Array(parsed) : new Uint8Array((parsed as DataView).buffer);
+      parsed instanceof ArrayBuffer
+        ? new Uint8Array(parsed)
+        : new Uint8Array((parsed as DataView).buffer);
+
+    // ✅ Forzamos ArrayBuffer "puro" (no SharedArrayBuffer) creando uno nuevo
     const ab = new ArrayBuffer(bytes.byteLength);
     new Uint8Array(ab).set(bytes);
+
     const blob = new Blob([ab], { type: "model/stl" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -66,6 +51,7 @@ export default function STLViewerPro({ url, className, paywallPreview }: Props) 
     URL.revokeObjectURL(a.href);
   };
 
+  // Inicializar escena
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return;
@@ -78,10 +64,14 @@ export default function STLViewerPro({ url, className, paywallPreview }: Props) 
     camera.position.set(220, 180, 220);
     cameraRef.current = camera;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      powerPreference: "high-performance",
+    });
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 0.8 + tone * 0.7;
+    renderer.physicallyCorrectLights = true;
     renderer.shadowMap.enabled = showShadow;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
@@ -95,8 +85,6 @@ export default function STLViewerPro({ url, className, paywallPreview }: Props) 
     (grid.material as any).opacity = 0.6;
     (grid.material as any).transparent = true;
     scene.add(grid);
-
-    scene.add(new THREE.AxesHelper(60));
 
     const hemi = new THREE.HemisphereLight(0xffffff, 0x222222, 0.8);
     scene.add(hemi);
@@ -119,7 +107,6 @@ export default function STLViewerPro({ url, className, paywallPreview }: Props) 
       camera.aspect = clientWidth / clientHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(clientWidth, clientHeight, false);
-      setSize({ w: clientWidth, h: clientHeight });
     };
     const ro = new ResizeObserver(onResize);
     ro.observe(mount);
@@ -149,9 +136,23 @@ export default function STLViewerPro({ url, className, paywallPreview }: Props) 
       controlsRef.current = null;
       currentMeshRef.current = null;
     };
-  }, []); // init
+  }, []); // init 1 vez
 
-  // Carga STL via URL
+  // Cambios UI: fondo, sombras, tone mapping
+  useEffect(() => {
+    if (sceneRef.current) {
+      sceneRef.current.background = new THREE.Color(bgLight ? 0xffffff : 0x000000);
+    }
+  }, [bgLight]);
+
+  useEffect(() => {
+    if (rendererRef.current) {
+      rendererRef.current.shadowMap.enabled = showShadow;
+      rendererRef.current.toneMappingExposure = 0.8 + tone * 0.7;
+    }
+  }, [showShadow, tone]);
+
+  // Carga STL
   useEffect(() => {
     const scene = sceneRef.current;
     if (!scene) return;
@@ -164,6 +165,7 @@ export default function STLViewerPro({ url, className, paywallPreview }: Props) 
       prev.material?.dispose?.();
       currentMeshRef.current = null;
     }
+
     if (!url) return;
 
     const loader = new STLLoader();
@@ -174,8 +176,8 @@ export default function STLViewerPro({ url, className, paywallPreview }: Props) 
         geometry.computeVertexNormals();
         const mat = new THREE.MeshStandardMaterial({
           color: 0xf0f0f0,
-          metalness: 0.12,
-          roughness: 0.86,
+          metalness: 0.15,
+          roughness: 0.85,
         });
         const mesh = new THREE.Mesh(geometry, mat);
         mesh.castShadow = true;
@@ -184,34 +186,15 @@ export default function STLViewerPro({ url, className, paywallPreview }: Props) 
         currentMeshRef.current = mesh;
       },
       undefined,
-      () => {}
+      () => {
+        // fallo de carga: no romper la escena
+      }
     );
   }, [url]);
 
   return (
     <div ref={mountRef} className={`relative w-full rounded-xl ${className ?? "h-[520px] bg-white"}`}>
-      {/* Regla superior */}
-      <div className="pointer-events-none absolute left-0 top-0 z-10 h-6 w-full bg-white/90">
-        <svg className="h-full w-full">
-          {[...Array(50)].map((_, i) => {
-            const x = (i / 50) * size.w;
-            const h = i % 5 === 0 ? 12 : 6;
-            return <line key={i} x1={x} y1={24} x2={x} y2={24 - h} stroke="#9ca3af" strokeWidth="1" />;
-          })}
-        </svg>
-      </div>
-      {/* Regla lateral */}
-      <div className="pointer-events-none absolute left-0 top-0 z-10 h-full w-6 bg-white/90">
-        <svg className="h-full w-full">
-          {[...Array(50)].map((_, i) => {
-            const y = (i / 50) * size.h;
-            const w = i % 5 === 0 ? 12 : 6;
-            return <line key={i} x1={24} y1={y} x2={24 - w} y2={y} stroke="#9ca3af" strokeWidth="1" />;
-          })}
-        </svg>
-      </div>
-
-      {/* Toolbar */}
+      {/* Barra de controles dentro del panel (arriba derecha) */}
       <div className="pointer-events-auto absolute right-3 top-3 z-20 flex flex-wrap items-center gap-2 rounded-xl border border-neutral-200/70 bg-white/90 px-3 py-2 shadow-sm backdrop-blur">
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={bgLight} onChange={(e) => setBgLight(e.target.checked)} />
@@ -232,15 +215,11 @@ export default function STLViewerPro({ url, className, paywallPreview }: Props) 
             onChange={(e) => setTone(parseFloat(e.currentTarget.value))}
           />
         </div>
-
         <button
-          onClick={handleDownload}
-          className={`rounded-md px-2 py-1 text-sm text-white ${
-            paywallPreview && !entitled ? "bg-[#111827]" : "bg-[#2663EB]"
-          }`}
-          title={paywallPreview && !entitled ? "Necesitas comprar para descargar" : "Descargar STL"}
+          onClick={downloadCurrentSTL}
+          className="rounded-md bg-[#2663EB] px-2 py-1 text-sm text-white hover:bg-[#1f55c8]"
         >
-          {paywallPreview && !entitled ? "Comprar para descargar" : "Descargar STL"}
+          Descargar STL
         </button>
       </div>
     </div>
