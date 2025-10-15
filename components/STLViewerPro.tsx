@@ -13,7 +13,7 @@ type Props = { url?: string | null; className?: string };
 export default function STLViewerPro({ url, className }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
 
-  // ⚠️ Sin tipos THREE.* para no romper Vercel
+  // Sin tipos THREE.* para evitar problemas en build
   const currentMeshRef = useRef<any>(null);
   const sceneRef = useRef<any>(null);
   const rendererRef = useRef<any>(null);
@@ -29,16 +29,21 @@ export default function STLViewerPro({ url, className }: Props) {
   const downloadCurrentSTL = () => {
     const mesh = currentMeshRef.current;
     if (!mesh) return;
+
     const exporter = new STLExporter();
     const parsed = exporter.parse(mesh, { binary: true }) as unknown;
 
-    // ✅ Construir BlobPart seguro (Uint8Array) para evitar el error de ArrayBufferLike / SharedArrayBuffer
+    // Normalizamos a Uint8Array
     const bytes =
       parsed instanceof ArrayBuffer
         ? new Uint8Array(parsed)
         : new Uint8Array((parsed as DataView).buffer);
 
-    const blob = new Blob([bytes], { type: "model/stl" });
+    // ✅ Forzamos ArrayBuffer "puro" (no SharedArrayBuffer) creando uno nuevo
+    const ab = new ArrayBuffer(bytes.byteLength);
+    new Uint8Array(ab).set(bytes);
+
+    const blob = new Blob([ab], { type: "model/stl" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = "forge-output.stl";
