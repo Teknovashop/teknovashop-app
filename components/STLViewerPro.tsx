@@ -13,7 +13,7 @@ type Props = { url?: string | null; className?: string };
 export default function STLViewerPro({ url, className }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
 
-  // ⚠️ Sin tipos THREE.* para no romper el build de Vercel
+  // ⚠️ Sin tipos THREE.* para no romper Vercel
   const currentMeshRef = useRef<any>(null);
   const sceneRef = useRef<any>(null);
   const rendererRef = useRef<any>(null);
@@ -30,8 +30,14 @@ export default function STLViewerPro({ url, className }: Props) {
     const mesh = currentMeshRef.current;
     if (!mesh) return;
     const exporter = new STLExporter();
-    const data = exporter.parse(mesh, { binary: true }) as ArrayBuffer;
-    const blob = new Blob([data], { type: "model/stl" });
+    const parsed = exporter.parse(mesh, { binary: true }) as unknown;
+    // three.js types: con binary:true suele devolver DataView. Soportamos ambos.
+    const arrayBuffer =
+      parsed instanceof ArrayBuffer
+        ? parsed
+        : (parsed as DataView).buffer;
+
+    const blob = new Blob([arrayBuffer], { type: "model/stl" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = "forge-output.stl";
@@ -124,7 +130,7 @@ export default function STLViewerPro({ url, className }: Props) {
       controlsRef.current = null;
       currentMeshRef.current = null;
     };
-  }, []); // init una vez
+  }, []); // init 1 vez
 
   // Cambios UI: fondo, sombras, tone mapping
   useEffect(() => {
