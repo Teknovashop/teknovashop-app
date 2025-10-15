@@ -4,7 +4,7 @@
 import { useState } from "react";
 
 export type ForgeFormProps = {
-  /** slug del modelo, en snake_case. Ej: "vesa_adapter" */
+  /** slug del modelo en snake_case (p.ej. "vesa_adapter") */
   initialModel?: string;
 };
 
