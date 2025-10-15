@@ -10,14 +10,11 @@ import { STLExporter } from "three/examples/jsm/exporters/STLExporter.js";
 
 type Props = { url?: string | null; className?: string };
 
-/** Paywall: leemos variable pública; si no existe, por defecto off */
 function isPaywallOn(): boolean {
-  // Next inyecta sólo variables con NEXT_PUBLIC_ en cliente
   const v = (process.env.NEXT_PUBLIC_PAYWALL_PREVIEW ?? "0") as string;
   return v === "1";
 }
 
-/** Marca de acceso tras compra: aquí usamos localStorage + parámetro ?status=success */
 function hasEntitlement(): boolean {
   if (typeof window === "undefined") return false;
   const sp = new URLSearchParams(window.location.search);
@@ -33,13 +30,11 @@ function hasEntitlement(): boolean {
 export default function STLViewerPro({ url, className }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
 
-  // Sin tipos THREE.* en refs para evitar fricciones en build
   const currentMeshRef = useRef<any>(null);
   const sceneRef = useRef<any>(null);
   const rendererRef = useRef<any>(null);
   const cameraRef = useRef<any>(null);
 
-  // UI state
   const [bgLight, setBgLight] = useState(true);
   const [tone, setTone] = useState(0.5);
   const [showShadow, setShowShadow] = useState(true);
@@ -48,11 +43,9 @@ export default function STLViewerPro({ url, className }: Props) {
   const paywall = isPaywallOn();
   const entitled = useMemo(() => hasEntitlement(), []);
 
-  // ---- Checkout helper (usa tu API existente /api/checkout/create-session) ----
   async function startCheckout(price: "oneoff" | "maker" | "commercial" = "maker") {
     try {
-      const email =
-        window.prompt("Introduce tu email para la compra (Stripe)")?.trim() || "";
+      const email = window.prompt("Introduce tu email para la compra (Stripe)")?.trim() || "";
       if (!email) return;
 
       const res = await fetch("/api/checkout/create-session", {
@@ -60,44 +53,32 @@ export default function STLViewerPro({ url, className }: Props) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           email,
-          price,          // usa tus STRIPE_PRICE_* configurados
+          price,
           model_kind: "stl_download",
           params: {},
           object_key: "",
         }),
       });
       const { url } = await res.json();
-      if (res.ok && url) {
-        window.location.href = url as string;
-      } else {
-        alert("No se pudo iniciar el checkout.");
-      }
-    } catch (e) {
+      if (res.ok && url) window.location.href = url as string;
+      else alert("No se pudo iniciar el checkout.");
+    } catch {
       alert("Error iniciando el checkout.");
     }
   }
 
-  // Descargar lo que se ve (export desde el mesh actual)
   const downloadCurrentSTL = () => {
-    // Paywall: si está ON y no hay entitlement => checkout
     if (paywall && !entitled) {
       startCheckout("maker");
       return;
     }
-
     const mesh = currentMeshRef.current;
     if (!mesh) return;
 
     const exporter = new STLExporter();
     const parsed = exporter.parse(mesh, { binary: true }) as unknown;
-
-    // Normalizamos a Uint8Array
     const bytes =
-      parsed instanceof ArrayBuffer
-        ? new Uint8Array(parsed)
-        : new Uint8Array((parsed as DataView).buffer);
-
-    // Copia a un ArrayBuffer “propio” (evita problemas con SharedArrayBuffer)
+      parsed instanceof ArrayBuffer ? new Uint8Array(parsed) : new Uint8Array((parsed as DataView).buffer);
     const ab = new ArrayBuffer(bytes.byteLength);
     new Uint8Array(ab).set(bytes);
 
@@ -109,7 +90,6 @@ export default function STLViewerPro({ url, className }: Props) {
     URL.revokeObjectURL(a.href);
   };
 
-  // Inicializar escena
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return;
@@ -135,12 +115,10 @@ export default function STLViewerPro({ url, className }: Props) {
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
     rendererRef.current = renderer;
 
-    // entorno
     const env = new RoomEnvironment();
     const pmrem = new THREE.PMREMGenerator(renderer);
     scene.environment = pmrem.fromScene(env).texture;
 
-    // helpers
     const grid = new THREE.GridHelper(600, 60, 0xcccccc, 0xeeeeee);
     (grid.material as any).opacity = 0.6;
     (grid.material as any).transparent = true;
@@ -198,25 +176,24 @@ export default function STLViewerPro({ url, className }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Reaplicar ajustes de render cuando cambien sliders/toggles
+  // Reaplicar ajustes cuando cambien sliders/toggles (sin tipos THREE.* para evitar error)
   useEffect(() => {
-    const r = rendererRef.current as THREE.WebGLRenderer | null;
+    const r = rendererRef.current as any;
     if (!r) return;
     r.toneMappingExposure = 0.8 + tone * 0.7;
-    r.shadowMap.enabled = showShadow;
+    if (r.shadowMap) r.shadowMap.enabled = showShadow;
   }, [tone, showShadow]);
 
   // Cargar STL cuando cambie la URL
   useEffect(() => {
-    const scene = sceneRef.current as THREE.Scene | null;
+    const scene = sceneRef.current as any;
     if (!scene) return;
 
-    // limpia malla previa
     if (currentMeshRef.current) {
-      const prev = currentMeshRef.current as THREE.Mesh;
+      const prev = currentMeshRef.current as any;
       scene.remove(prev);
       prev.geometry?.dispose?.();
-      (prev.material as any)?.dispose?.();
+      prev.material?.dispose?.();
       currentMeshRef.current = null;
     }
     if (!url) return;
@@ -245,7 +222,7 @@ export default function STLViewerPro({ url, className }: Props) {
 
   return (
     <div ref={mountRef} className={`relative w-full rounded-xl ${className ?? "h-[520px] bg-white"}`}>
-      {/* Reglas (simple, sin numeración para no saturar la UI) */}
+      {/* Reglas */}
       <div className="pointer-events-none absolute left-0 top-0 z-10 h-6 w-full bg-white/90">
         <svg className="h-full w-full">
           {[...Array(50)].map((_, i) => {
