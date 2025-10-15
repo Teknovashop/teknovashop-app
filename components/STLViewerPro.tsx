@@ -1,7 +1,7 @@
 // components/STLViewerPro.tsx
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -13,19 +13,19 @@ type Props = { url?: string | null; className?: string };
 export default function STLViewerPro({ url, className }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
 
-  // referencias seguras para Vercel
-  const currentMeshRef = useRef<THREE.Mesh | null>(null);
-  const sceneRef = useRef<THREE.Scene | null>(null);
-  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-  const controlsRef = useRef<OrbitControls | null>(null);
+  // ⚠️ Sin tipos THREE.* para no romper el build de Vercel
+  const currentMeshRef = useRef<any>(null);
+  const sceneRef = useRef<any>(null);
+  const rendererRef = useRef<any>(null);
+  const cameraRef = useRef<any>(null);
+  const controlsRef = useRef<any>(null);
 
   // UI state
   const [bgLight, setBgLight] = useState(true);
   const [tone, setTone] = useState(0.5);
   const [showShadow, setShowShadow] = useState(true);
 
-  // descargar lo que se ve (export desde el mesh actual)
+  // Descargar lo que se ve (export desde el mesh actual)
   const downloadCurrentSTL = () => {
     const mesh = currentMeshRef.current;
     if (!mesh) return;
@@ -39,7 +39,7 @@ export default function STLViewerPro({ url, className }: Props) {
     URL.revokeObjectURL(a.href);
   };
 
-  // inicializar escena
+  // Inicializar escena
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return;
@@ -70,8 +70,8 @@ export default function STLViewerPro({ url, className }: Props) {
     scene.environment = pmrem.fromScene(env).texture;
 
     const grid = new THREE.GridHelper(600, 60, 0xcccccc, 0xeeeeee);
-    (grid.material as THREE.Material).opacity = 0.6;
-    (grid.material as THREE.Material).transparent = true;
+    (grid.material as any).opacity = 0.6;
+    (grid.material as any).transparent = true;
     scene.add(grid);
 
     const hemi = new THREE.HemisphereLight(0xffffff, 0x222222, 0.8);
@@ -124,9 +124,9 @@ export default function STLViewerPro({ url, className }: Props) {
       controlsRef.current = null;
       currentMeshRef.current = null;
     };
-  }, []); // init 1 vez
+  }, []); // init una vez
 
-  // cambios de UI: fondo, sombras, tone mapping
+  // Cambios UI: fondo, sombras, tone mapping
   useEffect(() => {
     if (sceneRef.current) {
       sceneRef.current.background = new THREE.Color(bgLight ? 0xffffff : 0x000000);
@@ -140,7 +140,7 @@ export default function STLViewerPro({ url, className }: Props) {
     }
   }, [showShadow, tone]);
 
-  // carga STL
+  // Carga STL
   useEffect(() => {
     const scene = sceneRef.current;
     if (!scene) return;
@@ -149,8 +149,8 @@ export default function STLViewerPro({ url, className }: Props) {
     const prev = currentMeshRef.current;
     if (prev) {
       scene.remove(prev);
-      prev.geometry.dispose();
-      (prev.material as THREE.Material).dispose?.();
+      prev.geometry?.dispose?.();
+      prev.material?.dispose?.();
       currentMeshRef.current = null;
     }
 
@@ -182,7 +182,7 @@ export default function STLViewerPro({ url, className }: Props) {
 
   return (
     <div ref={mountRef} className={`relative w-full rounded-xl ${className ?? "h-[520px] bg-white"}`}>
-      {/* Barra de controles DENTRO del panel (arriba dcha) */}
+      {/* Barra de controles dentro del panel (arriba derecha) */}
       <div className="pointer-events-auto absolute right-3 top-3 z-20 flex flex-wrap items-center gap-2 rounded-xl border border-neutral-200/70 bg-white/90 px-3 py-2 shadow-sm backdrop-blur">
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={bgLight} onChange={(e) => setBgLight(e.target.checked)} />
