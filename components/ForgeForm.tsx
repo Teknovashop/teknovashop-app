@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const API_BASE =
   (process.env.NEXT_PUBLIC_FORGE_API_URL ||
@@ -25,11 +25,22 @@ type Props = {
 };
 
 const MODEL_OPTIONS = [
-  { value: "cable_tray", label: "Cable Tray (bandeja)" },
-  { value: "vesa_adapter", label: "VESA Adapter" },
-  { value: "router_mount", label: "Router Mount (L)" },
-  { value: "camera_mount", label: "Camera Mount (base+columna)" },
-  { value: "wall_bracket", label: "Wall Bracket (escuadra)" },
+  { value: "cable_tray",    label: "Cable Tray (bandeja)" },
+  { value: "vesa_adapter",  label: "VESA Adapter" },
+  { value: "router_mount",  label: "Router Mount (L)" },
+  { value: "cable_clip",    label: "Cable Clip" },
+  { value: "headset_stand", label: "Headset Stand" },
+  { value: "phone_dock",    label: "Phone Dock (USB-C)" },
+  { value: "tablet_stand",  label: "Tablet Stand" },
+  { value: "ssd_holder",    label: 'SSD Holder (2.5")' },
+  { value: "raspi_case",    label: "Raspberry Pi Case" },
+  { value: "go_pro_mount",  label: "GoPro Mount" },
+  { value: "wall_hook",     label: "Wall Hook" },
+  { value: "monitor_stand", label: "Monitor Stand" },
+  { value: "laptop_stand",  label: "Laptop Stand" },
+  { value: "mic_arm_clip",  label: "Mic Arm Clip" },
+  { value: "camera_plate",  label: 'Camera Plate 1/4"' },
+  { value: "hub_holder",    label: "USB Hub Holder" }
 ];
 
 function n(v: any, def: number): number {
@@ -38,6 +49,11 @@ function n(v: any, def: number): number {
 }
 function clamp(x: number, min: number, max: number) {
   return Math.min(max, Math.max(min, x));
+}
+
+// helper para emitir eventos
+function emit<T = any>(name: string, detail?: T) {
+  try { window.dispatchEvent(new CustomEvent(name, { detail })); } catch {}
 }
 
 export default function ForgeForm({
@@ -58,13 +74,19 @@ export default function ForgeForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // debounce pequeño para no spamear el visor al teclear
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debouncedEmit = useCallback((fn: () => void, ms = 120) => {
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(fn, ms);
+  }, []);
+
   // Escucha del visor: ALT+click emite "forge:add-hole"
   useEffect(() => {
     const onAdd = (ev: Event) => {
       const det = (ev as CustomEvent).detail || {};
       const x = n(det.x_mm, 0);
       const d = n(det.d_mm, 4);
-      // Si no se envía y_mm, centramos en mitad de W
       const y = Number.isFinite(det.y_mm) ? n(det.y_mm, 0) : width_mm / 2;
       setHoles((prev) => [...prev, { x_mm: x, y_mm: y, d_mm: d }]);
     };
@@ -72,7 +94,7 @@ export default function ForgeForm({
     return () => window.removeEventListener("forge:add-hole", onAdd as any);
   }, [width_mm]);
 
-  // Parámetros calculados y normalizados
+  // Parámetros normalizados
   const params: Params = useMemo(() => {
     const p: Params = {
       length_mm: clamp(Number(length_mm) || 0, 1, 5000),
@@ -81,8 +103,32 @@ export default function ForgeForm({
       thickness_mm: clamp(Number(thickness_mm) || 1, 0.2, 100),
       fillet_mm: clamp(Number(fillet_mm) || 0, 0, 200),
     };
+    // sincroniza al visor con debounce
+    debouncedEmit(() => emit("forge:set-params", { params: p }));
     return p;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [length_mm, width_mm, height_mm, thickness_mm, fillet_mm]);
+
+  // ---- HANDSHAKE INICIAL (forzamos refresco) ----
+  useEffect(() => {
+    emit("forge:set-model", { model });
+    emit("forge:set-params", { params });
+    emit("forge:set-holes", { holes });
+    // ⬇️ CLAVE: fuerza al visor a reconstruir nada más cargar
+    emit("forge:refresh", { reason: "initial-handshake" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // solo al montar
+
+  // Cuando cambie el modelo: avisa y fuerza refresco inmediato
+  useEffect(() => {
+    emit("forge:set-model", { model });
+    emit("forge:refresh", { reason: "model-changed" }); // ⬅️ nuevo
+  }, [model]);
+
+  // Agujeros -> visor (debounce)
+  useEffect(() => {
+    debouncedEmit(() => emit("forge:set-holes", { holes }));
+  }, [holes, debouncedEmit]);
 
   const canGenerate = API_BASE.length > 0;
 
@@ -94,19 +140,21 @@ export default function ForgeForm({
       );
       return;
     }
+
+    // antes de generar, avisa al visor (por si hace algo local)
+    emit("forge:generate", { model, params, holes });
+
     setBusy(true);
     try {
-      // Enviar parámetros con nombres alternativos por compatibilidad:
       const payload = {
         model,
         params: {
-          // nombres “oficiales”
           length_mm: params.length_mm,
           width_mm: params.width_mm,
           height_mm: params.height_mm,
           thickness_mm: params.thickness_mm,
           fillet_mm: params.fillet_mm,
-          // alias comunes por si el backend los espera
+          // alias
           length: params.length_mm,
           width: params.width_mm,
           height: params.height_mm,
@@ -126,22 +174,18 @@ export default function ForgeForm({
         body: JSON.stringify(payload),
       });
 
-      const json = await res.json().catch(() => ({}));
+      const json = await res.json().catch(() => ({} as any));
       if (!res.ok) {
         throw new Error(json?.detail || json?.error || `HTTP ${res.status}`);
       }
 
-      // Soportamos varias respuestas posibles del backend
       const url: string | undefined =
         json?.stl_url || json?.signed_url || json?.url;
       if (url) {
-        // notifica al padre
-        if (typeof onGenerated === "function") onGenerated(url);
-        // también emitir un evento por si alguien lo escucha
-        window.dispatchEvent(new CustomEvent("forge:generated-url", { detail: { url } }));
+        onGenerated?.(url);
+        emit("forge:generated-url", { url });
       } else if (json?.path) {
-        // Si el server devuelve solo la ruta (en Supabase), emite el path
-        window.dispatchEvent(new CustomEvent("forge:generated-path", { detail: { path: json.path } }));
+        emit("forge:generated-path", { path: json.path });
       } else {
         throw new Error("Respuesta inesperada del backend");
       }
@@ -152,7 +196,7 @@ export default function ForgeForm({
     }
   }, [model, params, holes, onGenerated, canGenerate]);
 
-  // Auto-generar si viene ?autogenerate=1
+  // Auto-generar con ?autogenerate=1
   useEffect(() => {
     try {
       const usp = new URLSearchParams(window.location.search);
@@ -221,7 +265,7 @@ export default function ForgeForm({
 
         <label className="text-sm">
           <span className="mb-1 block text-neutral-600">Alto (mm)</span>
-        <input
+          <input
             type="number"
             className="w-full rounded-md border border-neutral-300 px-3 py-2"
             value={height_mm}
