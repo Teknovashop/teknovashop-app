@@ -13,9 +13,29 @@ type Params = {
   height_mm: number;
   thickness_mm?: number;
   fillet_mm?: number;
+  // NUEVO: el backend ya lo soporta
+  arrayOps?: ArrayOp[];
+  textOps?: TextOp[];
 };
 
 type Hole = { x_mm: number; y_mm: number; d_mm: number };
+
+// Operaciones
+type ArrayOp = {
+  count: number;   // nº de copias (incluye original implícitamente)
+  dx: number;      // desplazamiento por copia en X (mm)
+  dy: number;      // desplazamiento por copia en Y (mm)
+};
+
+type TextOp = {
+  text: string;
+  size: number;    // mm
+  depth: number;   // mm (extrusión)
+  x: number;
+  y: number;
+  z: number;
+  // en el backend es placeholder seguro (sin romper si no hay tipografías)
+};
 
 type Props = {
   initialModel?: string;
@@ -71,6 +91,11 @@ export default function ForgeForm({
   const [fillet_mm, setFillet] = useState<number>(initialParams?.fillet_mm ?? 0);
 
   const [holes, setHoles] = useState<Hole[]>(initialHoles);
+
+  // NUEVO: estado de operaciones
+  const [arrayOps, setArrayOps] = useState<ArrayOp[]>(initialParams?.arrayOps ?? []);
+  const [textOps, setTextOps] = useState<TextOp[]>(initialParams?.textOps ?? []);
+
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -102,27 +127,30 @@ export default function ForgeForm({
       height_mm: clamp(Number(height_mm) || 0, 1, 5000),
       thickness_mm: clamp(Number(thickness_mm) || 1, 0.2, 100),
       fillet_mm: clamp(Number(fillet_mm) || 0, 0, 200),
+      arrayOps,
+      textOps,
     };
-    // sincroniza al visor con debounce
+    // sincroniza al visor con debounce (por si quieres usar overlays)
     debouncedEmit(() => emit("forge:set-params", { params: p }));
+    debouncedEmit(() => emit("forge:set-ops", { arrayOps, textOps }));
     return p;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [length_mm, width_mm, height_mm, thickness_mm, fillet_mm]);
+  }, [length_mm, width_mm, height_mm, thickness_mm, fillet_mm, arrayOps, textOps]);
 
-  // ---- HANDSHAKE INICIAL (forzamos refresco) ----
+  // ---- HANDSHAKE INICIAL ----
   useEffect(() => {
     emit("forge:set-model", { model });
     emit("forge:set-params", { params });
     emit("forge:set-holes", { holes });
-    // ⬇️ CLAVE: fuerza al visor a reconstruir nada más cargar
+    emit("forge:set-ops", { arrayOps, textOps });
     emit("forge:refresh", { reason: "initial-handshake" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // solo al montar
 
-  // Cuando cambie el modelo: avisa y fuerza refresco inmediato
+  // Cambio de modelo
   useEffect(() => {
     emit("forge:set-model", { model });
-    emit("forge:refresh", { reason: "model-changed" }); // ⬅️ nuevo
+    emit("forge:refresh", { reason: "model-changed" });
   }, [model]);
 
   // Agujeros -> visor (debounce)
@@ -141,7 +169,6 @@ export default function ForgeForm({
       return;
     }
 
-    // antes de generar, avisa al visor (por si hace algo local)
     emit("forge:generate", { model, params, holes });
 
     setBusy(true);
@@ -154,18 +181,24 @@ export default function ForgeForm({
           height_mm: params.height_mm,
           thickness_mm: params.thickness_mm,
           fillet_mm: params.fillet_mm,
-          // alias
+
+          // alias (por compatibilidad)
           length: params.length_mm,
           width: params.width_mm,
           height: params.height_mm,
           wall: params.thickness_mm,
           fillet: params.fillet_mm,
+
+          // NUEVO: operaciones
+          arrayOps: arrayOps,
+          textOps: textOps,
+          // y agujeros
+          holes: holes.map((h) => ({
+            x_mm: Number(h.x_mm),
+            y_mm: Number(h.y_mm),
+            d_mm: Number(h.d_mm),
+          })),
         },
-        holes: holes.map((h) => ({
-          x_mm: Number(h.x_mm),
-          y_mm: Number(h.y_mm),
-          d_mm: Number(h.d_mm),
-        })),
       };
 
       const res = await fetch(`${API_BASE}/generate`, {
@@ -179,8 +212,7 @@ export default function ForgeForm({
         throw new Error(json?.detail || json?.error || `HTTP ${res.status}`);
       }
 
-      const url: string | undefined =
-        json?.stl_url || json?.signed_url || json?.url;
+      const url: string | undefined = json?.stl_url || json?.signed_url || json?.url;
       if (url) {
         onGenerated?.(url);
         emit("forge:generated-url", { url });
@@ -194,9 +226,9 @@ export default function ForgeForm({
     } finally {
       setBusy(false);
     }
-  }, [model, params, holes, onGenerated, canGenerate]);
+  }, [model, params, holes, onGenerated, canGenerate, arrayOps, textOps]);
 
-  // Auto-generar con ?autogenerate=1
+  // Auto-generar con ?autogenerate=1 (y agujeros en query)
   useEffect(() => {
     try {
       const usp = new URLSearchParams(window.location.search);
@@ -218,6 +250,19 @@ export default function ForgeForm({
   const removeHole = (idx: number) => {
     setHoles((prev) => prev.filter((_, i) => i !== idx));
   };
+
+  // Helpers para arrays y texto
+  const addArrayOp = () =>
+    setArrayOps((p) => [...p, { count: 3, dx: 10, dy: 0 }]);
+
+  const removeArrayOp = (i: number) =>
+    setArrayOps((p) => p.filter((_, idx) => idx !== i));
+
+  const addTextOp = () =>
+    setTextOps((p) => [...p, { text: "Teknovashop", size: 8, depth: 1.2, x: 0, y: 0, z: 0 }]);
+
+  const removeTextOp = (i: number) =>
+    setTextOps((p) => p.filter((_, idx) => idx !== i));
 
   return (
     <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
@@ -378,6 +423,172 @@ export default function ForgeForm({
             ))}
           </div>
         )}
+      </div>
+
+      {/* Operaciones */}
+      <div className="mt-6 space-y-5">
+        {/* ARRAY */}
+        <div>
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-sm font-medium">Operaciones: Array</h3>
+            <button
+              type="button"
+              className="rounded-md border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-50"
+              onClick={addArrayOp}
+            >
+              + Array
+            </button>
+          </div>
+          {arrayOps.length === 0 ? (
+            <p className="text-xs text-neutral-600">No hay arrays definidos.</p>
+          ) : (
+            <div className="space-y-2">
+              {arrayOps.map((op, i) => (
+                <div key={i} className="grid grid-cols-[1fr,1fr,1fr,auto] items-center gap-2">
+                  <label className="text-xs">
+                    <span className="mb-0.5 block text-neutral-600">Copias</span>
+                    <input
+                      type="number"
+                      min={1}
+                      className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
+                      value={op.count}
+                      onChange={(e) =>
+                        setArrayOps((prev) =>
+                          prev.map((o, idx) => (idx === i ? { ...o, count: n(e.target.value, o.count) } : o))
+                        )
+                      }
+                    />
+                  </label>
+                  <label className="text-xs">
+                    <span className="mb-0.5 block text-neutral-600">ΔX (mm)</span>
+                    <input
+                      type="number"
+                      className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
+                      value={op.dx}
+                      onChange={(e) =>
+                        setArrayOps((prev) =>
+                          prev.map((o, idx) => (idx === i ? { ...o, dx: n(e.target.value, o.dx) } : o))
+                        )
+                      }
+                      step={0.5}
+                    />
+                  </label>
+                  <label className="text-xs">
+                    <span className="mb-0.5 block text-neutral-600">ΔY (mm)</span>
+                    <input
+                      type="number"
+                      className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
+                      value={op.dy}
+                      onChange={(e) =>
+                        setArrayOps((prev) =>
+                          prev.map((o, idx) => (idx === i ? { ...o, dy: n(e.target.value, o.dy) } : o))
+                        )
+                      }
+                      step={0.5}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700 hover:bg-red-100"
+                    onClick={() => removeArrayOp(i)}
+                  >
+                    Eliminar
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* TEXTO */}
+        <div>
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-sm font-medium">Operaciones: Texto</h3>
+            <button
+              type="button"
+              className="rounded-md border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-50"
+              onClick={addTextOp}
+            >
+              + Texto
+            </button>
+          </div>
+          {textOps.length === 0 ? (
+            <p className="text-xs text-neutral-600">No hay textos definidos.</p>
+          ) : (
+            <div className="space-y-2">
+              {textOps.map((op, i) => (
+                <div key={i} className="grid grid-cols-[2fr,1fr,1fr,1fr,1fr,1fr,auto] items-center gap-2">
+                  <label className="text-xs col-span-2">
+                    <span className="mb-0.5 block text-neutral-600">Texto</span>
+                    <input
+                      type="text"
+                      className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
+                      value={op.text}
+                      onChange={(e) =>
+                        setTextOps((prev) =>
+                          prev.map((o, idx) => (idx === i ? { ...o, text: e.target.value } : o))
+                        )
+                      }
+                    />
+                  </label>
+                  <label className="text-xs">
+                    <span className="mb-0.5 block text-neutral-600">Tamaño</span>
+                    <input
+                      type="number"
+                      className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
+                      value={op.size}
+                      onChange={(e) =>
+                        setTextOps((prev) =>
+                          prev.map((o, idx) => (idx === i ? { ...o, size: n(e.target.value, o.size) } : o))
+                        )
+                      }
+                      step={0.5}
+                    />
+                  </label>
+                  <label className="text-xs">
+                    <span className="mb-0.5 block text-neutral-600">Profund.</span>
+                    <input
+                      type="number"
+                      className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
+                      value={op.depth}
+                      onChange={(e) =>
+                        setTextOps((prev) =>
+                          prev.map((o, idx) => (idx === i ? { ...o, depth: n(e.target.value, o.depth) } : o))
+                        )
+                      }
+                      step={0.5}
+                    />
+                  </label>
+                  {(["x","y","z"] as const).map((axis) => (
+                    <label className="text-xs" key={axis}>
+                      <span className="mb-0.5 block text-neutral-600">{axis.toUpperCase()} (mm)</span>
+                      <input
+                        type="number"
+                        className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
+                        value={(op as any)[axis]}
+                        onChange={(e) =>
+                          setTextOps((prev) =>
+                            prev.map((o, idx) =>
+                              idx === i ? { ...o, [axis]: n(e.target.value, (o as any)[axis]) } : o
+                            )
+                          )
+                        }
+                        step={0.5}
+                      />
+                    </label>
+                  ))}
+                  <button
+                    type="button"
+                    className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700 hover:bg-red-100"
+                    onClick={() => removeTextOp(i)}
+                  >
+                    Eliminar
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Acciones */}
