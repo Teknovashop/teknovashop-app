@@ -1,3 +1,4 @@
+// components/STLViewerPro.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -12,26 +13,44 @@ type Props = { url?: string | null; className?: string };
 export default function STLViewerPro({ url, className }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
 
-  // Compatibilidad de tipos en Vercel
-  const currentMeshRef = useRef<any>(null);
-  const lastSizeRef = useRef<any>(null); // { x, y, z } del bounding box centrado
+  // referencias seguras para Vercel
+  const currentMeshRef = useRef<THREE.Mesh | null>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const controlsRef = useRef<OrbitControls | null>(null);
 
-  const [shadows, setShadows] = useState(true);
-  const [tone, setTone] = useState(1.0);
-  const [preset, setPreset] = useState<"studio" | "neutral" | "night">("studio");
-  const [clipping, setClipping] = useState(false);
+  // UI state
   const [bgLight, setBgLight] = useState(true);
+  const [tone, setTone] = useState(0.5);
+  const [showShadow, setShowShadow] = useState(true);
 
-  // URL interna que puede venir por props o por eventos del configurador
-  const [internalUrl, setInternalUrl] = useState<string | null>(url ?? null);
-  useEffect(() => setInternalUrl(url ?? null), [url]);
+  // descargar lo que se ve (export desde el mesh actual)
+  const downloadCurrentSTL = () => {
+    const mesh = currentMeshRef.current;
+    if (!mesh) return;
+    const exporter = new STLExporter();
+    const data = exporter.parse(mesh, { binary: true }) as ArrayBuffer;
+    const blob = new Blob([data], { type: "model/stl" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "forge-output.stl";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
 
-  const three = useMemo(() => {
+  // inicializar escena
+  useEffect(() => {
+    const mount = mountRef.current;
+    if (!mount) return;
+
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0b0b0b);
+    scene.background = new THREE.Color(bgLight ? 0xffffff : 0x000000);
+    sceneRef.current = scene;
 
-    const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 2000);
+    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 2000);
     camera.position.set(220, 180, 220);
+    cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
@@ -39,382 +58,154 @@ export default function STLViewerPro({ url, className }: Props) {
     });
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.0;
+    renderer.toneMappingExposure = 0.8 + tone * 0.7;
     renderer.physicallyCorrectLights = true;
-    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.enabled = showShadow;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    rendererRef.current = renderer;
 
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.08;
+    const env = new RoomEnvironment();
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmrem.fromScene(env).texture;
 
-    const group = new THREE.Group();
-    scene.add(group);
-
-    // Grid + ejes
-    const grid = new THREE.GridHelper(1000, 40, 0x333333, 0x202020);
-    const gm: any = (grid as any).material;
-    if (Array.isArray(gm)) gm.forEach((m: any) => ((m.transparent = true), (m.opacity = 0.35)));
-    else {
-      gm.transparent = true;
-      gm.opacity = 0.35;
-    }
+    const grid = new THREE.GridHelper(600, 60, 0xcccccc, 0xeeeeee);
+    (grid.material as THREE.Material).opacity = 0.6;
+    (grid.material as THREE.Material).transparent = true;
     scene.add(grid);
 
-    const axes = new THREE.AxesHelper(80);
-    axes.position.set(-120, 0, -120);
-    scene.add(axes);
-
-    // Entorno + luces
-    const pmrem = new THREE.PMREMGenerator(renderer);
-    const envStudio = pmrem.fromScene(new RoomEnvironment()).texture;
-    scene.environment = envStudio;
-
-    const hemi = new THREE.HemisphereLight(0xffffff, 0x1a1a1a, 0.7);
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x222222, 0.8);
     scene.add(hemi);
-
-    const dir = new THREE.DirectionalLight(0xffffff, 1.4);
-    dir.position.set(2.5, 5, 2.5).multiplyScalar(80);
+    const dir = new THREE.DirectionalLight(0xffffff, 1.0);
+    dir.position.set(300, 400, 200);
     dir.castShadow = true;
     dir.shadow.mapSize.set(2048, 2048);
     scene.add(dir);
 
-    const plane = new THREE.Mesh(
-      new THREE.PlaneGeometry(2000, 2000),
-      new THREE.ShadowMaterial({ opacity: 0.25 })
-    );
-    plane.rotation.x = -Math.PI / 2;
-    plane.position.y = -0.001;
-    plane.receiveShadow = true;
-    scene.add(plane);
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controlsRef.current = controls;
 
-    // Clipping opcional
-    const planes = [
-      new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0),
-      new THREE.Plane(new THREE.Vector3(0, -1, 0), 0),
-      new THREE.Plane(new THREE.Vector3(0, 0, -1), 0),
-    ];
-    renderer.clippingPlanes = [];
-
-    return { scene, camera, renderer, controls, group, dir, hemi, envStudio, planes, pmrem, plane, grid, axes };
-  }, []);
-
-  // Montaje + render loop + resize
-  useEffect(() => {
-    const mount = mountRef.current!;
-    const { renderer, camera, controls } = three;
     mount.appendChild(renderer.domElement);
 
     const onResize = () => {
-      const w = mount.clientWidth || 800;
-      const h = mount.clientHeight || 600;
-      renderer.setSize(w, h, false);
-      camera.aspect = w / h;
+      if (!mount) return;
+      const { clientWidth, clientHeight } = mount;
+      camera.aspect = clientWidth / clientHeight;
       camera.updateProjectionMatrix();
+      renderer.setSize(clientWidth, clientHeight, false);
     };
-    onResize();
     const ro = new ResizeObserver(onResize);
     ro.observe(mount);
+    onResize();
 
     let raf = 0;
-    const loop = () => {
-      raf = requestAnimationFrame(loop);
+    const tick = () => {
       controls.update();
-      renderer.render(three.scene, camera);
+      renderer.render(scene, camera);
+      raf = requestAnimationFrame(tick);
     };
-    loop();
+    tick();
 
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
-      mount.removeChild(renderer.domElement);
+      controls.dispose();
       renderer.dispose();
-      three.pmrem.dispose();
-    };
-  }, [three]);
-
-  // Toggles
-  useEffect(() => {
-    three.renderer.shadowMap.enabled = shadows;
-    (three.dir as any).castShadow = shadows;
-    three.plane.visible = shadows;
-  }, [shadows, three]);
-
-  useEffect(() => {
-    three.renderer.toneMappingExposure = tone;
-  }, [tone, three]);
-
-  useEffect(() => {
-    switch (preset) {
-      case "studio":
-        three.hemi.intensity = 0.7;
-        (three.dir as any).intensity = 1.4;
-        three.scene.background = new THREE.Color(bgLight ? 0xf5f5f5 : 0x0b0b0b);
-        break;
-      case "neutral":
-        three.hemi.intensity = 0.5;
-        (three.dir as any).intensity = 1.0;
-        three.scene.background = new THREE.Color(bgLight ? 0xffffff : 0x111111);
-        break;
-      case "night":
-        three.hemi.intensity = 0.25;
-        (three.dir as any).intensity = 0.6;
-        three.scene.background = new THREE.Color(bgLight ? 0xdddddd : 0x000000);
-        break;
-    }
-  }, [preset, bgLight, three]);
-
-  useEffect(() => {
-    three.renderer.localClippingEnabled = clipping;
-    three.renderer.clippingPlanes = clipping ? three.planes : [];
-  }, [clipping, three]);
-
-  // ------------ Bus de eventos del configurador -------------
-  useEffect(() => {
-    const onGenUrl = (ev: Event) => {
-      const detail = (ev as CustomEvent).detail || {};
-      if (detail?.url) setInternalUrl(String(detail.url));
-    };
-    const onLoadUrl = (ev: Event) => {
-      const detail = (ev as CustomEvent).detail || {};
-      if (detail?.url) setInternalUrl(String(detail.url));
-    };
-    const onClear = () => {
-      setInternalUrl(null);
-      const { group } = three;
-      group.clear();
+      pmrem.dispose();
+      scene.clear();
+      if (renderer.domElement && renderer.domElement.parentElement) {
+        renderer.domElement.parentElement.removeChild(renderer.domElement);
+      }
+      sceneRef.current = null;
+      rendererRef.current = null;
+      cameraRef.current = null;
+      controlsRef.current = null;
       currentMeshRef.current = null;
-      lastSizeRef.current = null;
     };
+  }, []); // init 1 vez
 
-    window.addEventListener("forge:generated-url", onGenUrl as any);
-    window.addEventListener("forge:load-url", onLoadUrl as any);
-    window.addEventListener("forge:clear", onClear as any);
-
-    return () => {
-      window.removeEventListener("forge:generated-url", onGenUrl as any);
-      window.removeEventListener("forge:load-url", onLoadUrl as any);
-      window.removeEventListener("forge:clear", onClear as any);
-    };
-  }, [three]);
-
-  // Carga STL (desde internalUrl)
+  // cambios de UI: fondo, sombras, tone mapping
   useEffect(() => {
-    const { group, scene, camera, controls, renderer } = three;
+    if (sceneRef.current) {
+      sceneRef.current.background = new THREE.Color(bgLight ? 0xffffff : 0x000000);
+    }
+  }, [bgLight]);
 
-    // limpia todo lo previo
-    group.clear();
-    currentMeshRef.current = null;
-    lastSizeRef.current = null;
-    if (!internalUrl) return;
+  useEffect(() => {
+    if (rendererRef.current) {
+      rendererRef.current.shadowMap.enabled = showShadow;
+      rendererRef.current.toneMappingExposure = 0.8 + tone * 0.7;
+    }
+  }, [showShadow, tone]);
+
+  // carga STL
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    // limpia malla previa
+    const prev = currentMeshRef.current;
+    if (prev) {
+      scene.remove(prev);
+      prev.geometry.dispose();
+      (prev.material as THREE.Material).dispose?.();
+      currentMeshRef.current = null;
+    }
+
+    if (!url) return;
 
     const loader = new STLLoader();
-    let aborted = false;
-
-    (async () => {
-      try {
-        // Bust de caché para evitar ver el STL anterior (CDN/proxy)
-        const bust = internalUrl.includes("?") ? `&t=${Date.now()}` : `?t=${Date.now()}`;
-        const finalUrl = internalUrl + bust;
-
-        const res = await fetch(finalUrl, { mode: "cors", cache: "no-store" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const buf = await res.arrayBuffer();
-        if (aborted) return;
-
-        const geometry = loader.parse(buf);
-        const material = new THREE.MeshStandardMaterial({
-          color: 0x9ea2a7,
-          roughness: 0.85,
-          metalness: 0.05,
-        });
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.castShadow = true;
-
-        // Normaliza
-        geometry.computeVertexNormals();
+    loader.load(
+      url,
+      (geometry) => {
         geometry.center();
-
-        geometry.computeBoundingBox();
-        const gbox = geometry.boundingBox!;
-        const size = new THREE.Vector3();
-        gbox.getSize(size);
-        lastSizeRef.current = { x: size.x, y: size.y, z: size.z };
-
-        // Apoyar en el suelo
-        const minY = gbox.min.y;
-        mesh.position.y -= minY;
-
-        group.add(mesh);
+        geometry.computeVertexNormals();
+        const mat = new THREE.MeshStandardMaterial({
+          color: 0xf0f0f0,
+          metalness: 0.15,
+          roughness: 0.85,
+        });
+        const mesh = new THREE.Mesh(geometry, mat);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        scene.add(mesh);
         currentMeshRef.current = mesh;
-
-        // Encuadre cámara
-        const radius = size.length() * 0.5 || 1;
-        const fov = camera.fov * (Math.PI / 180);
-        const dist = radius / Math.sin(fov / 2);
-        camera.near = Math.max(0.1, dist * 0.01);
-        camera.far = dist * 10 + radius * 2;
-        camera.updateProjectionMatrix();
-
-        controls.target.set(0, size.y * 0.5, 0);
-        camera.position.set(dist, dist * 0.6, dist);
-        controls.update();
-
-        renderer.render(scene, camera);
-      } catch (e) {
-        console.error("Error cargando STL:", e);
+      },
+      undefined,
+      () => {
+        // fallo de carga: no romper la escena
       }
-    })();
-
-    return () => {
-      aborted = true;
-    };
-  }, [internalUrl, three]);
-
-  // ALT + clic → añade agujero
-  useEffect(() => {
-    const el = mountRef.current;
-    if (!el) return;
-
-    const raycaster = new THREE.Raycaster();
-    const mouse = new THREE.Vector2();
-
-    const onClick = (ev: MouseEvent) => {
-      if (!ev.altKey) return;
-      const mesh = currentMeshRef.current;
-      const size = lastSizeRef.current;
-      if (!mesh || !size) return;
-
-      const rect = el.getBoundingClientRect();
-      mouse.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
-      mouse.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
-
-      raycaster.setFromCamera(mouse, three.camera);
-      const intersects = raycaster.intersectObject(mesh, true);
-      if (!intersects.length) return;
-
-      const pWorld = intersects[0].point.clone();
-      const pLocal = pWorld.clone();
-      mesh.worldToLocal(pLocal);
-
-      const x_mm = pLocal.x + size.x / 2;
-      const y_mm = pLocal.y + size.y / 2;
-      const x_clamped = Math.max(0, Math.min(x_mm, size.x));
-      const y_clamped = Math.max(0, Math.min(y_mm, size.y));
-
-      window.dispatchEvent(
-        new CustomEvent("forge:add-hole", {
-          detail: { x_mm: x_clamped, y_mm: y_clamped, d_mm: 4 },
-        })
-      );
-    };
-
-    el.addEventListener("click", onClick);
-    return () => el.removeEventListener("click", onClick);
-  }, [three]);
-
-  // --- Helper: crea un Blob válido desde la salida del STLExporter ---
-  function blobFromExporterOutput(output: unknown): Blob {
-    const type = "model/stl";
-
-    // 1) ArrayBuffer
-    if (output instanceof ArrayBuffer) {
-      return new Blob([output], { type });
-    }
-
-    // 2) DataView-like (duck-typing: objeto con .buffer ArrayBuffer)
-    if (
-      typeof output === "object" &&
-      output !== null &&
-      "buffer" in (output as any) &&
-      (output as any).buffer instanceof ArrayBuffer
-    ) {
-      return new Blob([(output as any).buffer as ArrayBuffer], { type });
-    }
-
-    // 3) string
-    if (typeof output === "string") {
-      return new Blob([output], { type });
-    }
-
-    // 4) último recurso: intentar crear el blob directamente
-    try {
-      return new Blob([output as any], { type });
-    } catch {
-      return new Blob([], { type });
-    }
-  }
-
-  // Exportar a STL lo que se ve
-  function downloadCurrentSTL(fileName = "modelo.stl") {
-    try {
-      const exporter = new STLExporter();
-      const object: any = currentMeshRef.current || three.group || three.scene;
-      if (!object) throw new Error("No hay malla para exportar");
-      const output = exporter.parse(object, { binary: true } as any);
-      const blob = blobFromExporterOutput(output);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      console.error(e);
-      alert("No se pudo exportar el STL");
-    }
-  }
+    );
+  }, [url]);
 
   return (
-    <div ref={mountRef} className={className ?? "h-[70vh] w-full relative rounded-xl overflow-hidden bg-black"}>
-      {/* HUD */}
-      <div className="pointer-events-auto absolute top-3 left-3 z-10 flex flex-wrap items-center gap-3 text-xs">
-        <button
-          onClick={() => setShadows((s) => !s)}
-          className="px-2 py-1 rounded-md bg-neutral-800 text-neutral-100 border border-neutral-700"
-        >
-          Sombras: {shadows ? "ON" : "OFF"}
-        </button>
-
-        <div className="flex items-center gap-2 bg-neutral-800 border border-neutral-700 px-2 py-1 rounded-md">
-          <span className="text-neutral-300">Tone</span>
+    <div ref={mountRef} className={`relative w-full rounded-xl ${className ?? "h-[520px] bg-white"}`}>
+      {/* Barra de controles DENTRO del panel (arriba dcha) */}
+      <div className="pointer-events-auto absolute right-3 top-3 z-20 flex flex-wrap items-center gap-2 rounded-xl border border-neutral-200/70 bg-white/90 px-3 py-2 shadow-sm backdrop-blur">
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={bgLight} onChange={(e) => setBgLight(e.target.checked)} />
+          Fondo claro
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={showShadow} onChange={(e) => setShowShadow(e.target.checked)} />
+          Sombras
+        </label>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-neutral-600">Tone</span>
           <input
             type="range"
-            min={0.3}
-            max={1.8}
-            step={0.05}
+            min={0}
+            max={1}
+            step={0.01}
             value={tone}
-            onChange={(e) => setTone(parseFloat(e.target.value))}
+            onChange={(e) => setTone(parseFloat(e.currentTarget.value))}
           />
         </div>
-
-        <select
-          value={preset}
-          onChange={(e) => setPreset(e.target.value as any)}
-          className="bg-neutral-800 text-neutral-100 border border-neutral-700 rounded-md px-2 py-1"
-        >
-          <option value="studio">studio</option>
-          <option value="neutral">neutral</option>
-          <option value="night">night</option>
-        </select>
-
-        <label className="bg-neutral-800 text-neutral-100 border border-neutral-700 rounded-md px-2 py-1 flex items-center gap-2">
-          <span>Clipping</span>
-          <input type="checkbox" checked={clipping} onChange={(e) => setClipping(e.target.checked)} />
-        </label>
-
-        <label className="bg-neutral-800 text-neutral-100 border border-neutral-700 rounded-md px-2 py-1 flex items-center gap-2">
-          <span>Fondo claro</span>
-          <input type="checkbox" checked={bgLight} onChange={(e) => setBgLight(e.target.checked)} />
-        </label>
-
-        {/* Descargar STL del viewer */}
         <button
-          onClick={() => downloadCurrentSTL()}
-          className="px-3 py-1 rounded bg-neutral-900/80 text-white hover:bg-neutral-900 border border-neutral-700"
+          onClick={downloadCurrentSTL}
+          className="rounded-md bg-[#2663EB] px-2 py-1 text-sm text-white hover:bg-[#1f55c8]"
         >
           Descargar STL
         </button>
