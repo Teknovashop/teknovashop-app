@@ -31,13 +31,14 @@ export default function STLViewerPro({ url, className }: Props) {
     if (!mesh) return;
     const exporter = new STLExporter();
     const parsed = exporter.parse(mesh, { binary: true }) as unknown;
-    // three.js types: con binary:true suele devolver DataView. Soportamos ambos.
-    const arrayBuffer =
-      parsed instanceof ArrayBuffer
-        ? parsed
-        : (parsed as DataView).buffer;
 
-    const blob = new Blob([arrayBuffer], { type: "model/stl" });
+    // ✅ Construir BlobPart seguro (Uint8Array) para evitar el error de ArrayBufferLike / SharedArrayBuffer
+    const bytes =
+      parsed instanceof ArrayBuffer
+        ? new Uint8Array(parsed)
+        : new Uint8Array((parsed as DataView).buffer);
+
+    const blob = new Blob([bytes], { type: "model/stl" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = "forge-output.stl";
