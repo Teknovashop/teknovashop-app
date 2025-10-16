@@ -3,29 +3,30 @@
 
 type Option = { label: string; value: string };
 
-type Props = {
-  value: string;
-  onChange: (v: string) => void;
-  options: Option[];
-  className?: string;
-  label?: string;
-};
-
 export default function ModelSelector({
   value,
   onChange,
   options,
-  className = "",
-  label = "Modelo",
-}: Props) {
+  placeholder = "Selecciona modelo…",
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: Option[];
+  placeholder?: string;
+}) {
   return (
-    <label className={`flex w-full flex-col gap-1 text-sm ${className}`}>
-      <span className="text-neutral-600">{label}</span>
+    <label className="block text-sm">
+      <span className="mb-1 block text-neutral-600">Modelo</span>
       <select
         className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2"
         value={value}
         onChange={(e) => onChange(e.target.value)}
       >
+        {value ? null : (
+          <option value="" disabled>
+            {placeholder}
+          </option>
+        )}
         {options.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}
@@ -35,3 +36,4 @@ export default function ModelSelector({
     </label>
   );
 }
+
