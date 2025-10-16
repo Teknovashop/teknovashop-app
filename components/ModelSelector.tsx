@@ -1,32 +1,36 @@
+// components/ModelSelector.tsx
 "use client";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-import type { ModelId } from "@/models/registry";
+type Option = { label: string; value: string };
 
-export default function ModelSelector({
-  value,
-  onChange,
-}: { value: ModelId; onChange: (m: ModelId) => void }) {
-  const items: { id: ModelId; label: string }[] = [
-    { id: "cable_tray", label: "Cable Tray" },
-    { id: "vesa_adapter", label: "VESA Adapter" },
-    { id: "router_mount", label: "Router Mount" },
-    { id: "phone_stand", label: "Phone Stand" },
-    { id: "qr_plate", label: "QR Plate" },
-    { id: "enclosure_ip65", label: "Enclosure IP65" },
-    { id: "cable_clip", label: "Cable Clip" },
-  ];
+const OPTIONS: Option[] = [
+  { label: "Cable Tray (bandeja)", value: "cable_tray" },
+  { label: "VESA Adapter", value: "vesa_adapter" },
+  { label: "Router Mount (L)", value: "router_mount" },
+  // el resto apuntan al fallback hasta que el “real” esté listo:
+  { label: "Cable Clip", value: "Cable Clip" },
+  { label: "Headset Stand", value: "Headset Stand" },
+  { label: "Phone Dock (USB-C)", value: "Phone Dock (USB-C)" },
+  { label: "Tablet Stand", value: "Tablet Stand" },
+  { label: "SSD Holder (2.5\")", value: "SSD Holder (2.5\")" },
+  { label: "Raspberry Pi Case", value: "Raspberry Pi Case" },
+  { label: "GoPro Mount", value: "GoPro Mount" },
+  { label: "Wall Hook", value: "Wall Hook" },
+  { label: "Monitor Stand", value: "Monitor Stand" },
+  { label: "Laptop Stand", value: "Laptop Stand" },
+  { label: "Mic Arm Clip", value: "Mic Arm Clip" },
+  { label: "Camera Plate 1/4\"", value: "Camera Plate 1/4\"" },
+  { label: "USB Hub Holder", value: "USB Hub Holder" },
+];
 
+export function ModelSelector({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
-    <div className="mb-3 flex w-full flex-wrap gap-2">
-      {items.map((it) => (
-        <button
-          key={it.id}
-          onClick={() => onChange(it.id)}
-          className={`rounded-lg border px-3 py-1.5 text-sm ${value === it.id ? "bg-black text-white border-black" : "bg-white hover:bg-gray-50"}`}
-        >
-          {it.label}
-        </button>
-      ))}
-    </div>
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger><SelectValue placeholder="Modelo" /></SelectTrigger>
+      <SelectContent>
+        {OPTIONS.map(o => <SelectItem key={o.label} value={o.value}>{o.label}</SelectItem>)}
+      </SelectContent>
+    </Select>
   );
 }
