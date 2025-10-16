@@ -139,6 +139,16 @@ export default function ForgeForm({
 
     setBusy(true);
     try {
+      // Adaptamos textOps del UI a text_ops del backend (también dejamos el original en params por compatibilidad)
+      const text_ops = (textOps || []).map((t) => ({
+        text: t.text,
+        height: Number(t.size) || 10,
+        depth: Number(t.depth ?? 1) || 1,
+        pos: [Number(t.x) || 0, Number(t.y) || 0, (Number(params.thickness_mm) || 3) / 2],
+        rot: [0, 0, 0],
+        mode: "engrave",
+      }));
+
       const payload = {
         model,
         params: {
@@ -152,27 +162,28 @@ export default function ForgeForm({
             y_mm: Number(h.y_mm),
             d_mm: Number(h.d_mm),
           })),
-          arrayOps, // NEW
-          textOps,  // NEW
+          arrayOps, // mantenemos por compatibilidad
+          textOps,  // mantenemos por compatibilidad
         },
+        // NEW: enviamos también en la raíz para que el backend siempre lo recoja
+        text_ops,
       };
 
       const res = await fetch(`${API_BASE}/generate`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
       });
 
       const json = await res.json().catch(() => ({} as any));
 
-      // NEW: si el backend respondió ok:false, propaga el error real
+      // --- BLOQUE DE MANEJO DE ERRORES LIMPIO ---
       if (json && json.ok === false) {
         throw new Error(json.error || json.detail || `Error del backend`);
       }
       if (!res.ok) {
         throw new Error(json?.detail || json?.error || `HTTP ${res.status}`);
       }
-
       const url: string | undefined = json?.stl_url || json?.signed_url || json?.url;
       if (url) {
         onGenerated?.(url);
@@ -180,9 +191,9 @@ export default function ForgeForm({
       } else if (json?.path) {
         emit("forge:generated-path", { path: json.path });
       } else {
-        // NEW: mensaje claro si no hay URL
         throw new Error("El backend no devolvió URL del STL");
       }
+      // --- FIN BLOQUE ---
     } catch (e: any) {
       setError(e?.message || "No se pudo generar el STL");
     } finally {
