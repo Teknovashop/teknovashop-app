@@ -1,11 +1,10 @@
-// components/ForgeForm.tsx
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 type ForgeModel = {
   slug: string;       // kebab-case
-  label: string;      // mostrado en el select
+  label: string;      // texto del dropdown
   defaults?: {
     length_mm?: number;
     width_mm?: number;
@@ -14,6 +13,23 @@ type ForgeModel = {
     fillet_mm?: number;
   };
 };
+
+type TextMode = "engrave" | "emboss";
+
+export interface ForgeFormProps {
+  /** slug en kebab-case (ej: "router-mount") */
+  initialModel?: string;
+  /** objeto de params iniciales {length_mm,width_mm,height_mm,thickness_mm,fillet_mm} */
+  initialParams?: Partial<{
+    length_mm: number;
+    width_mm: number;
+    height_mm: number;
+    thickness_mm: number;
+    fillet_mm: number;
+  }>;
+  /** callback cuando el backend devuelve una URL firmada */
+  onGenerated?: (url: string) => void;
+}
 
 const MODELS: ForgeModel[] = [
   { slug: "vesa-adapter", label: "Adaptador VESA 75/100 -> 100/200" },
@@ -31,21 +47,15 @@ const MODELS: ForgeModel[] = [
   { slug: "wall-bracket", label: "Soporte de Pared" },
 ];
 
-type TextMode = "engrave" | "emboss";
-
 function kebabToTitle(s: string) {
   return s.replace(/-/g, " ").replace(/\b\w/g, m => m.toUpperCase());
 }
-
 function parseNumber(v: string | number): number {
   if (typeof v === "number") return v;
   const n = parseFloat(String(v).replace(",", "."));
   return isFinite(n) ? n : 0;
 }
-
 function parseHoles(input: string): { x: number; y: number; diam_mm: number }[] {
-  // Formatos admitidos: "x,y,d x,y,d" o "x,y,d; x,y,d"
-  // Ejemplo: "5,5,5  10,5,3.2"  -> [{x:5,y:5,d:5},{x:10,y:5,d:3.2}]
   if (!input?.trim()) return [];
   const chunks = input
     .replace(/;/g, " ")
@@ -60,24 +70,39 @@ function parseHoles(input: string): { x: number; y: number; diam_mm: number }[] 
     const x = parseNumber(parts[0]);
     const y = parseNumber(parts[1]);
     const d = parseNumber(parts[2]);
-    if (x || y || d) {
+    if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(d)) {
       out.push({ x, y, diam_mm: d });
     }
   }
   return out;
 }
 
-export default function ForgeForm() {
-  const [model, setModel] = useState<string>(MODELS[0].slug);
-  const [lengthMM, setLengthMM] = useState<number>(120);
-  const [widthMM, setWidthMM] = useState<number>(60);
-  const [heightMM, setHeightMM] = useState<number>(8);
-  const [thicknessMM, setThicknessMM] = useState<number>(2.4);
-  const [filletMM, setFilletMM] = useState<number>(2);
-  const [holesText, setHolesText] = useState<string>(""); // x,y,d ...
+export default function ForgeForm(props: ForgeFormProps) {
+  // estado base
+  const [model, setModel] = useState<string>(props.initialModel || MODELS[0].slug);
+  const [lengthMM, setLengthMM] = useState<number>(props.initialParams?.length_mm ?? 120);
+  const [widthMM, setWidthMM] = useState<number>(props.initialParams?.width_mm ?? 60);
+  const [heightMM, setHeightMM] = useState<number>(props.initialParams?.height_mm ?? 8);
+  const [thicknessMM, setThicknessMM] = useState<number>(props.initialParams?.thickness_mm ?? 2.4);
+  const [filletMM, setFilletMM] = useState<number>(props.initialParams?.fillet_mm ?? 2);
+  const [holesText, setHolesText] = useState<string>(""); // x,y,diam ...
   const [text, setText] = useState<string>("");
   const [textMode, setTextMode] = useState<TextMode>("engrave");
   const [busy, setBusy] = useState(false);
+
+  // sincroniza si cambian props desde la página
+  useEffect(() => {
+    if (props.initialModel) setModel(props.initialModel);
+  }, [props.initialModel]);
+  useEffect(() => {
+    if (props.initialParams) {
+      if (props.initialParams.length_mm != null) setLengthMM(props.initialParams.length_mm);
+      if (props.initialParams.width_mm != null) setWidthMM(props.initialParams.width_mm);
+      if (props.initialParams.height_mm != null) setHeightMM(props.initialParams.height_mm);
+      if (props.initialParams.thickness_mm != null) setThicknessMM(props.initialParams.thickness_mm);
+      if (props.initialParams.fillet_mm != null) setFilletMM(props.initialParams.fillet_mm);
+    }
+  }, [props.initialParams]);
 
   const current = useMemo(
     () => MODELS.find(m => m.slug === model) ?? MODELS[0],
@@ -90,7 +115,7 @@ export default function ForgeForm() {
 
       const holes = parseHoles(holesText);
       const body: any = {
-        slug: model, // kebab-case; el backend lo mapea a snake
+        slug: model, // kebab; backend mapea a snake
         params: {
           length_mm: lengthMM,
           width_mm: widthMM,
@@ -108,13 +133,14 @@ export default function ForgeForm() {
             mode: textMode, // "engrave" | "emboss"
             size: Math.max(6, Math.min(widthMM * 0.5, 20)),
             depth: Math.max(0.6, thicknessMM * 0.5),
-            pos: [0, 0, 0], // los builders suelen centrar; el backend hace el merge sin romper
+            pos: [0, 0, 0],
             rot: [0, 0, 0],
           },
         ];
       }
 
-      const res = await fetch(process.env.NEXT_PUBLIC_BACKEND_URL || "/api/forge/generate", {
+      const url = process.env.NEXT_PUBLIC_BACKEND_URL || "/api/forge/generate";
+      const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -126,16 +152,16 @@ export default function ForgeForm() {
         return;
       }
 
-      // Esperamos { ok, path, signed_url }
-      if (!data?.signed_url && !data?.path) {
-        alert(JSON.stringify(data || {}));
-        return;
+      const signed = data?.signed_url || data?.url || "";
+      if (!signed) {
+        // evita alertar "{}"
+        alert("Generado (sin URL).");
+      } else {
+        props.onGenerated?.(signed);
+        // Puedes abrir la descarga directa si quieres:
+        // window.open(signed, "_blank");
+        alert("Generado ✅");
       }
-
-      // Descarga directa si el visor no auto-carga:
-      // window.open(data.signed_url ?? "", "_blank");
-
-      alert("Generado ✅");
     } catch (e: any) {
       alert(e?.message || String(e));
     } finally {
@@ -233,10 +259,8 @@ export default function ForgeForm() {
         </button>
       </div>
 
-      {/* El visor existente queda como estaba en tu proyecto */}
-      <div className="rounded border min-h-[560px]">
-        {/* Aquí renderizas tu visor actual (THREE/React-Three-Fiber, etc.) */}
-      </div>
+      {/* tu visor 3D existente va en el panel derecho */}
+      <div className="rounded border min-h-[560px]" />
     </div>
   );
 }
