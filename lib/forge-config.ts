@@ -1,6 +1,11 @@
 // lib/forge-config.ts
+// Tipos opcionales (si ya los tienes en ./forge-spec puedes seguir importándolos)
 import type { ForgeModelSlug, ForgeParams, Fields } from "./forge-spec";
 
+/**
+ * Parámetros por modelo (defaults para el UI específico de cada pieza).
+ * No los usa el backend; son sólo para el formulario.
+ */
 export const DEFAULT_PARAMS: Record<ForgeModelSlug, ForgeParams> = {
   "vesa-adapter": {
     width: 120,
@@ -126,6 +131,9 @@ export const DEFAULT_PARAMS: Record<ForgeModelSlug, ForgeParams> = {
   },
 };
 
+/**
+ * Metadatos de campos para el UI (labels, steps, mínimos, etc)
+ */
 export const FIELDS: Partial<Record<ForgeModelSlug, Fields>> = {
   "vesa-adapter": {
     width:        { label: "Ancho placa (mm)",   type: "number", step: 1,   min: 60, defaultValue: 120 },
@@ -194,7 +202,6 @@ export const FIELDS: Partial<Record<ForgeModelSlug, Fields>> = {
     board_h:  { label: "Alto placa (mm)",  type: "number", step: 0.5, min: 14, defaultValue: 17.0 },
     port_clear:{ label: "Holgura puertos (mm)", type: "number", step: 0.5, min: 0, defaultValue: 1.0 },
     wall:     { label: "Grosor (mm)",      type: "number", step: 0.2, min: 2, defaultValue: 2.2 },
-    // has_vents es booleano: de momento lo omitimos del UI; puedes añadir un toggle si quieres
   },
   "go-pro-mount": {
     fork_pitch: { label: "Separación orejas (mm)", type: "number", step: 0.5, min: 15, defaultValue: 17.5 },
@@ -250,3 +257,50 @@ export const FIELDS: Partial<Record<ForgeModelSlug, Fields>> = {
     wall:      { label: "Grosor (mm)",        type: "number", step: 0.5, min: 2,  defaultValue: 3 },
   },
 };
+
+/* ===============================
+ *  Cliente del servicio de FORGE
+ * =============================== */
+
+export const FORGE_BASE =
+  (process.env.NEXT_PUBLIC_BACKEND_URL || "").replace(/\/+$/, "") ||
+  "https://teknovashop-forge.onrender.com";
+
+/**
+ * Llama al endpoint /generate del backend.
+ * Lanza Error con el detalle de la respuesta si no es 2xx.
+ */
+export async function forgeGenerate(body: {
+  slug: string;
+  params: any;
+  holes?: Array<{ x: number; y: number; diameter_mm: number }>;
+  text_ops?: Array<{
+    text: string;
+    size?: number;
+    depth?: number;
+    mode?: "engrave" | "emboss";
+    pos?: [number, number, number];
+    rot?: [number, number, number];
+    font?: string;
+  }>;
+}) {
+  const res = await fetch(`${FORGE_BASE}/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    // El backend devuelve {detail} o {message}
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data?.detail || data?.message || res.statusText);
+  }
+
+  return res.json() as Promise<{
+    ok: boolean;
+    slug: string;
+    path: string;
+    url?: string;
+    signed_url?: string;
+  }>;
+}
