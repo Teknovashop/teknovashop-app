@@ -52,7 +52,7 @@ function ensureNumber(out: Dict, key: string, fallback?: number) {
   const v = n(out[key]);
   out[key] = v == null ? (fallback ?? 1) : v;
 }
-function normalizeParams(model: string, raw: Dict = {}) {
+function normalizeParams(_slug: string, raw: Dict = {}) {
   const src: Dict = {};
   for (const k of Object.keys(raw)) src[k] = n(raw[k]) ?? raw[k];
   const out: Dict = { ...src };
@@ -71,20 +71,33 @@ function normalizeParams(model: string, raw: Dict = {}) {
   return out;
 }
 
+function toSnakeOrKebab(slug: string) {
+  const s = (slug || "").trim().toLowerCase();
+  // el backend ya mapea alias; aquí solo aceptamos ambos formatos
+  return s;
+}
+
 export async function POST(req: Request) {
   try {
-    const { model, params, holes } = await req.json().catch(() => ({} as any));
-    if (!model) return cors({ ok: false, error: "Missing 'model'" }, 400);
+    const body = await req.json().catch(() => ({} as any));
+    const model: string | undefined = body?.model;
+    const slugIn: string | undefined = body?.slug;
+    if (!model && !slugIn) return cors({ ok: false, error: "Missing 'slug' or 'model'" }, 400);
     if (!BACKEND) return cors({ ok: false, error: "Backend URL not configured" }, 500);
 
-    const normalized = normalizeParams(String(model), params || {});
+    const slug = toSnakeOrKebab(slugIn || model!);
+    const params = normalizeParams(slug, body?.params || {});
+    const holes = Array.isArray(body?.holes) ? body.holes : [];
+    const text_ops = Array.isArray(body?.text_ops) ? body.text_ops : [];
 
+    // El backend espera 'slug'
     const gen = await fetch(`${BACKEND}/generate`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ model, params: normalized, holes: Array.isArray(holes) ? holes : [] }),
+      body: JSON.stringify({ slug, params, holes, text_ops, model }), // enviamos ambos por compatibilidad
       cache: "no-store",
     });
+
     const genJson = await gen.json().catch(() => ({} as any));
     if (!gen.ok) return cors({ ok: false, error: toMessage(genJson?.detail || genJson?.error || "Generation failed") }, gen.status || 500);
 
