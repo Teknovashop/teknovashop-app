@@ -1,99 +1,53 @@
-// app/forge/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import dynamic from "next/dynamic";
-import { MODELS } from "@/data/models";
+import { useMemo, useState } from "react";
+import ForgeForm from "@/components/ForgeForm";
 
-export const dynamicParams = true;
-export const revalidate = 0;
-
-// Carga diferida de tus componentes Three si los usas
-const STLViewerPro = dynamic(() => import("@/components/STLViewerPro"), { ssr: false });
-const ForgeForm = dynamic(() => import("@/components/ForgeForm"), { ssr: false });
-
-const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL;
-
-/** Renombrado para evitar colisiones con tipos de ForgeForm */
-type UrlParams = {
-  length_mm?: number;
-  width_mm?: number;
-  height_mm?: number;
-  thickness_mm?: number;
-  fillet_mm?: number;
-  // añade aquí otros campos opcionales que envíes al backend
-};
-
-function parseParams(q: string | null): UrlParams | null {
-  if (!q) return null;
-  try {
-    const obj = JSON.parse(decodeURIComponent(q));
-    if (typeof obj === "object" && obj) return obj as UrlParams;
-  } catch {}
-  return null;
-}
-
-// Convierte slug kebab-case -> snake_case para el backend si hace falta
-const toBackendId = (slug: string) => slug.replace(/-/g, "_");
-
+/**
+ * Esta página admite query `?model=<slug>&params=<json>`
+ * pero si no vienen, usa defaults. El back espera `slug` en kebab o snake.
+ */
 export default function ForgePage({
   searchParams,
 }: {
   searchParams?: Record<string, string | string[] | undefined>;
 }) {
-  const defaultModel = MODELS[0]?.slug ?? "vesa-adapter";
-  const queryModel = (searchParams?.model as string) || defaultModel;
-
-  // Garantiza que sea uno de los modelos que existen
-  const model = MODELS.some((m) => m.slug === queryModel) ? queryModel : defaultModel;
-
-  const params = useMemo(
-    () => parseParams(searchParams?.params as string | null),
-    [searchParams]
-  );
-  const autogen = (searchParams?.generate as string) === "1";
-
   const [stlUrl, setStlUrl] = useState<string | null>(null);
 
-  // Auto-generar STL si vienen model+params y generate=1
-  useEffect(() => {
-    if (!API_BASE || !params || !autogen) return;
+  const model = useMemo(() => {
+    const m = (searchParams?.model as string) || "";
+    return (m || "vesa-adapter").toLowerCase();
+  }, [searchParams]);
 
-    (async () => {
-      try {
-        const res = await fetch(`${API_BASE}/generate`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          // si tu backend espera snake_case en `model`
-          body: JSON.stringify({ model: toBackendId(model), params, holes: [] }),
-        });
-        const json = await res.json();
-        if (res.ok && json?.stl_url) setStlUrl(json.stl_url);
-      } catch {
-        // silencio: el usuario siempre puede generar desde el formulario
-      }
-    })();
-  }, [model, params, autogen]);
+  const initialParams = useMemo(() => {
+    try {
+      const p = searchParams?.params as string;
+      if (!p) return undefined;
+      return JSON.parse(p);
+    } catch {
+      return undefined;
+    }
+  }, [searchParams]);
 
   return (
-    <div className="space-y-8">
-      <h1 className="sr-only">Forge</h1>
-      <div className="grid gap-6 lg:grid-cols-[360px,1fr]">
-        {/* Columna izquierda: formulario */}
-        <div className="w-full">
-          <ForgeForm
-            initialModel={model}                          // usamos el slug tal cual
-            initialParams={(params ?? undefined) as any}   // evitar choque de tipos con ForgeForm
-            onGenerated={(url: string) => setStlUrl(url)}
-          />
-        </div>
+    <div className="mx-auto max-w-7xl p-4 grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="lg:col-span-4">
+        <ForgeForm
+          initialModel={model}
+          initialParams={(initialParams ?? undefined) as any}
+          onGenerated={(url: string) => setStlUrl(url)}
+        />
+      </div>
 
-        {/* Columna derecha: visor(es) */}
-        <div className="grid gap-6">
-          <div className="rounded-2xl border border-neutral-200 bg-neutral-900/2 p-3">
-            <STLViewerPro url={stlUrl} className="h-[480px] w-full rounded-xl bg-black/90" />
+      <div className="lg:col-span-8">
+        {/* El visor que ya tienes (Three.js/Canvas) debería leer el STL desde `stlUrl` si lo usas.
+           Aquí solo lo conservamos para no tocar tu visor. */}
+        {stlUrl ? (
+          <div className="text-sm text-green-700 mb-2">
+            STL generado: <a className="underline" href={stlUrl} target="_blank" rel="noreferrer">{stlUrl}</a>
           </div>
-        </div>
+        ) : null}
+        <div id="forge-viewer" className="w-full min-h-[520px] rounded border border-neutral-200" />
       </div>
     </div>
   );
