@@ -1,7 +1,7 @@
 // components/ForgeForm.tsx
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useState } from "react";
 
 const API_BASE =
   (process.env.NEXT_PUBLIC_FORGE_API_URL ||
@@ -9,476 +9,215 @@ const API_BASE =
     "").replace(/\/+$/, "");
 
 type Params = {
-  length_mm: number;
-  width_mm: number;
-  height_mm: number;
+  length_mm?: number;
+  width_mm?: number;
+  height_mm?: number;
   thickness_mm?: number;
-  fillet_mm?: number;
+  fillet_mm?: number;   // redondeo
+  round_mm?: number;    // alias aceptado (se normaliza a fillet_mm)
+  [k: string]: any;
 };
 
-type Hole = { x_mm: number; y_mm: number; d_mm: number };
-type ArrayOp = { count: number; dx: number; dy: number };
-type TextOp = { text: string; size: number; x: number; y: number; depth?: number };
+type TextOp = {
+  text: string;
+  size?: number;
+  depth?: number;
+  mode?: "engrave" | "emboss";
+  pos?: [number, number, number];
+  rot?: [number, number, number];
+  font?: string | null;
+};
 
 type Props = {
-  initialModel?: string;
+  initialModel?: string;          // puede venir en kebab o snake
   initialParams?: Params;
-  initialHoles?: Hole[];
+  initialText?: string;
   onGenerated?: (url: string) => void;
 };
 
-const MODEL_OPTIONS = [
-  { value: "cable_tray", label: "Cable Tray (bandeja)" },
-  { value: "vesa_adapter", label: "VESA Adapter" },
-  { value: "router_mount", label: "Router Mount (L)" },
-  { value: "cable_clip", label: "Cable Clip" },
-  { value: "headset_stand", label: "Headset Stand" },
-  { value: "phone_dock", label: "Phone Dock (USB-C)" },
-  { value: "tablet_stand", label: "Tablet Stand" },
-  { value: "ssd_holder", label: 'SSD Holder (2.5")' },
-  { value: "raspi_case", label: "Raspberry Pi Case" },
-  { value: "go_pro_mount", label: "GoPro Mount" },
-  { value: "wall_hook", label: "Wall Hook" },
-  { value: "monitor_stand", label: "Monitor Stand" },
-  { value: "laptop_stand", label: "Laptop Stand" },
-  { value: "mic_arm_clip", label: "Mic Arm Clip" },
-  { value: "camera_plate", label: 'Camera Plate 1/4"' },
-  { value: "hub_holder", label: "USB Hub Holder" },
-];
-
-function n(v: any, def: number): number {
-  const x = Number(v);
-  return Number.isFinite(x) ? x : def;
-}
-function clamp(x: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, x));
-}
-function emit<T = any>(name: string, detail?: T) {
-  try {
-    window.dispatchEvent(new CustomEvent(name, { detail }));
-  } catch {}
+function toSnakeFromKebab(slug: string) {
+  return (slug || "").trim().toLowerCase().replace(/-/g, "_");
 }
 
 export default function ForgeForm({
-  initialModel = "cable_tray",
+  initialModel = "cable-tray",
   initialParams,
-  initialHoles = [],
+  initialText = "Teknovashop",
   onGenerated,
 }: Props) {
-  const [model, setModel] = useState<string>(initialModel);
-
-  const [length_mm, setLength] = useState<number>(initialParams?.length_mm ?? 120);
-  const [width_mm, setWidth] = useState<number>(initialParams?.width_mm ?? 100);
-  const [height_mm, setHeight] = useState<number>(initialParams?.height_mm ?? 60);
-  const [thickness_mm, setThickness] = useState<number>(initialParams?.thickness_mm ?? 3);
-  const [fillet_mm, setFillet] = useState<number>(initialParams?.fillet_mm ?? 0);
-
-  const [holes, setHoles] = useState<Hole[]>(initialHoles);
-  const [arrayOps, setArrayOps] = useState<ArrayOp[]>([]); // NEW
-  const [textOps, setTextOps] = useState<TextOp[]>([]); // NEW
+  // UI mínima (ajústala a tus controles reales)
+  const [slug, setSlug] = useState<string>(initialModel);
+  const [params, setParams] = useState<Params>({
+    length_mm: 120,
+    width_mm: 60,
+    height_mm: 8,
+    thickness_mm: 2.4,
+    fillet_mm: 2.0,
+    ...(initialParams || {}),
+  });
+  const [text, setText] = useState<string>(initialText);
+  const [mode, setMode] = useState<"engrave" | "emboss">("engrave");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [out, setOut] = useState<{ url?: string; signed_url?: string } | null>(null);
 
-  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const debouncedEmit = useCallback((fn: () => void, ms = 120) => {
-    if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    debounceTimer.current = setTimeout(fn, ms);
-  }, []);
-
-  useEffect(() => {
-    const onAdd = (ev: Event) => {
-      const det = (ev as CustomEvent).detail || {};
-      const x = n(det.x_mm, 0);
-      const d = n(det.d_mm, 4);
-      const y = Number.isFinite(det.y_mm) ? n(det.y_mm, 0) : width_mm / 2;
-      setHoles((prev) => [...prev, { x_mm: x, y_mm: y, d_mm: d }]);
-    };
-    window.addEventListener("forge:add-hole", onAdd as any);
-    return () => window.removeEventListener("forge:add-hole", onAdd as any);
-  }, [width_mm]);
-
-  const params: Params = useMemo(() => {
-    const p: Params = {
-      length_mm: clamp(Number(length_mm) || 0, 1, 5000),
-      width_mm: clamp(Number(width_mm) || 0, 1, 5000),
-      height_mm: clamp(Number(height_mm) || 0, 1, 5000),
-      thickness_mm: clamp(Number(thickness_mm) || 1, 0.2, 100),
-      fillet_mm: clamp(Number(fillet_mm) || 0, 0, 200),
-    };
-    debouncedEmit(() => emit("forge:set-params", { params: p }));
-    return p;
-  }, [length_mm, width_mm, height_mm, thickness_mm, fillet_mm, debouncedEmit]);
-
-  useEffect(() => {
-    emit("forge:set-model", { model });
-    emit("forge:set-params", { params });
-    emit("forge:set-holes", { holes });
-    emit("forge:refresh", { reason: "initial-handshake" });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    emit("forge:set-model", { model });
-    emit("forge:refresh", { reason: "model-changed" });
-  }, [model]);
-
-  useEffect(() => {
-    debouncedEmit(() => emit("forge:set-holes", { holes }));
-  }, [holes, debouncedEmit]);
-
-  const canGenerate = API_BASE.length > 0;
-
-  const handleGenerate = useCallback(async () => {
-    setError(null);
-    if (!canGenerate) {
-      setError("Falta configurar NEXT_PUBLIC_FORGE_API_URL (o NEXT_PUBLIC_BACKEND_URL)");
-      return;
-    }
-
-    emit("forge:generate", { model, params, holes, arrayOps, textOps });
-
-    setBusy(true);
+  async function handleGenerate() {
     try {
-      // Adaptamos textOps del UI a text_ops del backend (también dejamos el original en params por compatibilidad)
-      const text_ops = (textOps || []).map((t) => ({
-        text: t.text,
-        height: Number(t.size) || 10,
-        depth: Number(t.depth ?? 1) || 1,
-        pos: [Number(t.x) || 0, Number(t.y) || 0, (Number(params.thickness_mm) || 3) / 2],
-        rot: [0, 0, 0],
-        mode: "engrave",
-      }));
+      setBusy(true);
+      setOut(null);
 
-      const payload = {
-        model,
-        params: {
-          length_mm: params.length_mm,
-          width_mm: params.width_mm,
-          height_mm: params.height_mm,
-          thickness_mm: params.thickness_mm,
-          fillet_mm: params.fillet_mm,
-          holes: holes.map((h) => ({
-            x_mm: Number(h.x_mm),
-            y_mm: Number(h.y_mm),
-            d_mm: Number(h.d_mm),
-          })),
-          arrayOps, // mantenemos por compatibilidad
-          textOps,  // mantenemos por compatibilidad
-        },
-        // NEW: enviamos también en la raíz para que el backend siempre lo recoja
-        text_ops,
-      };
+      // normalizamos slug solo para el backend (acepta kebab/snake)
+      const normSlug = slug.includes("_") ? slug.toLowerCase() : toSnakeFromKebab(slug);
 
-      const res = await fetch(`${API_BASE}/generate`, {
+      // alias de round_mm -> fillet_mm si procede
+      const cleanParams: Params = { ...params };
+      if (cleanParams.round_mm != null && cleanParams.fillet_mm == null) {
+        cleanParams.fillet_mm = Number(cleanParams.round_mm);
+      }
+
+      // text_ops opcional
+      const text_ops: TextOp[] =
+        text?.trim()
+          ? [
+              {
+                text: text.trim(),
+                size: 8,         // alto del texto
+                depth: 1.2,      // grosor de extrusión
+                mode,            // "engrave" o "emboss"
+                pos: [0, 0.8, 0],// y>0 para ir “encima” de placa base (ajusta según modelo)
+                rot: [0, 0, 0],
+              },
+            ]
+          : [];
+
+      const r = await fetch(`${API_BASE}/api/forge/generate`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          slug: normSlug,        // el backend internamente mapea alias
+          params: cleanParams,
+          text_ops,
+        }),
       });
 
-      const json = await res.json().catch(() => ({} as any));
+      const json = await r.json();
+      if (!r.ok) throw new Error(json?.error || "forge generate error");
 
-      // --- BLOQUE DE MANEJO DE ERRORES LIMPIO ---
-      if (json && json.ok === false) {
-        throw new Error(json.error || json.detail || `Error del backend`);
-      }
-      if (!res.ok) {
-        throw new Error(json?.detail || json?.error || `HTTP ${res.status}`);
-      }
-      const url: string | undefined = json?.stl_url || json?.signed_url || json?.url;
-      if (url) {
-        onGenerated?.(url);
-        emit("forge:generated-url", { url });
-      } else if (json?.path) {
-        emit("forge:generated-path", { path: json.path });
-      } else {
-        throw new Error("El backend no devolvió URL del STL");
-      }
-      // --- FIN BLOQUE ---
+      setOut({ url: json?.signed_url || json?.url });
+      if (onGenerated) onGenerated(json?.signed_url || json?.url);
+      // dispara evento global opcional
+      try {
+        window.dispatchEvent(new CustomEvent("stl-generated", { detail: json }));
+      } catch {}
     } catch (e: any) {
-      setError(e?.message || "No se pudo generar el STL");
+      alert(e?.message || "Error generando STL");
     } finally {
       setBusy(false);
     }
-  }, [model, params, holes, arrayOps, textOps, onGenerated, canGenerate]);
-
-  const removeHole = (idx: number) => setHoles((prev) => prev.filter((_, i) => i !== idx));
+  }
 
   return (
-    <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
-      <h2 className="mb-3 text-lg font-semibold">Configurador</h2>
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3">
+        <label className="col-span-2">
+          <span className="text-sm">Modelo (slug)</span>
+          <input
+            className="mt-1 w-full rounded border px-3 py-2"
+            value={slug}
+            onChange={(e) => setSlug(e.target.value)}
+            placeholder="cable-tray | vesa-adapter | router-mount ..."
+          />
+        </label>
+
+        <label>
+          <span className="text-sm">Length (mm)</span>
+          <input
+            type="number"
+            className="mt-1 w-full rounded border px-3 py-2"
+            value={params.length_mm ?? 120}
+            onChange={(e) => setParams({ ...params, length_mm: Number(e.target.value) })}
+          />
+        </label>
+
+        <label>
+          <span className="text-sm">Width (mm)</span>
+          <input
+            type="number"
+            className="mt-1 w-full rounded border px-3 py-2"
+            value={params.width_mm ?? 60}
+            onChange={(e) => setParams({ ...params, width_mm: Number(e.target.value) })}
+          />
+        </label>
+
+        <label>
+          <span className="text-sm">Height (mm)</span>
+          <input
+            type="number"
+            className="mt-1 w-full rounded border px-3 py-2"
+            value={params.height_mm ?? 8}
+            onChange={(e) => setParams({ ...params, height_mm: Number(e.target.value) })}
+          />
+        </label>
+
+        <label>
+          <span className="text-sm">Thickness (mm)</span>
+          <input
+            type="number"
+            className="mt-1 w-full rounded border px-3 py-2"
+            value={params.thickness_mm ?? 2.4}
+            onChange={(e) => setParams({ ...params, thickness_mm: Number(e.target.value) })}
+          />
+        </label>
+
+        <label>
+          <span className="text-sm">Fillet (mm)</span>
+          <input
+            type="number"
+            className="mt-1 w-full rounded border px-3 py-2"
+            value={params.fillet_mm ?? 2}
+            onChange={(e) => setParams({ ...params, fillet_mm: Number(e.target.value) })}
+          />
+        </label>
+      </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <label className="col-span-2 text-sm">
-          <span className="mb-1 block text-neutral-600">Modelo</span>
+        <label className="col-span-2">
+          <span className="text-sm">Texto (opcional)</span>
+          <input
+            className="mt-1 w-full rounded border px-3 py-2"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Texto para emboss/engrave"
+          />
+        </label>
+
+        <label>
+          <span className="text-sm">Modo texto</span>
           <select
-            className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2"
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
+            className="mt-1 w-full rounded border px-3 py-2"
+            value={mode}
+            onChange={(e) => setMode(e.target.value as any)}
           >
-            {MODEL_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
+            <option value="engrave">Engrave (grabar)</option>
+            <option value="emboss">Emboss (relieve)</option>
           </select>
         </label>
-
-        <label className="text-sm">
-          <span className="mb-1 block text-neutral-600">Largo (mm)</span>
-          <input
-            type="number"
-            className="w-full rounded-md border border-neutral-300 px-3 py-2"
-            value={length_mm}
-            onChange={(e) => setLength(n(e.target.value, length_mm))}
-            min={1}
-          />
-        </label>
-
-        <label className="text-sm">
-          <span className="mb-1 block text-neutral-600">Ancho (mm)</span>
-          <input
-            type="number"
-            className="w-full rounded-md border border-neutral-300 px-3 py-2"
-            value={width_mm}
-            onChange={(e) => setWidth(n(e.target.value, width_mm))}
-            min={1}
-          />
-        </label>
-
-        <label className="text-sm">
-          <span className="mb-1 block text-neutral-600">Alto (mm)</span>
-          <input
-            type="number"
-            className="w-full rounded-md border border-neutral-300 px-3 py-2"
-            value={height_mm}
-            onChange={(e) => setHeight(n(e.target.value, height_mm))}
-            min={1}
-          />
-        </label>
-
-        <label className="text-sm">
-          <span className="mb-1 block text-neutral-600">Grosor pared (mm)</span>
-          <input
-            type="number"
-            className="w-full rounded-md border border-neutral-300 px-3 py-2"
-            value={thickness_mm}
-            onChange={(e) => setThickness(n(e.target.value, thickness_mm))}
-            min={0.2}
-            step={0.5}
-          />
-        </label>
-
-        <label className="text-sm">
-          <span className="mb-1 block text-neutral-600">Fillet (mm)</span>
-          <input
-            type="number"
-            className="w-full rounded-md border border-neutral-300 px-3 py-2"
-            value={fillet_mm}
-            onChange={(e) => setFillet(n(e.target.value, fillet_mm))}
-            min={0}
-            step={0.5}
-          />
-        </label>
       </div>
 
-      {/* Agujeros */}
-      <div className="mt-5">
-        <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-sm font-medium">Agujeros superiores</h3>
-          <button
-            type="button"
-            className="rounded-md border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-50"
-            onClick={() =>
-              setHoles((prev) => [
-                ...prev,
-                { x_mm: Math.round(length_mm / 2), y_mm: Math.round(width_mm / 2), d_mm: 4 },
-              ])
-            }
-          >
-            + Añadir
-          </button>
+      <button
+        className="rounded-xl px-4 py-2 shadow bg-black text-white disabled:opacity-50"
+        onClick={handleGenerate}
+        disabled={busy}
+      >
+        {busy ? "Generando..." : "Generar STL"}
+      </button>
+
+      {out?.signed_url && (
+        <div className="text-sm">
+          <a className="text-blue-600 underline" href={out.signed_url} target="_blank">
+            Descargar STL (signed)
+          </a>
         </div>
-
-        {holes.length === 0 ? (
-          <p className="text-xs text-neutral-600">
-            No hay agujeros. Consejo: mantén <kbd>Alt</kbd> y haz clic en el visor para añadir uno donde apuntes.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {holes.map((h, i) => (
-              <div key={i} className="grid grid-cols-[1fr,1fr,1fr,auto] items-center gap-2">
-                <label className="text-xs">
-                  <span className="mb-0.5 block text-neutral-600">X (mm)</span>
-                  <input
-                    type="number"
-                    className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
-                    value={h.x_mm}
-                    onChange={(e) =>
-                      setHoles((prev) => prev.map((hh, idx) => (idx === i ? { ...hh, x_mm: n(e.target.value, hh.x_mm) } : hh)))
-                    }
-                    min={0}
-                    step={0.5}
-                  />
-                </label>
-                <label className="text-xs">
-                  <span className="mb-0.5 block text-neutral-600">Y (mm)</span>
-                  <input
-                    type="number"
-                    className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
-                    value={h.y_mm}
-                    onChange={(e) =>
-                      setHoles((prev) => prev.map((hh, idx) => (idx === i ? { ...hh, y_mm: n(e.target.value, hh.y_mm) } : hh)))
-                    }
-                    min={0}
-                    step={0.5}
-                  />
-                </label>
-                <label className="text-xs">
-                  <span className="mb-0.5 block text-neutral-600">Ø (mm)</span>
-                  <input
-                    type="number"
-                    className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
-                    value={h.d_mm}
-                    onChange={(e) =>
-                      setHoles((prev) => prev.map((hh, idx) => (idx === i ? { ...hh, d_mm: n(e.target.value, hh.d_mm) } : hh)))
-                    }
-                    min={0.5}
-                    step={0.1}
-                  />
-                </label>
-                <button
-                  type="button"
-                  className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700 hover:bg-red-100"
-                  onClick={() => removeHole(i)}
-                >
-                  Eliminar
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* (UI muy mínima para arrays/texto – puedes ampliarla cuando quieras) */}
-      <div className="mt-4">
-        <h3 className="text-sm font-medium">Operaciones: Array</h3>
-        <button
-          type="button"
-          className="mt-1 rounded-md border px-2 py-1 text-xs"
-          onClick={() => setArrayOps((prev) => [...prev, { count: 2, dx: 20, dy: 0 }])}
-        >
-          + Array
-        </button>
-        {arrayOps.length === 0 ? (
-          <p className="mt-1 text-xs text-neutral-600">No hay arrays definidos.</p>
-        ) : (
-          arrayOps.map((op, i) => (
-            <div key={i} className="mt-1 grid grid-cols-4 gap-2 text-xs">
-              <input
-                type="number"
-                className="rounded border px-1 py-1"
-                value={op.count}
-                min={1}
-                onChange={(e) =>
-                  setArrayOps((prev) => prev.map((o, idx) => (idx === i ? { ...o, count: n(e.target.value, o.count) } : o)))
-                }
-              />
-              <input
-                type="number"
-                className="rounded border px-1 py-1"
-                value={op.dx}
-                onChange={(e) =>
-                  setArrayOps((prev) => prev.map((o, idx) => (idx === i ? { ...o, dx: n(e.target.value, o.dx) } : o)))
-                }
-              />
-              <input
-                type="number"
-                className="rounded border px-1 py-1"
-                value={op.dy}
-                onChange={(e) =>
-                  setArrayOps((prev) => prev.map((o, idx) => (idx === i ? { ...o, dy: n(e.target.value, o.dy) } : o)))
-                }
-              />
-              <button
-                className="rounded border px-1 py-1"
-                onClick={() => setArrayOps((prev) => prev.filter((_, idx) => idx !== i))}
-              >
-                Borrar
-              </button>
-            </div>
-          ))
-        )}
-      </div>
-
-      <div className="mt-4">
-        <h3 className="text-sm font-medium">Operaciones: Texto</h3>
-        <button
-          type="button"
-          className="mt-1 rounded-md border px-2 py-1 text-xs"
-          onClick={() => setTextOps((prev) => [...prev, { text: "Demo", size: 10, x: 0, y: 0, depth: 1 }])}
-        >
-          + Texto
-        </button>
-        {textOps.length === 0 ? (
-          <p className="mt-1 text-xs text-neutral-600">No hay textos definidos.</p>
-        ) : (
-          textOps.map((op, i) => (
-            <div key={i} className="mt-1 grid grid-cols-6 gap-2 text-xs">
-              <input
-                className="col-span-2 rounded border px-1 py-1"
-                value={op.text}
-                onChange={(e) =>
-                  setTextOps((prev) => prev.map((o, idx) => (idx === i ? { ...o, text: e.target.value } : o)))
-                }
-              />
-              <input
-                type="number"
-                className="rounded border px-1 py-1"
-                value={op.size}
-                onChange={(e) =>
-                  setTextOps((prev) => prev.map((o, idx) => (idx === i ? { ...o, size: n(e.target.value, o.size) } : o)))
-                }
-              />
-              <input
-                type="number"
-                className="rounded border px-1 py-1"
-                value={op.x}
-                onChange={(e) =>
-                  setTextOps((prev) => prev.map((o, idx) => (idx === i ? { ...o, x: n(e.target.value, o.x) } : o)))
-                }
-              />
-              <input
-                type="number"
-                className="rounded border px-1 py-1"
-                value={op.y}
-                onChange={(e) =>
-                  setTextOps((prev) => prev.map((o, idx) => (idx === i ? { ...o, y: n(e.target.value, o.y) } : o)))
-                }
-              />
-              <button
-                className="rounded border px-1 py-1"
-                onClick={() => setTextOps((prev) => prev.filter((_, idx) => idx !== i))}
-              >
-                Borrar
-              </button>
-            </div>
-          ))
-        )}
-      </div>
-
-      <div className="mt-6 flex items-center gap-3">
-        <button
-          type="button"
-          onClick={handleGenerate}
-          disabled={busy}
-          className="rounded-md bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700 disabled:opacity-60"
-        >
-          {busy ? "Generando…" : "Generar STL"}
-        </button>
-        {!canGenerate && <span className="text-xs text-neutral-500">Configura la URL del backend.</span>}
-      </div>
-
-      {error && <p className="mt-3 text-sm text-red-700">{error}</p>}
+      )}
     </div>
   );
 }
