@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
+import { forgeGenerate } from "@/lib/forge-config";
 
 type TextMode = "engrave" | "emboss";
 
@@ -28,11 +29,14 @@ const MODELS: { slug: string; label: string }[] = [
   { slug: "phone-dock", label: "Dock para Móvil (USB-C)" },
 ];
 
-const DEFAULTS = { length_mm: 120, width_mm: 60, height_mm: 8, thickness_mm: 2.4, fillet_mm: 2 };
-
-const FORGE_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL?.replace(/\/+$/, "") ||
-  "https://teknovashop-forge.onrender.com";
+// Defaults genéricos de placa para los modelos simples
+const DEFAULTS = {
+  length_mm: 120,
+  width_mm: 60,
+  height_mm: 8,
+  thickness_mm: 2.4,
+  fillet_mm: 2,
+};
 
 export default function ForgeForm({
   initialModel,
@@ -46,23 +50,36 @@ export default function ForgeForm({
       "vesa-adapter"
   );
 
-  const [lengthMm, setLengthMm] = useState<number>(initialParams?.length_mm ?? DEFAULTS.length_mm);
-  const [widthMm, setWidthMm] = useState<number>(initialParams?.width_mm ?? DEFAULTS.width_mm);
-  const [heightMm, setHeightMm] = useState<number>(initialParams?.height_mm ?? DEFAULTS.height_mm);
-  const [thicknessMm, setThicknessMm] = useState<number>(initialParams?.thickness_mm ?? DEFAULTS.thickness_mm);
-  const [filletMm, setFilletMm] = useState<number>(initialParams?.fillet_mm ?? DEFAULTS.fillet_mm);
+  const [lengthMm, setLengthMm] = useState<number>(
+    Number(initialParams?.length_mm ?? DEFAULTS.length_mm)
+  );
+  const [widthMm, setWidthMm] = useState<number>(
+    Number(initialParams?.width_mm ?? DEFAULTS.width_mm)
+  );
+  const [heightMm, setHeightMm] = useState<number>(
+    Number(initialParams?.height_mm ?? DEFAULTS.height_mm)
+  );
+  const [thicknessMm, setThicknessMm] = useState<number>(
+    Number(initialParams?.thickness_mm ?? DEFAULTS.thickness_mm)
+  );
+  const [filletMm, setFilletMm] = useState<number>(
+    Number(initialParams?.fillet_mm ?? DEFAULTS.fillet_mm)
+  );
 
   const [text, setText] = useState<string>(initialParams?.text ?? "");
-  const [textMode, setTextMode] = useState<TextMode>((initialParams?.text_mode ?? "engrave") as TextMode);
+  const [textMode, setTextMode] = useState<TextMode>(
+    (initialParams?.text_mode ?? "engrave") as TextMode
+  );
 
-  // Agujeros: cadena "x,y,d x,y,d …" o "x;y;d; x;y;d"
+  // Agujeros: cadena "x,y,d x,y,d …" o con punto y coma
   const [holesStr, setHolesStr] = useState<string>("");
 
   // Normaliza y valida agujeros
   const holes: Hole[] = useMemo(() => {
     if (!holesStr.trim()) return [];
-    // Admitimos separadores por espacio entre pares, y coma/espacio/puntoycoma dentro
+    // pares separados por espacios; dentro, coma o punto y coma
     return holesStr
+      .trim()
       .split(/\s+/)
       .map((token) => token.trim())
       .filter(Boolean)
@@ -73,11 +90,18 @@ export default function ForgeForm({
         y: parseFloat(ys.replace(",", ".")),
         diameter_mm: parseFloat(ds.replace(",", ".")),
       }))
-      .filter((h) => Number.isFinite(h.x) && Number.isFinite(h.y) && Number.isFinite(h.diameter_mm));
+      .filter(
+        (h) =>
+          Number.isFinite(h.x) &&
+          Number.isFinite(h.y) &&
+          Number.isFinite(h.diameter_mm)
+      );
   }, [holesStr]);
 
-  // Construir params para el back
+  // Construir params para el backend
   const params = useMemo(() => {
+    // Para modelos “placa” usamos los genéricos; para otros,
+    // tu backend ignora los que no correspondan, así que es seguro.
     return {
       length_mm: Number(lengthMm),
       width_mm: Number(widthMm),
@@ -87,6 +111,7 @@ export default function ForgeForm({
     };
   }, [lengthMm, widthMm, heightMm, thicknessMm, filletMm]);
 
+  // Operación de texto: el server la aplicará si el modelo lo soporta
   const text_ops = useMemo(() => {
     if (!text?.trim()) return undefined;
     return [
@@ -95,36 +120,19 @@ export default function ForgeForm({
         size: 6,
         depth: 1.2,
         mode: textMode, // "engrave" | "emboss"
-        pos: [0, 0, 0],
-        rot: [0, 0, 0],
+        pos: [0, 0, 0] as [number, number, number],
+        rot: [0, 0, 0] as [number, number, number],
       },
     ];
   }, [text, textMode]);
 
   async function handleGenerate() {
     try {
-      const body = {
-        slug,              // <- el backend acepta kebab o snake
-        params,
-        holes,
-        text_ops,
-      };
+      const payload = { slug, params, holes, text_ops };
+      const data = await forgeGenerate(payload);
 
-      const res = await fetch(`${FORGE_URL}/generate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        alert(d?.detail || d?.message || res.statusText);
-        return;
-      }
-
-      const data = await res.json();
-      // El server devuelve: { ok, path, url, signed_url, ... }
-      const link = data?.signed_url || data?.url || null;
+      // El server devuelve { url } o { signed_url }
+      const link = data?.signed_url || data?.url || "";
       if (!link) {
         alert(JSON.stringify(data || {}));
         return;
@@ -135,7 +143,6 @@ export default function ForgeForm({
     }
   }
 
-  // Render
   return (
     <div className="space-y-4">
       <div>
@@ -157,7 +164,11 @@ export default function ForgeForm({
         <NumberField label="Length (mm)" value={lengthMm} onChange={setLengthMm} />
         <NumberField label="Width (mm)" value={widthMm} onChange={setWidthMm} />
         <NumberField label="Height (mm)" value={heightMm} onChange={setHeightMm} />
-        <NumberField label="Thickness (mm)" value={thicknessMm} onChange={setThicknessMm} />
+        <NumberField
+          label="Thickness (mm)"
+          value={thicknessMm}
+          onChange={setThicknessMm}
+        />
         <NumberField label="Fillet (mm)" value={filletMm} onChange={setFilletMm} />
       </div>
 
@@ -191,7 +202,7 @@ export default function ForgeForm({
           className="w-full rounded border p-2"
           value={holesStr}
           onChange={(e) => setHolesStr(e.target.value)}
-          placeholder='Formato: "x,y,d x,y,d". Ej.: 5,5,5 30,5,3.2'
+          placeholder='Formato: "x,y,d x,y,d" o "x;y;d x;y;d". Ej.: 5,5,5 30,5,3.2'
         />
         <p className="text-xs text-neutral-500 mt-1">
           Separe con espacios los agujeros y use coma o punto y coma entre valores.
@@ -224,7 +235,7 @@ function NumberField({
         type="number"
         step="any"
         className="w-full rounded border p-2"
-        value={value}
+        value={Number.isFinite(value as any) ? value : 0}
         onChange={(e) => onChange(parseFloat(e.target.value))}
       />
     </div>
