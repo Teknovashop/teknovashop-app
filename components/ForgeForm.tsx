@@ -2,17 +2,22 @@
 "use client";
 
 import { useState } from "react";
-import { MODELS } from "@/data/models"; // tu listado de modelos {slug, title, ...}
+import { MODELS } from "@/data/models"; // tu catálogo de modelos
 
-// SIEMPRE usar la API interna (evita CORS y confusiones de base URL)
+// SIEMPRE usamos la API interna de Next para evitar 404/CORS
 const API_ROUTE = "/api/forge/generate";
 
 type Params = {
-  length_mm?: number; width_mm?: number; height_mm?: number;
-  thickness_mm?: number; fillet_mm?: number; [k: string]: any;
+  length_mm?: number;
+  width_mm?: number;
+  height_mm?: number;
+  thickness_mm?: number;
+  fillet_mm?: number;
+  [k: string]: any;
 };
 type TextMode = "engrave" | "emboss";
 
+// número seguro (acepta "2,4")
 const num = (v: any, fallback?: number) => {
   if (v === null || v === undefined) return fallback;
   if (typeof v === "number") return isFinite(v) ? v : fallback;
@@ -20,6 +25,9 @@ const num = (v: any, fallback?: number) => {
   const n = Number(s);
   return isFinite(n) ? n : fallback;
 };
+
+// MODELS puede no tener tipo con 'title'; tratamos como any para leer campos opcionales
+const CATALOG = (MODELS as any[]) || [];
 
 export default function ForgeForm({
   initialModel,
@@ -32,10 +40,10 @@ export default function ForgeForm({
   initialText?: string;
   onGenerated?: (url: string) => void;
 }) {
-  // Modelo por defecto: primero del catálogo o el dado
+  // Slug por defecto: el primero del catálogo o el pasado
   const defaultSlug =
     (initialModel && initialModel.trim()) ||
-    (MODELS?.[0]?.slug ?? "cable-tray");
+    (CATALOG[0]?.slug ?? "cable-tray");
 
   const [model, setModel] = useState<string>(defaultSlug);
   const [params, setParams] = useState<Params>({
@@ -96,8 +104,9 @@ export default function ForgeForm({
 
       setDownloadUrl(j.url);
       onGenerated?.(j.url);
-      // broadcast opcional
-      try { window.dispatchEvent(new CustomEvent("stl-generated", { detail: j })); } catch {}
+      try {
+        window.dispatchEvent(new CustomEvent("stl-generated", { detail: j }));
+      } catch {}
     } catch (e: any) {
       alert(e?.message || "forge generate error");
     } finally {
@@ -115,9 +124,10 @@ export default function ForgeForm({
           value={model}
           onChange={(e) => setModel(e.target.value)}
         >
-          {MODELS.map((m) => (
+          {CATALOG.map((m) => (
             <option key={m.slug} value={m.slug}>
-              {m.title || m.slug}
+              {/* Fallbacks sin depender de 'title' */}
+              {m.title ?? m.label ?? m.name ?? m.displayName ?? m.slug}
             </option>
           ))}
         </select>
@@ -127,23 +137,43 @@ export default function ForgeForm({
       <div className="grid grid-cols-2 gap-3">
         <label>
           <span className="text-sm">Length (mm)</span>
-          <input className="mt-1 w-full rounded border px-3 py-2" value={params.length_mm ?? ""} onChange={update("length_mm")} />
+          <input
+            className="mt-1 w-full rounded border px-3 py-2"
+            value={params.length_mm ?? ""}
+            onChange={update("length_mm")}
+          />
         </label>
         <label>
           <span className="text-sm">Width (mm)</span>
-          <input className="mt-1 w-full rounded border px-3 py-2" value={params.width_mm ?? ""} onChange={update("width_mm")} />
+          <input
+            className="mt-1 w-full rounded border px-3 py-2"
+            value={params.width_mm ?? ""}
+            onChange={update("width_mm")}
+          />
         </label>
         <label>
           <span className="text-sm">Height (mm)</span>
-          <input className="mt-1 w-full rounded border px-3 py-2" value={params.height_mm ?? ""} onChange={update("height_mm")} />
+          <input
+            className="mt-1 w-full rounded border px-3 py-2"
+            value={params.height_mm ?? ""}
+            onChange={update("height_mm")}
+          />
         </label>
         <label>
           <span className="text-sm">Thickness (mm)</span>
-          <input className="mt-1 w-full rounded border px-3 py-2" value={params.thickness_mm ?? ""} onChange={update("thickness_mm")} />
+          <input
+            className="mt-1 w-full rounded border px-3 py-2"
+            value={params.thickness_mm ?? ""}
+            onChange={update("thickness_mm")}
+          />
         </label>
         <label>
           <span className="text-sm">Fillet (mm)</span>
-          <input className="mt-1 w-full rounded border px-3 py-2" value={params.fillet_mm ?? ""} onChange={update("fillet_mm")} />
+          <input
+            className="mt-1 w-full rounded border px-3 py-2"
+            value={params.fillet_mm ?? ""}
+            onChange={update("fillet_mm")}
+          />
         </label>
       </div>
 
@@ -151,11 +181,19 @@ export default function ForgeForm({
       <div className="grid grid-cols-2 gap-3">
         <label className="col-span-2">
           <span className="text-sm">Texto (opcional)</span>
-          <input className="mt-1 w-full rounded border px-3 py-2" value={text} onChange={(e) => setText(e.target.value)} />
+          <input
+            className="mt-1 w-full rounded border px-3 py-2"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+          />
         </label>
         <label>
           <span className="text-sm">Modo texto</span>
-          <select className="mt-1 w-full rounded border px-3 py-2" value={textMode} onChange={(e) => setTextMode(e.target.value as TextMode)}>
+          <select
+            className="mt-1 w-full rounded border px-3 py-2"
+            value={textMode}
+            onChange={(e) => setTextMode(e.target.value as TextMode)}
+          >
             <option value="engrave">Engrave (grabar)</option>
             <option value="emboss">Emboss (relieve)</option>
           </select>
@@ -172,7 +210,12 @@ export default function ForgeForm({
 
       {downloadUrl && (
         <div className="text-sm">
-          <a className="text-blue-600 underline" href={downloadUrl} target="_blank" rel="noreferrer">
+          <a
+            className="text-blue-600 underline"
+            href={downloadUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
             Descargar STL
           </a>
         </div>
