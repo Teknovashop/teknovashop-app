@@ -21,10 +21,7 @@ function cors(body: any, status = 200) {
     },
   });
 }
-
-export async function OPTIONS() {
-  return cors({ ok: true });
-}
+export async function OPTIONS() { return cors({ ok: true }); }
 
 function toMessage(err: any): string {
   if (!err) return "Error";
@@ -35,16 +32,14 @@ function toMessage(err: any): string {
   try { return JSON.stringify(err); } catch { return String(err); }
 }
 
-// --------- Normalización de parámetros ---------
 type Dict = Record<string, any>;
 const n = (v: any): number | undefined => {
   if (v === null || v === undefined) return undefined;
   if (typeof v === "number") return isFinite(v) ? v : undefined;
-  const s = String(v).trim().replace(",", "."); // 3,2 -> 3.2
+  const s = String(v).trim().replace(",", ".");
   const num = Number(s);
   return isFinite(num) ? num : undefined;
 };
-
 function setIfMissing(out: Dict, dst: string, candidates: string[], src: Dict) {
   for (const k of candidates) {
     if (out[dst] == null && src[k] != null) {
@@ -53,49 +48,29 @@ function setIfMissing(out: Dict, dst: string, candidates: string[], src: Dict) {
     }
   }
 }
-
 function ensureNumber(out: Dict, key: string, fallback?: number) {
   const v = n(out[key]);
-  if (v == null) out[key] = fallback ?? 1;
-  else out[key] = v;
+  out[key] = v == null ? (fallback ?? 1) : v;
 }
-
-// Mapea nombres del formulario -> *_mm esperados por el backend
 function normalizeParams(model: string, raw: Dict = {}) {
   const src: Dict = {};
   for (const k of Object.keys(raw)) src[k] = n(raw[k]) ?? raw[k];
-
   const out: Dict = { ...src };
 
-  // genéricos
-  setIfMissing(out, "length_mm",    ["length_mm","length","base_w","drive_l","hub_w","slot_l","tape_l","strap_l","largo_cinta"], src);
-  setIfMissing(out, "width_mm",     ["width_mm","width","depth","base_d","drive_w","slot_w","tape_w","strap_w","ancho_cinta","adhesive_w"], src);
-  setIfMissing(out, "height_mm",    ["height_mm","height","base_h","alto_mm","alto","altura","stem_h","hub_h","board_h"], src);
-  setIfMissing(out, "thickness_mm", ["thickness_mm","thickness","grosor_mm","grosor","wall","clip_t"], src);
-  setIfMissing(out, "fillet_mm",    ["fillet_mm","fillet","round","radio","hook_r"], src);
+  setIfMissing(out,"length_mm",["length_mm","length","base_w","drive_l","slot_l","tape_l","strap_l","largo_cinta"],src);
+  setIfMissing(out,"width_mm", ["width_mm","width","depth","base_d","drive_w","slot_w","tape_w","strap_w","ancho_cinta","adhesive_w"],src);
+  setIfMissing(out,"height_mm",["height_mm","height","base_h","alto_mm","alto","altura","stem_h","hub_h","board_h"],src);
+  setIfMissing(out,"thickness_mm",["thickness_mm","thickness","grosor_mm","grosor","wall","clip_t"],src);
+  setIfMissing(out,"fillet_mm",["fillet_mm","fillet","round","radio","hook_r"],src);
 
-  // fallbacks seguros
-  ensureNumber(out, "length_mm",    out.length_mm  ?? n(src.base_w) ?? n(src.width)  ?? n(src.drive_l));
-  ensureNumber(out, "width_mm",     out.width_mm   ?? n(src.base_d) ?? n(src.depth)  ?? n(src.drive_w));
-  ensureNumber(out, "height_mm",    out.height_mm  ?? n(src.base_h) ?? n(src.height) ?? n(src.stem_h) ?? n(src.wall) ?? 1);
-  ensureNumber(out, "thickness_mm", out.thickness_mm ?? n(src.wall) ?? n(src.clip_t) ?? 2);
+  ensureNumber(out,"length_mm", out.length_mm ?? n(src.base_w) ?? n(src.width) ?? n(src.drive_l));
+  ensureNumber(out,"width_mm",  out.width_mm  ?? n(src.base_d) ?? n(src.depth) ?? n(src.drive_w));
+  ensureNumber(out,"height_mm", out.height_mm ?? n(src.base_h) ?? n(src.height) ?? n(src.stem_h) ?? n(src.wall) ?? 1);
+  ensureNumber(out,"thickness_mm", out.thickness_mm ?? n(src.wall) ?? n(src.clip_t) ?? 2);
 
-  // (Ajustes específicos por modelo si los usas…)
   return out;
 }
 
-// -----------------------------------------------
-
-/**
- * Body esperado por tu backend actual:
- *   { model: string, params: { length_mm, width_mm, height_mm, thickness_mm?, fillet_mm?, holes?, arrayOps?, textOps? } }
- * Respuesta de backend: { ok, path?, stl_url?, signed_url?, stl_data_url? }
- * Esta ruta:
- *   - Normaliza parámetros
- *   - Llama al backend /generate
- *   - Si ya viene signed_url o stl_url → lo devuelve
- *   - Si viene path → firma la URL en Supabase y la devuelve
- */
 export async function POST(req: Request) {
   try {
     const { model, params, holes } = await req.json().catch(() => ({} as any));
@@ -104,32 +79,24 @@ export async function POST(req: Request) {
 
     const normalized = normalizeParams(String(model), params || {});
 
-    // 1) Generar en backend
     const gen = await fetch(`${BACKEND}/generate`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ model, params: normalized, holes: Array.isArray(holes) ? holes : [] }),
       cache: "no-store",
     });
-
     const genJson = await gen.json().catch(() => ({} as any));
-    if (!gen.ok) {
-      return cors({ ok: false, error: toMessage(genJson?.detail || genJson?.error || "Generation failed") }, gen.status || 500);
-    }
+    if (!gen.ok) return cors({ ok: false, error: toMessage(genJson?.detail || genJson?.error || "Generation failed") }, gen.status || 500);
 
-    // 2) Si ya hay URL firmada o pública, devuélvela tal cual
     if (genJson?.signed_url) return cors({ ok: true, url: genJson.signed_url, source: "backend-signed" });
     if (genJson?.stl_url)    return cors({ ok: true, url: genJson.stl_url, source: "backend-public" });
 
-    // 3) Si tenemos 'path' (object key en Storage), firmamos aquí.
     const objectPath: string | undefined = genJson?.path || genJson?.object_key;
     if (!objectPath) {
-      // como mínimo devolvemos el data-url para que el visor pinte algo
       if (genJson?.stl_data_url) return cors({ ok: true, url: genJson.stl_data_url, source: "data-url" });
       return cors({ ok: false, error: "Generation succeeded but no path/url returned" }, 500);
     }
 
-    // Firmar con Supabase
     const { createClient } = await import("@supabase/supabase-js");
     const url = SUPABASE_URL || "";
     const key = SUPABASE_SERVICE_ROLE_KEY || NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
@@ -137,9 +104,8 @@ export async function POST(req: Request) {
 
     const signed = await supabase.storage.from(BUCKET).createSignedUrl(objectPath, 60 * 5);
     if (signed.error || !signed.data?.signedUrl) {
-      return cors({ ok: false, error: toMessage(signed.error?.message || "Failed to sign URL") }, 500);
+      return cors({ ok: false, error: signed.error?.message || "Failed to sign URL" }, 500);
     }
-
     return cors({ ok: true, url: signed.data.signedUrl, object_key: objectPath, source: "signed-here" });
   } catch (err: any) {
     return cors({ ok: false, error: toMessage(err) }, 500);
