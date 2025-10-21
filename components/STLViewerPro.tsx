@@ -84,7 +84,7 @@ export default function STLViewerPro({ url, className }: Props) {
     const exporter = new STLExporter();
     const parsed = exporter.parse(mesh, { binary: true }) as ArrayBuffer | DataView | string;
 
-    // 🔧 Normalizamos SIEMPRE a un ArrayBuffer REAL (nunca SharedArrayBuffer)
+    // Normalizamos SIEMPRE a un ArrayBuffer REAL (nunca SharedArrayBuffer)
     let bytes: Uint8Array;
     if (parsed instanceof ArrayBuffer) {
       bytes = new Uint8Array(parsed);
@@ -96,7 +96,6 @@ export default function STLViewerPro({ url, className }: Props) {
       // texto ASCII STL
       bytes = new TextEncoder().encode(parsed as string);
     }
-    // Creamos un ArrayBuffer puro y copiamos (evita SharedArrayBuffer en tipos)
     const ab = new ArrayBuffer(bytes.byteLength);
     new Uint8Array(ab).set(bytes);
 
@@ -210,7 +209,7 @@ export default function STLViewerPro({ url, className }: Props) {
 
     const box = new THREE.Box3().setFromObject(obj);
     const size = box.getSize(new THREE.Vector3());
-    aconst center = box.getCenter(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3()); // <-- corregido (antes decía 'aconst')
 
     const maxDim = Math.max(size.x, size.y, size.z);
     const fov = (camera.fov * Math.PI) / 180;
