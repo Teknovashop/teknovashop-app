@@ -1,17 +1,8 @@
+// components/STLViewerPro.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-// ✅ Importa los TIPOS nominalmente (no desde el namespace)
-import type {
-  Mesh,
-  Scene,
-  WebGLRenderer,
-  PerspectiveCamera,
-  Object3D,
-  BufferGeometry,
-} from "three";
-
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
@@ -39,12 +30,12 @@ function hasEntitlement(): boolean {
 export default function STLViewerPro({ url, className }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
 
-  // ✅ Usa los tipos importados nominalmente
-  const currentMeshRef = useRef<Mesh | null>(null);
-  const sceneRef = useRef<Scene | null>(null);
-  const rendererRef = useRef<WebGLRenderer | null>(null);
-  const cameraRef = useRef<PerspectiveCamera | null>(null);
-  const controlsRef = useRef<OrbitControls | null>(null);
+  // 👉 Tipos laxos para compatibilidad con cualquier versión de three/@types
+  const currentMeshRef = useRef<any>(null);
+  const sceneRef = useRef<any>(null);
+  const rendererRef = useRef<any>(null);
+  const cameraRef = useRef<any>(null);
+  const controlsRef = useRef<any>(null);
 
   const [bgLight, setBgLight] = useState(true);
   const [tone, setTone] = useState(0.5);
@@ -59,7 +50,6 @@ export default function STLViewerPro({ url, className }: Props) {
       const email = window.prompt("Introduce tu email para la compra (Stripe)")?.trim() || "";
       if (!email) return;
 
-      // Preferido: /api/stripe/checkout; si falla, fallback a create-session
       const primary = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -124,12 +114,10 @@ export default function STLViewerPro({ url, className }: Props) {
       antialias: true,
       powerPreference: "high-performance",
     });
-    // Algunas props cambian de nombre según la versión -> coerción segura
     (renderer as any).outputColorSpace = (THREE as any).SRGBColorSpace ?? "srgb";
     (renderer as any).toneMapping = (THREE as any).ACESFilmicToneMapping ?? 0;
     (renderer as any).toneMappingExposure = 0.8 + tone * 0.7;
-    // En r164+ está deprecado, pero no rompe si existe:
-    (renderer as any).physicallyCorrectLights = true;
+    (renderer as any).physicallyCorrectLights = true; // no falla si está deprecado
     renderer.shadowMap.enabled = showShadow;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
@@ -198,7 +186,6 @@ export default function STLViewerPro({ url, className }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // reaplicar ajustes cuando cambian toggles
   useEffect(() => {
     const r = rendererRef.current as any;
     if (!r) return;
@@ -206,8 +193,7 @@ export default function STLViewerPro({ url, className }: Props) {
     if (r.shadowMap) r.shadowMap.enabled = showShadow;
   }, [tone, showShadow]);
 
-  // helper: encuadrar cámara al mesh cargado
-  function fitCameraToObject(obj: Object3D) {
+  function fitCameraToObject(obj: any) {
     const camera = cameraRef.current;
     const controls = controlsRef.current;
     if (!camera || !controls) return;
@@ -232,14 +218,13 @@ export default function STLViewerPro({ url, className }: Props) {
 
   // Cargar STL cuando cambie la URL
   useEffect(() => {
-    const scene = sceneRef.current;
+    const scene = sceneRef.current as any;
     if (!scene) return;
 
-    // Limpia mesh anterior
     if (currentMeshRef.current) {
-      const prev = currentMeshRef.current;
+      const prev = currentMeshRef.current as any;
       scene.remove(prev);
-      (prev.geometry as BufferGeometry | undefined)?.dispose?.();
+      prev.geometry?.dispose?.();
       (prev.material as any)?.dispose?.();
       currentMeshRef.current = null;
     }
