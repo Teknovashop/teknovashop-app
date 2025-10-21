@@ -1,11 +1,13 @@
+// app/forge/page.tsx
 "use client";
 
 import { useMemo, useState } from "react";
 import ForgeForm from "@/components/ForgeForm";
+import STLViewerPro from "@/components/STLViewerPro";
 
 /**
  * Esta página admite query `?model=<slug>&params=<json>`
- * pero si no vienen, usa defaults. El back espera `slug` en kebab o snake.
+ * y al generar recibe una URL firmada del backend que se pasa al visor.
  */
 export default function ForgePage({
   searchParams,
@@ -22,8 +24,7 @@ export default function ForgePage({
   const initialParams = useMemo(() => {
     try {
       const p = searchParams?.params as string;
-      if (!p) return undefined;
-      return JSON.parse(p);
+      return p ? JSON.parse(p) : undefined;
     } catch {
       return undefined;
     }
@@ -40,14 +41,21 @@ export default function ForgePage({
       </div>
 
       <div className="lg:col-span-8">
-        {/* El visor que ya tienes (Three.js/Canvas) debería leer el STL desde `stlUrl` si lo usas.
-           Aquí solo lo conservamos para no tocar tu visor. */}
         {stlUrl ? (
-          <div className="text-sm text-green-700 mb-2">
-            STL generado: <a className="underline" href={stlUrl} target="_blank" rel="noreferrer">{stlUrl}</a>
+          <div className="text-sm text-green-700 mb-2 break-all">
+            STL generado:{" "}
+            <a className="underline" href={stlUrl} target="_blank" rel="noreferrer">
+              abrir en pestaña
+            </a>
           </div>
-        ) : null}
-        <div id="forge-viewer" className="w-full min-h-[520px] rounded border border-neutral-200" />
+        ) : (
+          <p className="text-sm text-neutral-500 mb-2">
+            Genera un STL para verlo aquí. El visor muestra rejilla/reglas aunque no haya modelo.
+          </p>
+        )}
+
+        {/* 👉 Aquí se monta el visor real */}
+        <STLViewerPro url={stlUrl ?? undefined} className="h-[540px] bg-white" />
       </div>
     </div>
   );
