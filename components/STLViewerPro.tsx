@@ -30,7 +30,7 @@ function hasEntitlement(): boolean {
 export default function STLViewerPro({ url, className }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
 
-  // 👉 Tipos laxos para compatibilidad con cualquier versión de three/@types
+  // Tipos laxos para compatibilidad con cualquier versión de three/@types
   const currentMeshRef = useRef<any>(null);
   const sceneRef = useRef<any>(null);
   const rendererRef = useRef<any>(null);
@@ -83,14 +83,23 @@ export default function STLViewerPro({ url, className }: Props) {
 
     const exporter = new STLExporter();
     const parsed = exporter.parse(mesh, { binary: true }) as ArrayBuffer | DataView | string;
-    const bytes =
-      parsed instanceof ArrayBuffer
-        ? new Uint8Array(parsed)
-        : parsed instanceof DataView
-        ? new Uint8Array(parsed.buffer)
-        : new TextEncoder().encode(parsed as string);
 
-    const blob = new Blob([bytes], { type: "model/stl" });
+    // 🔧 Normalizamos SIEMPRE a un ArrayBuffer real de la longitud exacta
+    let bytes: Uint8Array;
+    if (parsed instanceof ArrayBuffer) {
+      bytes = new Uint8Array(parsed);
+    } else if (parsed instanceof DataView) {
+      // Copiamos el rango exacto a un nuevo buffer (no SharedArrayBuffer)
+      const view = new Uint8Array(parsed.buffer as ArrayBuffer, parsed.byteOffset, parsed.byteLength);
+      bytes = new Uint8Array(parsed.byteLength);
+      bytes.set(view);
+    } else {
+      // texto ASCII STL
+      bytes = new TextEncoder().encode(parsed as string);
+    }
+    const ab: ArrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+
+    const blob = new Blob([ab], { type: "model/stl" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = "forge-output.stl";
