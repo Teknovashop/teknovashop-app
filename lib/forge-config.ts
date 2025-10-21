@@ -263,12 +263,59 @@ export const FIELDS: Partial<Record<ForgeModelSlug, Fields>> = {
  * =============================== */
 
 export const FORGE_BASE =
-  (process.env.NEXT_PUBLIC_BACKEND_URL || "").replace(/\/+$/, "") ||
-  "https://teknovashop-forge.onrender.com";
+  (process.env.NEXT_PUBLIC_FORGE_API_URL ||
+    process.env.NEXT_PUBLIC_BACKEND_URL ||
+    "https://teknovashop-forge.onrender.com")
+    .replace(/\/+$/, "");
+
+/** Utilidades internas */
+function num(x: any) {
+  const n = Number(x);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function normalizePayload(body: {
+  slug: string;
+  params: any;
+  holes?: Array<{ x: number; y: number; diameter_mm?: number; diam_mm?: number; d?: number; diameter?: number }>;
+  text_ops?: Array<{
+    text: string;
+    size?: number;
+    depth?: number;
+    mode?: "engrave" | "emboss";
+    pos?: [number, number, number];
+    rot?: [number, number, number];
+    font?: string;
+  }>;
+}) {
+  const slug = (body.slug || "").toLowerCase();
+
+  // holes: diameter_mm (UI) -> diam_mm (API)
+  const holes =
+    (body.holes || [])
+      .map((h) => ({
+        x: num(h.x),
+        y: num(h.y),
+        diam_mm: num((h as any).diam_mm ?? h.diameter_mm ?? h.diameter ?? h.d),
+      }))
+      .filter((h) => h.x !== undefined && h.y !== undefined && h.diam_mm !== undefined && (h.diam_mm as number) > 0) as Array<{ x: number; y: number; diam_mm: number }>;
+
+  // saneo simple de numéricos comunes; el backend también tolera strings
+  const params = { ...(body.params || {}) };
+  ["length_mm", "width_mm", "height_mm", "thickness_mm", "fillet_mm"].forEach((k) => {
+    if (k in params) {
+      const v = num(params[k]);
+      if (v !== undefined) params[k] = v;
+    }
+  });
+
+  return { slug, params, holes, text_ops: body.text_ops };
+}
 
 /**
- * Llama al endpoint /generate del backend.
- * Lanza Error con el detalle de la respuesta si no es 2xx.
+ * Llama al endpoint de generación:
+ * 1) Intenta /api/forge/generate (Next server)
+ * 2) Fallback a BACKEND /generate (Render)
  */
 export async function forgeGenerate(body: {
   slug: string;
@@ -284,23 +331,41 @@ export async function forgeGenerate(body: {
     font?: string;
   }>;
 }) {
-  const res = await fetch(`${FORGE_BASE}/generate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  const payload = normalizePayload(body);
 
-  if (!res.ok) {
-    // El backend devuelve {detail} o {message}
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data?.detail || data?.message || res.statusText);
+  // 1) Next API (preferido)
+  try {
+    const r = await fetch("/api/forge/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data?.detail || data?.message || "Forge generate failed");
+    return data as {
+      ok: boolean;
+      slug: string;
+      path: string;
+      url?: string;
+      signed_url?: string;
+    };
+  } catch (err) {
+    // 2) Fallback directo al backend
+    const r2 = await fetch(`${FORGE_BASE}/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data2 = await r2.json().catch(() => ({}));
+    if (!r2.ok) {
+      throw new Error(data2?.detail || data2?.message || r2.statusText);
+    }
+    return data2 as {
+      ok: boolean;
+      slug: string;
+      path: string;
+      url?: string;
+      signed_url?: string;
+    };
   }
-
-  return res.json() as Promise<{
-    ok: boolean;
-    slug: string;
-    path: string;
-    url?: string;
-    signed_url?: string;
-  }>;
 }
