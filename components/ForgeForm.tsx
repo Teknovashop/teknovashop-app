@@ -11,7 +11,8 @@ type ForgeFormProps = {
   onGenerated?: (url: string) => void;
 };
 
-type Hole = { x: number; y: number; diameter_mm: number };
+// 👇 IMPORTANTE: el backend espera 'diam_mm' (no 'diameter_mm')
+type Hole = { x: number; y: number; diam_mm: number };
 
 const MODELS: { slug: string; label: string }[] = [
   { slug: "vesa-adapter", label: "Adaptador VESA 75/100 -> 100/200" },
@@ -29,7 +30,7 @@ const MODELS: { slug: string; label: string }[] = [
   { slug: "phone-dock", label: "Dock para Móvil (USB-C)" },
 ];
 
-// Defaults genéricos de placa para los modelos simples
+// Defaults genéricos de placa
 const DEFAULTS = {
   length_mm: 120,
   width_mm: 60,
@@ -38,32 +39,40 @@ const DEFAULTS = {
   fillet_mm: 2,
 };
 
+function n(v: any, fallback: number) {
+  const x = Number(v);
+  return Number.isFinite(x) ? x : fallback;
+}
+
 export default function ForgeForm({
   initialModel,
   initialParams,
   onGenerated,
 }: ForgeFormProps) {
-  const [slug, setSlug] = useState<string>(
-    () =>
-      (initialModel &&
-        MODELS.find((m) => m.slug === initialModel.toLowerCase())?.slug) ||
-      "vesa-adapter"
-  );
+  // normaliza initialModel en kebab-case (acepta snake_case)
+  const normalizedInitialModel =
+    (initialModel || "").toLowerCase().replace(/_/g, "-");
+
+  const initialSlug =
+    MODELS.find((m) => m.slug === normalizedInitialModel)?.slug ||
+    "vesa-adapter";
+
+  const [slug, setSlug] = useState<string>(() => initialSlug);
 
   const [lengthMm, setLengthMm] = useState<number>(
-    Number(initialParams?.length_mm ?? DEFAULTS.length_mm)
+    n(initialParams?.length_mm, DEFAULTS.length_mm)
   );
   const [widthMm, setWidthMm] = useState<number>(
-    Number(initialParams?.width_mm ?? DEFAULTS.width_mm)
+    n(initialParams?.width_mm, DEFAULTS.width_mm)
   );
   const [heightMm, setHeightMm] = useState<number>(
-    Number(initialParams?.height_mm ?? DEFAULTS.height_mm)
+    n(initialParams?.height_mm, DEFAULTS.height_mm)
   );
   const [thicknessMm, setThicknessMm] = useState<number>(
-    Number(initialParams?.thickness_mm ?? DEFAULTS.thickness_mm)
+    n(initialParams?.thickness_mm, DEFAULTS.thickness_mm)
   );
   const [filletMm, setFilletMm] = useState<number>(
-    Number(initialParams?.fillet_mm ?? DEFAULTS.fillet_mm)
+    n(initialParams?.fillet_mm, DEFAULTS.fillet_mm)
   );
 
   const [text, setText] = useState<string>(initialParams?.text ?? "");
@@ -74,10 +83,9 @@ export default function ForgeForm({
   // Agujeros: cadena "x,y,d x,y,d …" o con punto y coma
   const [holesStr, setHolesStr] = useState<string>("");
 
-  // Normaliza y valida agujeros
+  // Normaliza y valida agujeros -> diametro en 'diam_mm'
   const holes: Hole[] = useMemo(() => {
     if (!holesStr.trim()) return [];
-    // pares separados por espacios; dentro, coma o punto y coma
     return holesStr
       .trim()
       .split(/\s+/)
@@ -88,30 +96,31 @@ export default function ForgeForm({
       .map(([xs, ys, ds]) => ({
         x: parseFloat(xs.replace(",", ".")),
         y: parseFloat(ys.replace(",", ".")),
-        diameter_mm: parseFloat(ds.replace(",", ".")),
+        diam_mm: parseFloat(ds.replace(",", ".")), // 👈 nombre correcto
       }))
       .filter(
-        (h) =>
-          Number.isFinite(h.x) &&
-          Number.isFinite(h.y) &&
-          Number.isFinite(h.diameter_mm)
+        (h) => Number.isFinite(h.x) && Number.isFinite(h.y) && Number.isFinite(h.diam_mm)
       );
   }, [holesStr]);
 
-  // Construir params para el backend
+  // Construir params para el backend (con clamp suave del filete)
   const params = useMemo(() => {
-    // Para modelos “placa” usamos los genéricos; para otros,
-    // tu backend ignora los que no correspondan, así que es seguro.
+    const L = n(lengthMm, DEFAULTS.length_mm);
+    const W = n(widthMm, DEFAULTS.width_mm);
+    const H = n(heightMm, DEFAULTS.height_mm);
+    const T = n(thicknessMm, DEFAULTS.thickness_mm);
+    const Rraw = n(filletMm, DEFAULTS.fillet_mm);
+    const R = Math.max(0, Math.min(Rraw, Math.min(L, W) * 0.25)); // clamp simple
     return {
-      length_mm: Number(lengthMm),
-      width_mm: Number(widthMm),
-      height_mm: Number(heightMm),
-      thickness_mm: Number(thicknessMm),
-      fillet_mm: Number(filletMm),
+      length_mm: L,
+      width_mm: W,
+      height_mm: H,
+      thickness_mm: T,
+      fillet_mm: R,
     };
   }, [lengthMm, widthMm, heightMm, thicknessMm, filletMm]);
 
-  // Operación de texto: el server la aplicará si el modelo lo soporta
+  // Operación de texto (si el modelo la soporta)
   const text_ops = useMemo(() => {
     if (!text?.trim()) return undefined;
     return [
@@ -119,19 +128,20 @@ export default function ForgeForm({
         text: text.trim(),
         size: 6,
         depth: 1.2,
-        mode: textMode, // "engrave" | "emboss"
+        mode: textMode as TextMode,
         pos: [0, 0, 0] as [number, number, number],
         rot: [0, 0, 0] as [number, number, number],
       },
     ];
   }, [text, textMode]);
 
+  const [loading, setLoading] = useState(false);
+
   async function handleGenerate() {
     try {
+      setLoading(true);
       const payload = { slug, params, holes, text_ops };
       const data = await forgeGenerate(payload);
-
-      // El server devuelve { url } o { signed_url }
       const link = data?.signed_url || data?.url || "";
       if (!link) {
         alert(JSON.stringify(data || {}));
@@ -140,6 +150,8 @@ export default function ForgeForm({
       onGenerated?.(link);
     } catch (e: any) {
       alert(e?.message || "Error generando STL");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -164,11 +176,7 @@ export default function ForgeForm({
         <NumberField label="Length (mm)" value={lengthMm} onChange={setLengthMm} />
         <NumberField label="Width (mm)" value={widthMm} onChange={setWidthMm} />
         <NumberField label="Height (mm)" value={heightMm} onChange={setHeightMm} />
-        <NumberField
-          label="Thickness (mm)"
-          value={thicknessMm}
-          onChange={setThicknessMm}
-        />
+        <NumberField label="Thickness (mm)" value={thicknessMm} onChange={setThicknessMm} />
         <NumberField label="Fillet (mm)" value={filletMm} onChange={setFilletMm} />
       </div>
 
@@ -210,10 +218,11 @@ export default function ForgeForm({
       </div>
 
       <button
-        className="px-4 py-2 rounded bg-blue-600 text-white"
+        className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-60"
         onClick={handleGenerate}
+        disabled={loading}
       >
-        Generar STL
+        {loading ? "Generando…" : "Generar STL"}
       </button>
     </div>
   );
