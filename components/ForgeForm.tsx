@@ -11,8 +11,7 @@ type ForgeFormProps = {
   onGenerated?: (url: string) => void;
 };
 
-// 👇 IMPORTANTE: el backend espera 'diam_mm' (no 'diameter_mm')
-type Hole = { x: number; y: number; diam_mm: number };
+type Hole = { x: number; y: number; diameter_mm: number };
 
 const MODELS: { slug: string; label: string }[] = [
   { slug: "vesa-adapter", label: "Adaptador VESA 75/100 -> 100/200" },
@@ -30,7 +29,7 @@ const MODELS: { slug: string; label: string }[] = [
   { slug: "phone-dock", label: "Dock para Móvil (USB-C)" },
 ];
 
-// Defaults genéricos de placa
+// Defaults genéricos de placa para los modelos simples
 const DEFAULTS = {
   length_mm: 120,
   width_mm: 60,
@@ -39,9 +38,9 @@ const DEFAULTS = {
   fillet_mm: 2,
 };
 
-function n(v: any, fallback: number) {
+function n(v: any, fb: number) {
   const x = Number(v);
-  return Number.isFinite(x) ? x : fallback;
+  return Number.isFinite(x) ? x : fb;
 }
 
 export default function ForgeForm({
@@ -49,15 +48,14 @@ export default function ForgeForm({
   initialParams,
   onGenerated,
 }: ForgeFormProps) {
-  // normaliza initialModel en kebab-case (acepta snake_case)
-  const normalizedInitialModel =
+  const normalizedInitial =
     (initialModel || "").toLowerCase().replace(/_/g, "-");
 
-  const initialSlug =
-    MODELS.find((m) => m.slug === normalizedInitialModel)?.slug ||
-    "vesa-adapter";
-
-  const [slug, setSlug] = useState<string>(() => initialSlug);
+  const [slug, setSlug] = useState<string>(
+    () =>
+      MODELS.find((m) => m.slug === normalizedInitial)?.slug ||
+      "vesa-adapter"
+  );
 
   const [lengthMm, setLengthMm] = useState<number>(
     n(initialParams?.length_mm, DEFAULTS.length_mm)
@@ -83,7 +81,7 @@ export default function ForgeForm({
   // Agujeros: cadena "x,y,d x,y,d …" o con punto y coma
   const [holesStr, setHolesStr] = useState<string>("");
 
-  // Normaliza y valida agujeros -> diametro en 'diam_mm'
+  // Normaliza y valida agujeros -> mantiene 'diameter_mm' (el helper hará la conversión)
   const holes: Hole[] = useMemo(() => {
     if (!holesStr.trim()) return [];
     return holesStr
@@ -96,31 +94,28 @@ export default function ForgeForm({
       .map(([xs, ys, ds]) => ({
         x: parseFloat(xs.replace(",", ".")),
         y: parseFloat(ys.replace(",", ".")),
-        diam_mm: parseFloat(ds.replace(",", ".")), // 👈 nombre correcto
+        diameter_mm: parseFloat(ds.replace(",", ".")),
       }))
       .filter(
-        (h) => Number.isFinite(h.x) && Number.isFinite(h.y) && Number.isFinite(h.diam_mm)
+        (h) =>
+          Number.isFinite(h.x) &&
+          Number.isFinite(h.y) &&
+          Number.isFinite(h.diameter_mm)
       );
   }, [holesStr]);
 
-  // Construir params para el backend (con clamp suave del filete)
+  // Construir params para el backend (el helper saneará)
   const params = useMemo(() => {
     const L = n(lengthMm, DEFAULTS.length_mm);
     const W = n(widthMm, DEFAULTS.width_mm);
     const H = n(heightMm, DEFAULTS.height_mm);
     const T = n(thicknessMm, DEFAULTS.thickness_mm);
     const Rraw = n(filletMm, DEFAULTS.fillet_mm);
-    const R = Math.max(0, Math.min(Rraw, Math.min(L, W) * 0.25)); // clamp simple
-    return {
-      length_mm: L,
-      width_mm: W,
-      height_mm: H,
-      thickness_mm: T,
-      fillet_mm: R,
-    };
+    const R = Math.max(0, Math.min(Rraw, Math.min(L, W) * 0.25));
+    return { length_mm: L, width_mm: W, height_mm: H, thickness_mm: T, fillet_mm: R };
   }, [lengthMm, widthMm, heightMm, thicknessMm, filletMm]);
 
-  // Operación de texto (si el modelo la soporta)
+  // Operación de texto: el server la aplicará si el modelo lo soporta
   const text_ops = useMemo(() => {
     if (!text?.trim()) return undefined;
     return [
@@ -128,7 +123,7 @@ export default function ForgeForm({
         text: text.trim(),
         size: 6,
         depth: 1.2,
-        mode: textMode as TextMode,
+        mode: textMode, // "engrave" | "emboss"
         pos: [0, 0, 0] as [number, number, number],
         rot: [0, 0, 0] as [number, number, number],
       },
