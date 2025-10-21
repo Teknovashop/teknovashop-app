@@ -2,6 +2,16 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+// ✅ Importa los TIPOS nominalmente (no desde el namespace)
+import type {
+  Mesh,
+  Scene,
+  WebGLRenderer,
+  PerspectiveCamera,
+  Object3D,
+  BufferGeometry,
+} from "three";
+
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
@@ -29,10 +39,11 @@ function hasEntitlement(): boolean {
 export default function STLViewerPro({ url, className }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
 
-  const currentMeshRef = useRef<THREE.Mesh | null>(null);
-  const sceneRef = useRef<THREE.Scene | null>(null);
-  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  // ✅ Usa los tipos importados nominalmente
+  const currentMeshRef = useRef<Mesh | null>(null);
+  const sceneRef = useRef<Scene | null>(null);
+  const rendererRef = useRef<WebGLRenderer | null>(null);
+  const cameraRef = useRef<PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
 
   const [bgLight, setBgLight] = useState(true);
@@ -48,18 +59,15 @@ export default function STLViewerPro({ url, className }: Props) {
       const email = window.prompt("Introduce tu email para la compra (Stripe)")?.trim() || "";
       if (!email) return;
 
-      // Recomendado: /api/stripe/checkout; fallback al que ya usas por compatibilidad
-      const endpoint = "/api/stripe/checkout";
-      const body: any = { email, price, model_kind: "stl_download" };
-
-      let res = await fetch(endpoint, {
+      // Preferido: /api/stripe/checkout; si falla, fallback a create-session
+      const primary = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ email, price, model_kind: "stl_download" }),
       });
 
-      if (!res.ok) {
-        // fallback a tu endpoint previo si existe
+      let res = primary;
+      if (!primary.ok) {
         res = await fetch("/api/checkout/create-session", {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -84,7 +92,7 @@ export default function STLViewerPro({ url, className }: Props) {
     if (!mesh) return;
 
     const exporter = new STLExporter();
-    const parsed = exporter.parse(mesh, { binary: true }) as ArrayBuffer | string | DataView;
+    const parsed = exporter.parse(mesh, { binary: true }) as ArrayBuffer | DataView | string;
     const bytes =
       parsed instanceof ArrayBuffer
         ? new Uint8Array(parsed)
@@ -116,14 +124,12 @@ export default function STLViewerPro({ url, className }: Props) {
       antialias: true,
       powerPreference: "high-performance",
     });
-    // @ts-ignore (propiedad válida en r150+)
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    // @ts-ignore
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    // @ts-ignore
-    renderer.toneMappingExposure = 0.8 + tone * 0.7;
-    // @ts-ignore (en r164+ está deprecado; no rompe)
-    renderer.physicallyCorrectLights = true;
+    // Algunas props cambian de nombre según la versión -> coerción segura
+    (renderer as any).outputColorSpace = (THREE as any).SRGBColorSpace ?? "srgb";
+    (renderer as any).toneMapping = (THREE as any).ACESFilmicToneMapping ?? 0;
+    (renderer as any).toneMappingExposure = 0.8 + tone * 0.7;
+    // En r164+ está deprecado, pero no rompe si existe:
+    (renderer as any).physicallyCorrectLights = true;
     renderer.shadowMap.enabled = showShadow;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
@@ -201,18 +207,18 @@ export default function STLViewerPro({ url, className }: Props) {
   }, [tone, showShadow]);
 
   // helper: encuadrar cámara al mesh cargado
-  function fitCameraToObject(mesh: THREE.Object3D) {
+  function fitCameraToObject(obj: Object3D) {
     const camera = cameraRef.current;
     const controls = controlsRef.current;
     if (!camera || !controls) return;
 
-    const box = new THREE.Box3().setFromObject(mesh);
+    const box = new THREE.Box3().setFromObject(obj);
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
 
     const maxDim = Math.max(size.x, size.y, size.z);
     const fov = (camera.fov * Math.PI) / 180;
-    let distance = Math.abs(maxDim / Math.sin(fov / 2)) * 0.65;
+    const distance = Math.abs(maxDim / Math.sin(fov / 2)) * 0.65;
 
     camera.position.set(center.x + distance, center.y + distance, center.z + distance);
     camera.near = Math.max(0.1, maxDim / 500);
@@ -233,7 +239,7 @@ export default function STLViewerPro({ url, className }: Props) {
     if (currentMeshRef.current) {
       const prev = currentMeshRef.current;
       scene.remove(prev);
-      prev.geometry?.dispose?.();
+      (prev.geometry as BufferGeometry | undefined)?.dispose?.();
       (prev.material as any)?.dispose?.();
       currentMeshRef.current = null;
     }
