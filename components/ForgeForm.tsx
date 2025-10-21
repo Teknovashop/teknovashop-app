@@ -29,7 +29,7 @@ const MODELS: { slug: string; label: string }[] = [
   { slug: "phone-dock", label: "Dock para Móvil (USB-C)" },
 ];
 
-// Defaults genéricos de placa para los modelos simples
+// Defaults genéricos
 const DEFAULTS = {
   length_mm: 120,
   width_mm: 60,
@@ -53,8 +53,7 @@ export default function ForgeForm({
 
   const [slug, setSlug] = useState<string>(
     () =>
-      MODELS.find((m) => m.slug === normalizedInitial)?.slug ||
-      "vesa-adapter"
+      MODELS.find((m) => m.slug === normalizedInitial)?.slug || "vesa-adapter"
   );
 
   const [lengthMm, setLengthMm] = useState<number>(
@@ -78,18 +77,30 @@ export default function ForgeForm({
     (initialParams?.text_mode ?? "engrave") as TextMode
   );
 
-  // Agujeros: cadena "x,y,d x,y,d …" o con punto y coma
-  const [holesStr, setHolesStr] = useState<string>("");
+  // ---- Agujeros: editor de filas + pegado rápido ----
+  const [holes, setHoles] = useState<Hole[]>([]);
+  const [paste, setPaste] = useState<string>("");
 
-  // Normaliza y valida agujeros -> mantiene 'diameter_mm' (el helper hará la conversión)
-  const holes: Hole[] = useMemo(() => {
-    if (!holesStr.trim()) return [];
-    return holesStr
-      .trim()
+  function addHole() {
+    setHoles((h) => [...h, { x: 0, y: 0, diameter_mm: 4 }]);
+  }
+  function removeHole(i: number) {
+    setHoles((h) => h.filter((_, idx) => idx !== i));
+  }
+  function updateHole(i: number, key: keyof Hole, val: number) {
+    setHoles((h) =>
+      h.map((row, idx) => (idx === i ? { ...row, [key]: val } : row))
+    );
+  }
+  function importFromPaste() {
+    const txt = paste.trim();
+    if (!txt) return;
+    // Acepta: "x,y,d x,y,d"  o  "x;y;d x;y;d"  (con comas o puntos)
+    const parsed: Hole[] = txt
       .split(/\s+/)
-      .map((token) => token.trim())
+      .map((t) => t.trim())
       .filter(Boolean)
-      .map((triple) => triple.split(/[;,]/).map((s) => s.trim()))
+      .map((tri) => tri.split(/[;,]/).map((s) => s.trim()))
       .filter((parts) => parts.length >= 3)
       .map(([xs, ys, ds]) => ({
         x: parseFloat(xs.replace(",", ".")),
@@ -102,9 +113,16 @@ export default function ForgeForm({
           Number.isFinite(h.y) &&
           Number.isFinite(h.diameter_mm)
       );
-  }, [holesStr]);
+    if (parsed.length) {
+      setHoles(parsed);
+    }
+  }
+  function clearHoles() {
+    setHoles([]);
+    setPaste("");
+  }
 
-  // Construir params para el backend (el helper saneará)
+  // Construir params
   const params = useMemo(() => {
     const L = n(lengthMm, DEFAULTS.length_mm);
     const W = n(widthMm, DEFAULTS.width_mm);
@@ -112,10 +130,16 @@ export default function ForgeForm({
     const T = n(thicknessMm, DEFAULTS.thickness_mm);
     const Rraw = n(filletMm, DEFAULTS.fillet_mm);
     const R = Math.max(0, Math.min(Rraw, Math.min(L, W) * 0.25));
-    return { length_mm: L, width_mm: W, height_mm: H, thickness_mm: T, fillet_mm: R };
+    return {
+      length_mm: L,
+      width_mm: W,
+      height_mm: H,
+      thickness_mm: T,
+      fillet_mm: R,
+    };
   }, [lengthMm, widthMm, heightMm, thicknessMm, filletMm]);
 
-  // Operación de texto: el server la aplicará si el modelo lo soporta
+  // Operación de texto
   const text_ops = useMemo(() => {
     if (!text?.trim()) return undefined;
     return [
@@ -123,7 +147,7 @@ export default function ForgeForm({
         text: text.trim(),
         size: 6,
         depth: 1.2,
-        mode: textMode, // "engrave" | "emboss"
+        mode: textMode,
         pos: [0, 0, 0] as [number, number, number],
         rot: [0, 0, 0] as [number, number, number],
       },
@@ -197,19 +221,95 @@ export default function ForgeForm({
         </select>
       </div>
 
-      <div>
-        <label className="block text-sm font-medium mb-1">
-          Agujeros (x,y,diámetro en mm; …)
-        </label>
-        <input
-          className="w-full rounded border p-2"
-          value={holesStr}
-          onChange={(e) => setHolesStr(e.target.value)}
-          placeholder='Formato: "x,y,d x,y,d" o "x;y;d x;y;d". Ej.: 5,5,5 30,5,3.2'
-        />
-        <p className="text-xs text-neutral-500 mt-1">
-          Separe con espacios los agujeros y use coma o punto y coma entre valores.
-        </p>
+      {/* ---- Editor de agujeros ---- */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <label className="block text-sm font-medium">Agujeros</label>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={addHole}
+              className="px-2 py-1 rounded bg-neutral-200 hover:bg-neutral-300"
+            >
+              + Añadir
+            </button>
+            <button
+              type="button"
+              onClick={clearHoles}
+              className="px-2 py-1 rounded bg-neutral-200 hover:bg-neutral-300"
+            >
+              Limpiar
+            </button>
+          </div>
+        </div>
+
+        {holes.length === 0 ? (
+          <p className="text-sm text-neutral-500">
+            No hay agujeros. Pulsa “Añadir” o usa el pegado rápido.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {holes.map((h, i) => (
+              <div key={i} className="grid grid-cols-12 gap-2 items-center">
+                <input
+                  type="number"
+                  step="0.1"
+                  className="col-span-3 rounded border p-2"
+                  value={h.x}
+                  onChange={(e) => updateHole(i, "x", parseFloat(e.target.value))}
+                  placeholder="x (mm)"
+                />
+                <input
+                  type="number"
+                  step="0.1"
+                  className="col-span-3 rounded border p-2"
+                  value={h.y}
+                  onChange={(e) => updateHole(i, "y", parseFloat(e.target.value))}
+                  placeholder="y (mm)"
+                />
+                <input
+                  type="number"
+                  step="0.1"
+                  className="col-span-4 rounded border p-2"
+                  value={h.diameter_mm}
+                  onChange={(e) =>
+                    updateHole(i, "diameter_mm", parseFloat(e.target.value))
+                  }
+                  placeholder="Ø (mm)"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeHole(i)}
+                  className="col-span-2 px-2 py-1 rounded bg-red-100 hover:bg-red-200"
+                >
+                  Eliminar
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="space-y-1">
+          <label className="block text-xs text-neutral-600">
+            Pegado rápido (x,y,Ø en mm). Ej.: <code>5,5,5 30,5,3.2</code> ó{" "}
+            <code>5;5;5 30;5;3.2</code>
+          </label>
+          <div className="flex gap-2">
+            <input
+              className="flex-1 rounded border p-2"
+              value={paste}
+              onChange={(e) => setPaste(e.target.value)}
+              placeholder='Formato: "x,y,d x,y,d" o "x;y;d x;y;d"'
+            />
+            <button
+              type="button"
+              onClick={importFromPaste}
+              className="px-3 py-2 rounded bg-neutral-200 hover:bg-neutral-300"
+            >
+              Importar
+            </button>
+          </div>
+        </div>
       </div>
 
       <button
