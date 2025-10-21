@@ -84,20 +84,21 @@ export default function STLViewerPro({ url, className }: Props) {
     const exporter = new STLExporter();
     const parsed = exporter.parse(mesh, { binary: true }) as ArrayBuffer | DataView | string;
 
-    // 🔧 Normalizamos SIEMPRE a un ArrayBuffer real de la longitud exacta
+    // 🔧 Normalizamos SIEMPRE a un ArrayBuffer REAL (nunca SharedArrayBuffer)
     let bytes: Uint8Array;
     if (parsed instanceof ArrayBuffer) {
       bytes = new Uint8Array(parsed);
     } else if (parsed instanceof DataView) {
-      // Copiamos el rango exacto a un nuevo buffer (no SharedArrayBuffer)
-      const view = new Uint8Array(parsed.buffer as ArrayBuffer, parsed.byteOffset, parsed.byteLength);
+      const view = new Uint8Array(parsed.buffer as ArrayBufferLike, parsed.byteOffset, parsed.byteLength);
       bytes = new Uint8Array(parsed.byteLength);
       bytes.set(view);
     } else {
       // texto ASCII STL
       bytes = new TextEncoder().encode(parsed as string);
     }
-    const ab: ArrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    // Creamos un ArrayBuffer puro y copiamos (evita SharedArrayBuffer en tipos)
+    const ab = new ArrayBuffer(bytes.byteLength);
+    new Uint8Array(ab).set(bytes);
 
     const blob = new Blob([ab], { type: "model/stl" });
     const a = document.createElement("a");
@@ -209,7 +210,7 @@ export default function STLViewerPro({ url, className }: Props) {
 
     const box = new THREE.Box3().setFromObject(obj);
     const size = box.getSize(new THREE.Vector3());
-    const center = box.getCenter(new THREE.Vector3());
+    aconst center = box.getCenter(new THREE.Vector3());
 
     const maxDim = Math.max(size.x, size.y, size.z);
     const fov = (camera.fov * Math.PI) / 180;
