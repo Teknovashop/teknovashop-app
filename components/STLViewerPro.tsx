@@ -1,4 +1,3 @@
-// components/STLViewerPro.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -30,10 +29,11 @@ function hasEntitlement(): boolean {
 export default function STLViewerPro({ url, className }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
 
-  const currentMeshRef = useRef<any>(null);
-  const sceneRef = useRef<any>(null);
-  const rendererRef = useRef<any>(null);
-  const cameraRef = useRef<any>(null);
+  const currentMeshRef = useRef<THREE.Mesh | null>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const controlsRef = useRef<OrbitControls | null>(null);
 
   const [bgLight, setBgLight] = useState(true);
   const [tone, setTone] = useState(0.5);
@@ -48,17 +48,25 @@ export default function STLViewerPro({ url, className }: Props) {
       const email = window.prompt("Introduce tu email para la compra (Stripe)")?.trim() || "";
       if (!email) return;
 
-      const res = await fetch("/api/checkout/create-session", {
+      // Recomendado: /api/stripe/checkout; fallback al que ya usas por compatibilidad
+      const endpoint = "/api/stripe/checkout";
+      const body: any = { email, price, model_kind: "stl_download" };
+
+      let res = await fetch(endpoint, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          email,
-          price,
-          model_kind: "stl_download",
-          params: {},
-          object_key: "",
-        }),
+        body: JSON.stringify(body),
       });
+
+      if (!res.ok) {
+        // fallback a tu endpoint previo si existe
+        res = await fetch("/api/checkout/create-session", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ email, price, model_kind: "stl_download", params: {}, object_key: "" }),
+        });
+      }
+
       const { url } = await res.json();
       if (res.ok && url) window.location.href = url as string;
       else alert("No se pudo iniciar el checkout.");
@@ -76,13 +84,15 @@ export default function STLViewerPro({ url, className }: Props) {
     if (!mesh) return;
 
     const exporter = new STLExporter();
-    const parsed = exporter.parse(mesh, { binary: true }) as unknown;
+    const parsed = exporter.parse(mesh, { binary: true }) as ArrayBuffer | string | DataView;
     const bytes =
-      parsed instanceof ArrayBuffer ? new Uint8Array(parsed) : new Uint8Array((parsed as DataView).buffer);
-    const ab = new ArrayBuffer(bytes.byteLength);
-    new Uint8Array(ab).set(bytes);
+      parsed instanceof ArrayBuffer
+        ? new Uint8Array(parsed)
+        : parsed instanceof DataView
+        ? new Uint8Array(parsed.buffer)
+        : new TextEncoder().encode(parsed as string);
 
-    const blob = new Blob([ab], { type: "model/stl" });
+    const blob = new Blob([bytes], { type: "model/stl" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = "forge-output.stl";
@@ -98,7 +108,7 @@ export default function STLViewerPro({ url, className }: Props) {
     scene.background = new THREE.Color(bgLight ? 0xffffff : 0x000000);
     sceneRef.current = scene;
 
-    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 2000);
+    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 5000);
     camera.position.set(220, 180, 220);
     cameraRef.current = camera;
 
@@ -106,9 +116,13 @@ export default function STLViewerPro({ url, className }: Props) {
       antialias: true,
       powerPreference: "high-performance",
     });
+    // @ts-ignore (propiedad válida en r150+)
     renderer.outputColorSpace = THREE.SRGBColorSpace;
+    // @ts-ignore
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    // @ts-ignore
     renderer.toneMappingExposure = 0.8 + tone * 0.7;
+    // @ts-ignore (en r164+ está deprecado; no rompe)
     renderer.physicallyCorrectLights = true;
     renderer.shadowMap.enabled = showShadow;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -136,12 +150,13 @@ export default function STLViewerPro({ url, className }: Props) {
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
+    controlsRef.current = controls;
 
     mount.appendChild(renderer.domElement);
 
     const onResize = () => {
       const { clientWidth, clientHeight } = mount;
-      camera.aspect = clientWidth / clientHeight;
+      camera.aspect = Math.max(1e-6, clientWidth / Math.max(1, clientHeight));
       camera.updateProjectionMatrix();
       renderer.setSize(clientWidth, clientHeight, false);
       setSize({ w: clientWidth, h: clientHeight });
@@ -172,11 +187,12 @@ export default function STLViewerPro({ url, className }: Props) {
       rendererRef.current = null;
       cameraRef.current = null;
       currentMeshRef.current = null;
+      controlsRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Reaplicar ajustes cuando cambien sliders/toggles (sin tipos THREE.* para evitar error)
+  // reaplicar ajustes cuando cambian toggles
   useEffect(() => {
     const r = rendererRef.current as any;
     if (!r) return;
@@ -184,16 +200,41 @@ export default function STLViewerPro({ url, className }: Props) {
     if (r.shadowMap) r.shadowMap.enabled = showShadow;
   }, [tone, showShadow]);
 
+  // helper: encuadrar cámara al mesh cargado
+  function fitCameraToObject(mesh: THREE.Object3D) {
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls) return;
+
+    const box = new THREE.Box3().setFromObject(mesh);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const fov = (camera.fov * Math.PI) / 180;
+    let distance = Math.abs(maxDim / Math.sin(fov / 2)) * 0.65;
+
+    camera.position.set(center.x + distance, center.y + distance, center.z + distance);
+    camera.near = Math.max(0.1, maxDim / 500);
+    camera.far = distance * 10;
+    camera.lookAt(center);
+    camera.updateProjectionMatrix();
+
+    controls.target.copy(center);
+    controls.update();
+  }
+
   // Cargar STL cuando cambie la URL
   useEffect(() => {
-    const scene = sceneRef.current as any;
+    const scene = sceneRef.current;
     if (!scene) return;
 
+    // Limpia mesh anterior
     if (currentMeshRef.current) {
-      const prev = currentMeshRef.current as any;
+      const prev = currentMeshRef.current;
       scene.remove(prev);
       prev.geometry?.dispose?.();
-      prev.material?.dispose?.();
+      (prev.material as any)?.dispose?.();
       currentMeshRef.current = null;
     }
     if (!url) return;
@@ -214,6 +255,7 @@ export default function STLViewerPro({ url, className }: Props) {
         mesh.receiveShadow = true;
         scene.add(mesh);
         currentMeshRef.current = mesh;
+        fitCameraToObject(mesh);
       },
       undefined,
       () => {}
