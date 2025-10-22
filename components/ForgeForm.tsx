@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { forgeGenerate } from "@/lib/forge-config";
 
 type TextMode = "engrave" | "emboss";
+type Hole = { x: number; y: number; diameter_mm: number };
 
 type ForgeFormProps = {
   initialModel?: string;
@@ -11,9 +12,8 @@ type ForgeFormProps = {
   onGenerated?: (url: string) => void;
 };
 
-type Hole = { x: number; y: number; diameter_mm: number };
-
-const MODELS: { slug: string; label: string }[] = [
+// Fallback local por si el backend no responde
+const FALLBACK_MODELS: { slug: string; label: string }[] = [
   { slug: "vesa-adapter", label: "Adaptador VESA 75/100 -> 100/200" },
   { slug: "router-mount", label: "Soporte de Router" },
   { slug: "cable-tray", label: "Bandeja de Cables" },
@@ -29,7 +29,6 @@ const MODELS: { slug: string; label: string }[] = [
   { slug: "phone-dock", label: "Dock para Móvil (USB-C)" },
 ];
 
-// Defaults genéricos
 const DEFAULTS = {
   length_mm: 120,
   width_mm: 60,
@@ -43,6 +42,30 @@ function n(v: any, fb: number) {
   return Number.isFinite(x) ? x : fb;
 }
 
+// Mapa de “nombre bonito” para slugs que lleguen del backend
+const NICE: Record<string, string> = {
+  "vesa-adapter": "Adaptador VESA 75/100 -> 100/200",
+  "router-mount": "Soporte de Router",
+  "cable-tray": "Bandeja de Cables",
+  "tablet-stand": "Soporte de Tablet",
+  "monitor-stand": "Elevador de Monitor",
+  "ssd-holder": "Caddy SSD 2.5 a 3.5",
+  "raspi-case": "Caja Raspberry Pi",
+  "go-pro-mount": "Soporte GoPro",
+  "mic-arm-clip": "Clip Brazo Mic",
+  "camera-plate": "Placa para Cámara",
+  "wall-hook": "Colgador de Pared",
+  "wall-bracket": "Escuadra de Pared",
+  "phone-dock": "Dock para Móvil (USB-C)",
+  "qr-plate": "Placa (QR/Texto)",
+  "cable-clip": "Clip de Cable",
+  "laptop-stand": "Soporte Laptop",
+  "phone-stand": "Soporte Móvil",
+  "vesa-shelf": "Bandeja VESA",
+  "enclosure-ip65": "Caja IP65",
+  "headset-stand": "Soporte Auriculares",
+};
+
 export default function ForgeForm({
   initialModel,
   initialParams,
@@ -51,10 +74,49 @@ export default function ForgeForm({
   const normalizedInitial =
     (initialModel || "").toLowerCase().replace(/_/g, "-");
 
-  const [slug, setSlug] = useState<string>(
-    () =>
-      MODELS.find((m) => m.slug === normalizedInitial)?.slug || "vesa-adapter"
+  const [catalog, setCatalog] = useState<{ slug: string; label: string }[]>(
+    FALLBACK_MODELS
   );
+
+  // Carga dinámica desde el backend
+  useEffect(() => {
+    (async () => {
+      try {
+        // /debug/models devuelve { models: ["cable_tray", ...] }
+        const base = process.env.NEXT_PUBLIC_FORGE_URL || "";
+        const res = await fetch(`${base}/debug/models`, { cache: "no-store" });
+        if (!res.ok) return;
+        const j = await res.json();
+        const slugs: string[] = (j?.models || []).map((s: string) =>
+          String(s || "").trim().toLowerCase().replace(/_/g, "-")
+        );
+        // Filtra duplicados y mapea a etiquetas
+        const uniq = Array.from(new Set(slugs));
+        if (uniq.length) {
+          setCatalog(
+            uniq.map((slug) => ({
+              slug,
+              label:
+                NICE[slug] ||
+                slug
+                  .split("-")
+                  .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+                  .join(" "),
+            }))
+          );
+        }
+      } catch {
+        // si falla, nos quedamos con el fallback
+      }
+    })();
+  }, []);
+
+  const [slug, setSlug] = useState<string>(() => {
+    const all = [...FALLBACK_MODELS];
+    const found =
+      all.find((m) => m.slug === normalizedInitial)?.slug || "vesa-adapter";
+    return found;
+  });
 
   const [lengthMm, setLengthMm] = useState<number>(
     n(initialParams?.length_mm, DEFAULTS.length_mm)
@@ -77,31 +139,34 @@ export default function ForgeForm({
     (initialParams?.text_mode ?? "engrave") as TextMode
   );
 
-  // ---- Agujeros: editor de filas + pegado rápido ----
+  // ------- Agujeros: UI avanzada -------
   const [holes, setHoles] = useState<Hole[]>([]);
-  const [paste, setPaste] = useState<string>("");
+  const [bulk, setBulk] = useState("");
 
   function addHole() {
-    setHoles((h) => [...h, { x: 0, y: 0, diameter_mm: 4 }]);
-  }
-  function removeHole(i: number) {
-    setHoles((h) => h.filter((_, idx) => idx !== i));
+    setHoles((prev) => [...prev, { x: 0, y: 0, diameter_mm: 4 }]);
   }
   function updateHole(i: number, key: keyof Hole, val: number) {
-    setHoles((h) =>
-      h.map((row, idx) => (idx === i ? { ...row, [key]: val } : row))
+    setHoles((prev) =>
+      prev.map((h, idx) => (idx === i ? { ...h, [key]: val } : h))
     );
   }
-  function importFromPaste() {
-    const txt = paste.trim();
-    if (!txt) return;
-    // Acepta: "x,y,d x,y,d"  o  "x;y;d x;y;d"  (con comas o puntos)
-    const parsed: Hole[] = txt
+  function removeHole(i: number) {
+    setHoles((prev) => prev.filter((_, idx) => idx !== i));
+  }
+  function clearHoles() {
+    setHoles([]);
+    setBulk("");
+  }
+  function importBulk() {
+    // formatos: "x,y,d x,y,d" o "x;y;d x;y;d"
+    const list = bulk
+      .trim()
       .split(/\s+/)
       .map((t) => t.trim())
       .filter(Boolean)
-      .map((tri) => tri.split(/[;,]/).map((s) => s.trim()))
-      .filter((parts) => parts.length >= 3)
+      .map((triple) => triple.split(/[;,]/).map((s) => s.trim()))
+      .filter((p) => p.length >= 3)
       .map(([xs, ys, ds]) => ({
         x: parseFloat(xs.replace(",", ".")),
         y: parseFloat(ys.replace(",", ".")),
@@ -113,16 +178,9 @@ export default function ForgeForm({
           Number.isFinite(h.y) &&
           Number.isFinite(h.diameter_mm)
       );
-    if (parsed.length) {
-      setHoles(parsed);
-    }
-  }
-  function clearHoles() {
-    setHoles([]);
-    setPaste("");
+    if (list.length) setHoles(list);
   }
 
-  // Construir params
   const params = useMemo(() => {
     const L = n(lengthMm, DEFAULTS.length_mm);
     const W = n(widthMm, DEFAULTS.width_mm);
@@ -130,16 +188,9 @@ export default function ForgeForm({
     const T = n(thicknessMm, DEFAULTS.thickness_mm);
     const Rraw = n(filletMm, DEFAULTS.fillet_mm);
     const R = Math.max(0, Math.min(Rraw, Math.min(L, W) * 0.25));
-    return {
-      length_mm: L,
-      width_mm: W,
-      height_mm: H,
-      thickness_mm: T,
-      fillet_mm: R,
-    };
+    return { length_mm: L, width_mm: W, height_mm: H, thickness_mm: T, fillet_mm: R };
   }, [lengthMm, widthMm, heightMm, thicknessMm, filletMm]);
 
-  // Operación de texto
   const text_ops = useMemo(() => {
     if (!text?.trim()) return undefined;
     return [
@@ -147,7 +198,7 @@ export default function ForgeForm({
         text: text.trim(),
         size: 6,
         depth: 1.2,
-        mode: textMode,
+        mode: textMode as TextMode,
         pos: [0, 0, 0] as [number, number, number],
         rot: [0, 0, 0] as [number, number, number],
       },
@@ -183,7 +234,7 @@ export default function ForgeForm({
           value={slug}
           onChange={(e) => setSlug(e.target.value)}
         >
-          {MODELS.map((m) => (
+          {catalog.map((m) => (
             <option key={m.slug} value={m.slug}>
               {m.label}
             </option>
@@ -221,91 +272,60 @@ export default function ForgeForm({
         </select>
       </div>
 
-      {/* ---- Editor de agujeros ---- */}
+      {/* Agujeros */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <label className="block text-sm font-medium">Agujeros</label>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={addHole}
-              className="px-2 py-1 rounded bg-neutral-200 hover:bg-neutral-300"
-            >
+          <label className="text-sm font-medium">Agujeros</label>
+          <div className="flex gap-2">
+            <button type="button" className="px-3 py-1 rounded border" onClick={addHole}>
               + Añadir
             </button>
-            <button
-              type="button"
-              onClick={clearHoles}
-              className="px-2 py-1 rounded bg-neutral-200 hover:bg-neutral-300"
-            >
+            <button type="button" className="px-3 py-1 rounded border" onClick={clearHoles}>
               Limpiar
             </button>
           </div>
         </div>
 
-        {holes.length === 0 ? (
-          <p className="text-sm text-neutral-500">
+        {holes.length === 0 && (
+          <p className="text-xs text-neutral-500">
             No hay agujeros. Pulsa “Añadir” o usa el pegado rápido.
           </p>
-        ) : (
-          <div className="space-y-2">
-            {holes.map((h, i) => (
-              <div key={i} className="grid grid-cols-12 gap-2 items-center">
-                <input
-                  type="number"
-                  step="0.1"
-                  className="col-span-3 rounded border p-2"
-                  value={h.x}
-                  onChange={(e) => updateHole(i, "x", parseFloat(e.target.value))}
-                  placeholder="x (mm)"
-                />
-                <input
-                  type="number"
-                  step="0.1"
-                  className="col-span-3 rounded border p-2"
-                  value={h.y}
-                  onChange={(e) => updateHole(i, "y", parseFloat(e.target.value))}
-                  placeholder="y (mm)"
-                />
-                <input
-                  type="number"
-                  step="0.1"
-                  className="col-span-4 rounded border p-2"
-                  value={h.diameter_mm}
-                  onChange={(e) =>
-                    updateHole(i, "diameter_mm", parseFloat(e.target.value))
-                  }
-                  placeholder="Ø (mm)"
-                />
-                <button
-                  type="button"
-                  onClick={() => removeHole(i)}
-                  className="col-span-2 px-2 py-1 rounded bg-red-100 hover:bg-red-200"
-                >
-                  Eliminar
-                </button>
-              </div>
-            ))}
-          </div>
         )}
 
-        <div className="space-y-1">
-          <label className="block text-xs text-neutral-600">
-            Pegado rápido (x,y,Ø en mm). Ej.: <code>5,5,5 30,5,3.2</code> ó{" "}
-            <code>5;5;5 30;5;3.2</code>
-          </label>
-          <div className="flex gap-2">
-            <input
-              className="flex-1 rounded border p-2"
-              value={paste}
-              onChange={(e) => setPaste(e.target.value)}
-              placeholder='Formato: "x,y,d x,y,d" o "x;y;d x;y;d"'
+        {holes.map((h, i) => (
+          <div key={i} className="grid grid-cols-7 gap-2 items-center">
+            <span className="text-xs col-span-1">#{i + 1}</span>
+            <NumberSmall label="x" value={h.x} onChange={(v) => updateHole(i, "x", v)} />
+            <NumberSmall label="y" value={h.y} onChange={(v) => updateHole(i, "y", v)} />
+            <NumberSmall
+              label="Ø (mm)"
+              value={h.diameter_mm}
+              onChange={(v) => updateHole(i, "diameter_mm", v)}
             />
+            <div className="col-span-2" />
             <button
               type="button"
-              onClick={importFromPaste}
-              className="px-3 py-2 rounded bg-neutral-200 hover:bg-neutral-300"
+              className="px-2 py-1 border rounded text-sm"
+              onClick={() => removeHole(i)}
             >
+              Quitar
+            </button>
+          </div>
+        ))}
+
+        <div className="mt-2">
+          <p className="text-xs text-neutral-500">
+            Pegado rápido (x,y,Ø en mm). Ej.: <code>5,5,5 30,5,3.2</code> ó{" "}
+            <code>5;5;5 30;5;3.2</code>
+          </p>
+          <div className="flex gap-2">
+            <input
+              className="w-full rounded border p-2"
+              value={bulk}
+              onChange={(e) => setBulk(e.target.value)}
+              placeholder='Formato: "x,y,d x,y,d" o "x;y;d x;y;d"'
+            />
+            <button type="button" className="px-3 py-2 rounded border" onClick={importBulk}>
               Importar
             </button>
           </div>
@@ -343,5 +363,28 @@ function NumberField({
         onChange={(e) => onChange(parseFloat(e.target.value))}
       />
     </div>
+  );
+}
+
+function NumberSmall({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (n: number) => void;
+}) {
+  return (
+    <label className="text-xs flex items-center gap-1">
+      <span>{label}</span>
+      <input
+        type="number"
+        step="any"
+        className="w-24 rounded border p-1 text-sm"
+        value={Number.isFinite(value as any) ? value : 0}
+        onChange={(e) => onChange(parseFloat(e.target.value))}
+      />
+    </label>
   );
 }
