@@ -355,8 +355,11 @@ export async function forgeGenerate(body: {
 }) {
   const payload = normalizePayload(body);
 
-  // intenta sacar el UID automáticamente si no viene
-  let userId = payload.user_id ?? (await tryGetUserId()).catch(() => null);
+// intenta sacar el UID automáticamente si no viene
+let userId: string | null = payload.user_id ?? null;
+if (!userId) {
+  userId = await tryGetUserId(); // esta función ya hace try/catch interno y devuelve null si falla
+}
 
   // 1) Next API (preferido si existe y aplica tu lógica de SSR)
   try {
