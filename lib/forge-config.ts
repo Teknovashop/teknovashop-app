@@ -274,10 +274,26 @@ function num(x: any) {
   return Number.isFinite(n) ? n : undefined;
 }
 
+// Intento opcional de obtener user_id desde Supabase Auth si está instalado.
+// Si no usas Supabase en el front, esto devuelve null y no rompe.
+async function tryGetUserId(): Promise<string | null> {
+  try {
+    const { createClientComponentClient } = await import("@supabase/auth-helpers-nextjs");
+    const supabase = createClientComponentClient();
+    const { data } = await supabase.auth.getUser();
+    return data?.user?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+type HoleIn =
+  | { x: number; y: number; diameter_mm?: number; diam_mm?: number; d?: number; diameter?: number };
+
 function normalizePayload(body: {
   slug: string;
   params: any;
-  holes?: Array<{ x: number; y: number; diameter_mm?: number; diam_mm?: number; d?: number; diameter?: number }>;
+  holes?: Array<HoleIn>;
   text_ops?: Array<{
     text: string;
     size?: number;
@@ -287,6 +303,7 @@ function normalizePayload(body: {
     rot?: [number, number, number];
     font?: string;
   }>;
+  user_id?: string | null;
 }) {
   const slug = (body.slug || "").toLowerCase();
 
@@ -298,7 +315,10 @@ function normalizePayload(body: {
         y: num(h.y),
         diam_mm: num((h as any).diam_mm ?? h.diameter_mm ?? h.diameter ?? h.d),
       }))
-      .filter((h) => h.x !== undefined && h.y !== undefined && h.diam_mm !== undefined && (h.diam_mm as number) > 0) as Array<{ x: number; y: number; diam_mm: number }>;
+      .filter(
+        (h) =>
+          h.x !== undefined && h.y !== undefined && h.diam_mm !== undefined && (h.diam_mm as number) > 0
+      ) as Array<{ x: number; y: number; diam_mm: number }>;
 
   // saneo simple de numéricos comunes; el backend también tolera strings
   const params = { ...(body.params || {}) };
@@ -309,13 +329,14 @@ function normalizePayload(body: {
     }
   });
 
-  return { slug, params, holes, text_ops: body.text_ops };
+  return { slug, params, holes, text_ops: body.text_ops, user_id: body.user_id ?? null };
 }
 
 /**
  * Llama al endpoint de generación:
  * 1) Intenta /api/forge/generate (Next server)
  * 2) Fallback a BACKEND /generate (Render)
+ * En ambos casos, envía x-user-id (si lo tenemos) y maneja 402 Payment Required.
  */
 export async function forgeGenerate(body: {
   slug: string;
@@ -330,16 +351,27 @@ export async function forgeGenerate(body: {
     rot?: [number, number, number];
     font?: string;
   }>;
+  user_id?: string | null;
 }) {
   const payload = normalizePayload(body);
 
-  // 1) Next API (preferido)
+  // intenta sacar el UID automáticamente si no viene
+  let userId = payload.user_id ?? (await tryGetUserId()).catch(() => null);
+
+  // 1) Next API (preferido si existe y aplica tu lógica de SSR)
   try {
     const r = await fetch("/api/forge/generate", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      headers: {
+        "Content-Type": "application/json",
+        ...(userId ? { "x-user-id": String(userId) } : {}),
+      },
+      body: JSON.stringify({ ...payload, user_id: userId }),
     });
+    if (r.status === 402) {
+      const j = await r.json().catch(() => ({}));
+      throw new Error(j?.detail || "Pago requerido para generar este modelo.");
+    }
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(data?.detail || data?.message || "Forge generate failed");
     return data as {
@@ -353,9 +385,16 @@ export async function forgeGenerate(body: {
     // 2) Fallback directo al backend
     const r2 = await fetch(`${FORGE_BASE}/generate`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      headers: {
+        "Content-Type": "application/json",
+        ...(userId ? { "x-user-id": String(userId) } : {}),
+      },
+      body: JSON.stringify({ ...payload, user_id: userId }),
     });
+    if (r2.status === 402) {
+      const j = await r2.json().catch(() => ({}));
+      throw new Error(j?.detail || "Pago requerido para generar este modelo.");
+    }
     const data2 = await r2.json().catch(() => ({}));
     if (!r2.ok) {
       throw new Error(data2?.detail || data2?.message || r2.statusText);
