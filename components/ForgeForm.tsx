@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { forgeGenerate } from "@/lib/forge-config";
 
 type TextMode = "engrave" | "emboss";
+type Anchor = "front" | "back" | "left" | "right" | "top" | "bottom";
 type Hole = { x: number; y: number; diameter_mm: number };
 
 type ForgeFormProps = {
@@ -19,21 +20,21 @@ const FALLBACK_MODELS: { slug: string; label: string }[] = [
   { slug: "cable-tray", label: "Bandeja de Cables" },
   { slug: "tablet-stand", label: "Soporte de Tablet" },
   { slug: "monitor-stand", label: "Elevador de Monitor" },
-  { slug: "laptop-stand", label: "Soporte Laptop" },         // 👈 añadido
+  { slug: "laptop-stand", label: "Soporte Laptop" },
   { slug: "phone-dock", label: "Dock para Móvil (USB-C)" },
-  { slug: "phone-stand", label: "Soporte Móvil" },           // 👈 añadido
+  { slug: "phone-stand", label: "Soporte Móvil" },
   { slug: "ssd-holder", label: "Caddy SSD 2.5 a 3.5" },
   { slug: "raspi-case", label: "Caja Raspberry Pi" },
   { slug: "go-pro-mount", label: "Soporte GoPro" },
   { slug: "mic-arm-clip", label: "Clip Brazo Mic" },
-  { slug: "camera-plate", label: "Placa para Cámara" },      // 👈 real
-  { slug: "wall-hook", label: "Colgador de Pared" },         // 👈 revisado
+  { slug: "camera-plate", label: "Placa para Cámara" },
+  { slug: "wall-hook", label: "Colgador de Pared" },
   { slug: "wall-bracket", label: "Escuadra de Pared" },
-  { slug: "cable-clip", label: "Clip de Cable" },            // 👈 añadido
-  { slug: "hub-holder", label: "Soporte Hub USB" },          // 👈 añadido
-  { slug: "headset-stand", label: "Soporte Auriculares" },   // 👈 añadido
-  { slug: "vesa-shelf", label: "Bandeja VESA" },             // 👈 añadido
-  { slug: "enclosure-ip65", label: "Caja IP65" },            // 👈 añadido
+  { slug: "cable-clip", label: "Clip de Cable" },
+  { slug: "hub-holder", label: "Soporte Hub USB" },
+  { slug: "headset-stand", label: "Soporte Auriculares" },
+  { slug: "vesa-shelf", label: "Bandeja VESA" },
+  { slug: "enclosure-ip65", label: "Caja IP65" },
 ];
 
 const DEFAULTS = {
@@ -89,7 +90,6 @@ export default function ForgeForm({
   useEffect(() => {
     (async () => {
       try {
-        // Suele ser el Render (FastAPI). Si no está, no pasa nada.
         const base = process.env.NEXT_PUBLIC_FORGE_URL || "";
         if (!base) return;
         const res = await fetch(`${base}/debug/models`, { cache: "no-store" });
@@ -111,7 +111,6 @@ export default function ForgeForm({
                     .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
                     .join(" "),
               }))
-              // Orden por label para que no crezca caótico
               .sort((a, b) => a.label.localeCompare(b.label, "es"))
           );
         }
@@ -148,6 +147,7 @@ export default function ForgeForm({
   const [textMode, setTextMode] = useState<TextMode>(
     (initialParams?.text_mode ?? "engrave") as TextMode
   );
+  const [anchor, setAnchor] = useState<Anchor>("front"); // NUEVO
 
   // ------- Agujeros: UI avanzada -------
   const [holes, setHoles] = useState<Hole[]>([]);
@@ -169,7 +169,6 @@ export default function ForgeForm({
     setBulk("");
   }
   function importBulk() {
-    // formatos: "x,y,d x,y,d" o "x;y;d x;y;d"
     const list = bulk
       .trim()
       .split(/\s+/)
@@ -209,11 +208,12 @@ export default function ForgeForm({
         size: 6,
         depth: 1.2,
         mode: textMode as TextMode,
+        anchor,                                  // NUEVO
         pos: [0, 0, 0] as [number, number, number],
         rot: [0, 0, 0] as [number, number, number],
       },
     ];
-  }, [text, textMode]);
+  }, [text, textMode, anchor]);
 
   const [loading, setLoading] = useState(false);
 
@@ -270,16 +270,34 @@ export default function ForgeForm({
         />
       </div>
 
-      <div>
-        <label className="block text-sm font-medium mb-1">Modo texto</label>
-        <select
-          className="w-full rounded border p-2"
-          value={textMode}
-          onChange={(e) => setTextMode(e.target.value as TextMode)}
-        >
-          <option value="engrave">Engrave (grabar)</option>
-          <option value="emboss">Emboss (relieve)</option>
-        </select>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-sm font-medium mb-1">Modo texto</label>
+          <select
+            className="w-full rounded border p-2"
+            value={textMode}
+            onChange={(e) => setTextMode(e.target.value as TextMode)}
+          >
+            <option value="engrave">Engrave (grabar)</option>
+            <option value="emboss">Emboss (relieve)</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-1">Anclar texto</label>
+          <select
+            className="w-full rounded border p-2"
+            value={anchor}
+            onChange={(e) => setAnchor(e.target.value as Anchor)}
+          >
+            <option value="front">Frente</option>
+            <option value="back">Dorso</option>
+            <option value="left">Izquierda</option>
+            <option value="right">Derecha</option>
+            <option value="top">Arriba</option>
+            <option value="bottom">Abajo</option>
+          </select>
+        </div>
       </div>
 
       {/* Agujeros */}
