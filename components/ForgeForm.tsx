@@ -12,21 +12,28 @@ type ForgeFormProps = {
   onGenerated?: (url: string) => void;
 };
 
-// Fallback local por si el backend no responde
+/** Fallback local por si el backend no responde */
 const FALLBACK_MODELS: { slug: string; label: string }[] = [
   { slug: "vesa-adapter", label: "Adaptador VESA 75/100 -> 100/200" },
   { slug: "router-mount", label: "Soporte de Router" },
   { slug: "cable-tray", label: "Bandeja de Cables" },
   { slug: "tablet-stand", label: "Soporte de Tablet" },
   { slug: "monitor-stand", label: "Elevador de Monitor" },
+  { slug: "laptop-stand", label: "Soporte Laptop" },         // 👈 añadido
+  { slug: "phone-dock", label: "Dock para Móvil (USB-C)" },
+  { slug: "phone-stand", label: "Soporte Móvil" },           // 👈 añadido
   { slug: "ssd-holder", label: "Caddy SSD 2.5 a 3.5" },
   { slug: "raspi-case", label: "Caja Raspberry Pi" },
   { slug: "go-pro-mount", label: "Soporte GoPro" },
   { slug: "mic-arm-clip", label: "Clip Brazo Mic" },
-  { slug: "camera-plate", label: "Placa para Cámara" },
-  { slug: "wall-hook", label: "Colgador de Pared" },
+  { slug: "camera-plate", label: "Placa para Cámara" },      // 👈 real
+  { slug: "wall-hook", label: "Colgador de Pared" },         // 👈 revisado
   { slug: "wall-bracket", label: "Escuadra de Pared" },
-  { slug: "phone-dock", label: "Dock para Móvil (USB-C)" },
+  { slug: "cable-clip", label: "Clip de Cable" },            // 👈 añadido
+  { slug: "hub-holder", label: "Soporte Hub USB" },          // 👈 añadido
+  { slug: "headset-stand", label: "Soporte Auriculares" },   // 👈 añadido
+  { slug: "vesa-shelf", label: "Bandeja VESA" },             // 👈 añadido
+  { slug: "enclosure-ip65", label: "Caja IP65" },            // 👈 añadido
 ];
 
 const DEFAULTS = {
@@ -42,7 +49,7 @@ function n(v: any, fb: number) {
   return Number.isFinite(x) ? x : fb;
 }
 
-// Mapa de “nombre bonito” para slugs que lleguen del backend
+/** “Nombre bonito” para slugs que vengan del backend */
 const NICE: Record<string, string> = {
   "vesa-adapter": "Adaptador VESA 75/100 -> 100/200",
   "router-mount": "Soporte de Router",
@@ -78,35 +85,38 @@ export default function ForgeForm({
     FALLBACK_MODELS
   );
 
-  // Carga dinámica desde el backend
+  // Carga dinámica desde el backend (si falla, se queda el fallback)
   useEffect(() => {
     (async () => {
       try {
-        // /debug/models devuelve { models: ["cable_tray", ...] }
+        // Suele ser el Render (FastAPI). Si no está, no pasa nada.
         const base = process.env.NEXT_PUBLIC_FORGE_URL || "";
+        if (!base) return;
         const res = await fetch(`${base}/debug/models`, { cache: "no-store" });
         if (!res.ok) return;
         const j = await res.json();
         const slugs: string[] = (j?.models || []).map((s: string) =>
           String(s || "").trim().toLowerCase().replace(/_/g, "-")
         );
-        // Filtra duplicados y mapea a etiquetas
         const uniq = Array.from(new Set(slugs));
         if (uniq.length) {
           setCatalog(
-            uniq.map((slug) => ({
-              slug,
-              label:
-                NICE[slug] ||
-                slug
-                  .split("-")
-                  .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
-                  .join(" "),
-            }))
+            uniq
+              .map((slug) => ({
+                slug,
+                label:
+                  NICE[slug] ||
+                  slug
+                    .split("-")
+                    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+                    .join(" "),
+              }))
+              // Orden por label para que no crezca caótico
+              .sort((a, b) => a.label.localeCompare(b.label, "es"))
           );
         }
       } catch {
-        // si falla, nos quedamos con el fallback
+        /* noop */
       }
     })();
   }, []);
