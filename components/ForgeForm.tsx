@@ -147,7 +147,11 @@ export default function ForgeForm({
   const [textMode, setTextMode] = useState<TextMode>(
     (initialParams?.text_mode ?? "engrave") as TextMode
   );
-  const [anchor, setAnchor] = useState<Anchor>("front"); // NUEVO
+  const [anchor, setAnchor] = useState<Anchor>("front");
+  const [textSize, setTextSize] = useState<number>(8);   // NUEVO
+  const [textDepth, setTextDepth] = useState<number>(1.2); // NUEVO
+  const [textX, setTextX] = useState<number>(0);         // NUEVO
+  const [textY, setTextY] = useState<number>(0);         // NUEVO
 
   // ------- Agujeros: UI avanzada -------
   const [holes, setHoles] = useState<Hole[]>([]);
@@ -205,15 +209,15 @@ export default function ForgeForm({
     return [
       {
         text: text.trim(),
-        size: 6,
-        depth: 1.2,
+        size: n(textSize, 8),
+        depth: n(textDepth, 1.2),
         mode: textMode as TextMode,
-        anchor,                                  // NUEVO
-        pos: [0, 0, 0] as [number, number, number],
+        anchor,
+        pos: [n(textX, 0), n(textY, 0), 0] as [number, number, number],
         rot: [0, 0, 0] as [number, number, number],
       },
     ];
-  }, [text, textMode, anchor]);
+  }, [text, textMode, anchor, textSize, textDepth, textX, textY]);
 
   const [loading, setLoading] = useState(false);
 
@@ -270,7 +274,7 @@ export default function ForgeForm({
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <div>
           <label className="block text-sm font-medium mb-1">Modo texto</label>
           <select
@@ -298,20 +302,17 @@ export default function ForgeForm({
             <option value="bottom">Abajo</option>
           </select>
         </div>
+
+        <NumberField label="Text Size (mm)" value={textSize} onChange={setTextSize} />
+        <NumberField label="Text Depth (mm)" value={textDepth} onChange={setTextDepth} />
+        <NumberField label="Text X (mm)" value={textX} onChange={setTextX} />
+        <NumberField label="Text Y (mm)" value={textY} onChange={setTextY} />
       </div>
 
       {/* Agujeros */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <label className="text-sm font-medium">Agujeros</label>
-          <div className="flex gap-2">
-            <button type="button" className="px-3 py-1 rounded border" onClick={addHole}>
-              + Añadir
-            </button>
-            <button type="button" className="px-3 py-1 rounded border" onClick={clearHoles}>
-              Limpiar
-            </button>
-          </div>
         </div>
 
         {holes.length === 0 && (
@@ -355,6 +356,12 @@ export default function ForgeForm({
             />
             <button type="button" className="px-3 py-2 rounded border" onClick={importBulk}>
               Importar
+            </button>
+            <button type="button" className="px-3 py-2 rounded border" onClick={addHole}>
+              + Añadir
+            </button>
+            <button type="button" className="px-3 py-2 rounded border" onClick={clearHoles}>
+              Limpiar
             </button>
           </div>
         </div>
