@@ -148,12 +148,14 @@ export default function ForgeForm({
     (initialParams?.text_mode ?? "engrave") as TextMode
   );
   const [anchor, setAnchor] = useState<Anchor>("front");
-  const [textSize, setTextSize] = useState<number>(8);   // NUEVO
-  const [textDepth, setTextDepth] = useState<number>(1.2); // NUEVO
-  const [textX, setTextX] = useState<number>(0);         // NUEVO
-  const [textY, setTextY] = useState<number>(0);         // NUEVO
 
-  // ------- Agujeros: UI avanzada -------
+  // NUEVO: controles de texto
+  const [textSize, setTextSize] = useState<number>(8);
+  const [textDepth, setTextDepth] = useState<number>(1.2);
+  const [textX, setTextX] = useState<number>(10);
+  const [textY, setTextY] = useState<number>(10);
+
+  // ------- Agujeros: UI -------
   const [holes, setHoles] = useState<Hole[]>([]);
   const [bulk, setBulk] = useState("");
 
@@ -209,11 +211,11 @@ export default function ForgeForm({
     return [
       {
         text: text.trim(),
-        size: n(textSize, 8),
-        depth: n(textDepth, 1.2),
+        size: textSize,
+        depth: textDepth,
         mode: textMode as TextMode,
         anchor,
-        pos: [n(textX, 0), n(textY, 0), 0] as [number, number, number],
+        pos: [textX, textY, 0] as [number, number, number],
         rot: [0, 0, 0] as [number, number, number],
       },
     ];
@@ -274,7 +276,7 @@ export default function ForgeForm({
         />
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-sm font-medium mb-1">Modo texto</label>
           <select
@@ -313,6 +315,14 @@ export default function ForgeForm({
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <label className="text-sm font-medium">Agujeros</label>
+          <div className="flex gap-2">
+            <button type="button" className="px-3 py-1 rounded border" onClick={addHole}>
+              + Añadir
+            </button>
+            <button type="button" className="px-3 py-1 rounded border" onClick={clearHoles}>
+              Limpiar
+            </button>
+          </div>
         </div>
 
         {holes.length === 0 && (
@@ -356,12 +366,6 @@ export default function ForgeForm({
             />
             <button type="button" className="px-3 py-2 rounded border" onClick={importBulk}>
               Importar
-            </button>
-            <button type="button" className="px-3 py-2 rounded border" onClick={addHole}>
-              + Añadir
-            </button>
-            <button type="button" className="px-3 py-2 rounded border" onClick={clearHoles}>
-              Limpiar
             </button>
           </div>
         </div>
