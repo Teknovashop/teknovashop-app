@@ -30,12 +30,18 @@ function hasEntitlement(): boolean {
 export default function STLViewerPro({ url, className }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
 
-  // Tipos laxos para compatibilidad con cualquier versión de three/@types
-  const currentMeshRef = useRef<any>(null);
+  // Refs laxos para compat
   const sceneRef = useRef<any>(null);
   const rendererRef = useRef<any>(null);
   const cameraRef = useRef<any>(null);
   const controlsRef = useRef<any>(null);
+
+  // Objetos de escena
+  const groupRef = useRef<THREE.Group | null>(null);          // mesh + edges
+  const meshRef = useRef<THREE.Mesh | null>(null);
+  const edgesRef = useRef<THREE.LineSegments | null>(null);
+  const groundRef = useRef<THREE.Mesh | null>(null);
+  const dirLightRef = useRef<THREE.DirectionalLight | null>(null);
 
   const [bgLight, setBgLight] = useState(true);
   const [tone, setTone] = useState(0.5);
@@ -78,13 +84,13 @@ export default function STLViewerPro({ url, className }: Props) {
       startCheckout("maker");
       return;
     }
-    const mesh = currentMeshRef.current;
+    const mesh = meshRef.current;
     if (!mesh) return;
 
     const exporter = new STLExporter();
     const parsed = exporter.parse(mesh, { binary: true }) as ArrayBuffer | DataView | string;
 
-    // Normalizamos SIEMPRE a un ArrayBuffer REAL (nunca SharedArrayBuffer)
+    // Normalizar a ArrayBuffer real
     let bytes: Uint8Array;
     if (parsed instanceof ArrayBuffer) {
       bytes = new Uint8Array(parsed);
@@ -93,7 +99,6 @@ export default function STLViewerPro({ url, className }: Props) {
       bytes = new Uint8Array(parsed.byteLength);
       bytes.set(view);
     } else {
-      // texto ASCII STL
       bytes = new TextEncoder().encode(parsed as string);
     }
     const ab = new ArrayBuffer(bytes.byteLength);
@@ -107,12 +112,13 @@ export default function STLViewerPro({ url, className }: Props) {
     URL.revokeObjectURL(a.href);
   };
 
+  // Init escena
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(bgLight ? 0xffffff : 0x000000);
+    scene.background = new THREE.Color(bgLight ? 0xf7f7f8 : 0x0d0f12);
     sceneRef.current = scene;
 
     const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 5000);
@@ -126,7 +132,7 @@ export default function STLViewerPro({ url, className }: Props) {
     (renderer as any).outputColorSpace = (THREE as any).SRGBColorSpace ?? "srgb";
     (renderer as any).toneMapping = (THREE as any).ACESFilmicToneMapping ?? 0;
     (renderer as any).toneMappingExposure = 0.8 + tone * 0.7;
-    (renderer as any).physicallyCorrectLights = true; // no falla si está deprecado
+    (renderer as any).physicallyCorrectLights = true;
     renderer.shadowMap.enabled = showShadow;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
@@ -144,11 +150,29 @@ export default function STLViewerPro({ url, className }: Props) {
 
     const hemi = new THREE.HemisphereLight(0xffffff, 0x222222, 0.8);
     scene.add(hemi);
+
     const dir = new THREE.DirectionalLight(0xffffff, 1.0);
     dir.position.set(300, 400, 200);
     dir.castShadow = true;
     dir.shadow.mapSize.set(2048, 2048);
     scene.add(dir);
+    dirLightRef.current = dir;
+
+    // Suelo receptor de sombras
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(3000, 3000),
+      new THREE.ShadowMaterial({ opacity: showShadow ? 0.18 : 0 })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -0.01; // reajustamos al cargar STL
+    ground.receiveShadow = true;
+    scene.add(ground);
+    groundRef.current = ground;
+
+    // Grupo para mesh + edges
+    const group = new THREE.Group();
+    scene.add(group);
+    groupRef.current = group;
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
@@ -189,18 +213,54 @@ export default function STLViewerPro({ url, className }: Props) {
       sceneRef.current = null;
       rendererRef.current = null;
       cameraRef.current = null;
-      currentMeshRef.current = null;
+      meshRef.current = null;
+      edgesRef.current = null;
+      groundRef.current = null;
+      dirLightRef.current = null;
+      groupRef.current = null;
       controlsRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Tone + Sombras
   useEffect(() => {
     const r = rendererRef.current as any;
     if (!r) return;
     r.toneMappingExposure = 0.8 + tone * 0.7;
-    if (r.shadowMap) r.shadowMap.enabled = showShadow;
+
+    // Sombras: renderer + luz + suelo + malla(s)
+    r.shadowMap.enabled = showShadow;
+    if (dirLightRef.current) dirLightRef.current.castShadow = showShadow;
+    if (groundRef.current) {
+      const gm = groundRef.current.material as THREE.ShadowMaterial;
+      gm.opacity = showShadow ? 0.18 : 0;
+      gm.needsUpdate = true;
+    }
+    groupRef.current?.traverse((o: any) => {
+      if (o.isMesh) {
+        o.castShadow = showShadow;
+        o.receiveShadow = showShadow;
+      }
+    });
   }, [tone, showShadow]);
+
+  // Fondo claro/oscuro (y contraste de líneas/material)
+  useEffect(() => {
+    const scene = sceneRef.current as THREE.Scene | null;
+    if (!scene) return;
+    scene.background = new THREE.Color(bgLight ? 0xf7f7f8 : 0x0d0f12);
+
+    // Ajuste suave de contraste
+    const mesh = meshRef.current;
+    if (mesh && (mesh.material as THREE.MeshStandardMaterial)) {
+      (mesh.material as THREE.MeshStandardMaterial).color.setHex(bgLight ? 0xdedede : 0xaaaaaa);
+    }
+    const edges = edgesRef.current;
+    if (edges && (edges.material as THREE.LineBasicMaterial)) {
+      (edges.material as THREE.LineBasicMaterial).color.setHex(bgLight ? 0x262626 : 0xffffff);
+    }
+  }, [bgLight]);
 
   function fitCameraToObject(obj: any) {
     const camera = cameraRef.current;
@@ -209,7 +269,7 @@ export default function STLViewerPro({ url, className }: Props) {
 
     const box = new THREE.Box3().setFromObject(obj);
     const size = box.getSize(new THREE.Vector3());
-    const center = box.getCenter(new THREE.Vector3()); // <-- corregido (antes decía 'aconst')
+    const center = box.getCenter(new THREE.Vector3());
 
     const maxDim = Math.max(size.x, size.y, size.z);
     const fov = (camera.fov * Math.PI) / 180;
@@ -227,39 +287,69 @@ export default function STLViewerPro({ url, className }: Props) {
 
   // Cargar STL cuando cambie la URL
   useEffect(() => {
-    const scene = sceneRef.current as any;
-    if (!scene) return;
+    const scene = sceneRef.current as THREE.Scene | null;
+    const group = groupRef.current;
+    if (!scene || !group) return;
 
-    if (currentMeshRef.current) {
-      const prev = currentMeshRef.current as any;
-      scene.remove(prev);
-      prev.geometry?.dispose?.();
-      (prev.material as any)?.dispose?.();
-      currentMeshRef.current = null;
+    // Limpiar grupo anterior
+    while (group.children.length) {
+      const c = group.children.pop()!;
+      (c as any).geometry?.dispose?.();
+      const mat: any = (c as any).material;
+      if (mat) {
+        if (Array.isArray(mat)) mat.forEach((m) => m.dispose?.());
+        else mat.dispose?.();
+      }
+      c.removeFromParent();
     }
+    meshRef.current = null;
+    edgesRef.current = null;
+
     if (!url) return;
 
     const loader = new STLLoader();
     loader.load(
       url,
       (geometry) => {
-        geometry.center();
         geometry.computeVertexNormals();
+
+        // Malla principal
         const mat = new THREE.MeshStandardMaterial({
-          color: 0xf0f0f0,
+          color: bgLight ? 0xdedede : 0xaaaaaa,
           metalness: 0.12,
           roughness: 0.86,
         });
         const mesh = new THREE.Mesh(geometry, mat);
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        scene.add(mesh);
-        currentMeshRef.current = mesh;
-        fitCameraToObject(mesh);
+        mesh.castShadow = showShadow;
+        mesh.receiveShadow = showShadow;
+        group.add(mesh);
+        meshRef.current = mesh;
+
+        // Contorno para resaltar textos
+        const edgesGeom = new THREE.EdgesGeometry(geometry, 15);
+        const edgesMat = new THREE.LineBasicMaterial({ color: bgLight ? 0x262626 : 0xffffff, linewidth: 1 });
+        const edges = new THREE.LineSegments(edgesGeom, edgesMat);
+        group.add(edges);
+        edgesRef.current = edges;
+
+        // Centrar grupo (usamos el bounding box)
+        geometry.computeBoundingBox();
+        const bb = geometry.boundingBox!;
+        const size = new THREE.Vector3().subVectors(bb.max, bb.min);
+        const center = new THREE.Vector3().addVectors(bb.min, bb.max).multiplyScalar(0.5);
+        group.position.set(-center.x, -center.y, -center.z);
+
+        // Reposicionar el suelo para recibir la sombra bajo la pieza
+        if (groundRef.current) {
+          groundRef.current.position.y = -size.y / 2 - 0.02;
+        }
+
+        fitCameraToObject(group);
       },
       undefined,
       () => {}
     );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url]);
 
   return (
