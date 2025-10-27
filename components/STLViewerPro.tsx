@@ -30,18 +30,18 @@ function hasEntitlement(): boolean {
 export default function STLViewerPro({ url, className }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
 
-  // Refs laxos para compat
+  // Refs laxos para compat con cualquier versión de three/@types
   const sceneRef = useRef<any>(null);
   const rendererRef = useRef<any>(null);
   const cameraRef = useRef<any>(null);
   const controlsRef = useRef<any>(null);
 
   // Objetos de escena
-  const groupRef = useRef<THREE.Group | null>(null);          // mesh + edges
-  const meshRef = useRef<THREE.Mesh | null>(null);
-  const edgesRef = useRef<THREE.LineSegments | null>(null);
-  const groundRef = useRef<THREE.Mesh | null>(null);
-  const dirLightRef = useRef<THREE.DirectionalLight | null>(null);
+  const groupRef = useRef<any>(null);      // mesh + edges
+  const meshRef = useRef<any>(null);
+  const edgesRef = useRef<any>(null);
+  const groundRef = useRef<any>(null);
+  const dirLightRef = useRef<any>(null);
 
   const [bgLight, setBgLight] = useState(true);
   const [tone, setTone] = useState(0.5);
@@ -164,7 +164,7 @@ export default function STLViewerPro({ url, className }: Props) {
       new THREE.ShadowMaterial({ opacity: showShadow ? 0.18 : 0 })
     );
     ground.rotation.x = -Math.PI / 2;
-    ground.position.y = -0.01; // reajustamos al cargar STL
+    ground.position.y = -0.01;
     ground.receiveShadow = true;
     scene.add(ground);
     groundRef.current = ground;
@@ -229,7 +229,6 @@ export default function STLViewerPro({ url, className }: Props) {
     if (!r) return;
     r.toneMappingExposure = 0.8 + tone * 0.7;
 
-    // Sombras: renderer + luz + suelo + malla(s)
     r.shadowMap.enabled = showShadow;
     if (dirLightRef.current) dirLightRef.current.castShadow = showShadow;
     if (groundRef.current) {
@@ -245,21 +244,17 @@ export default function STLViewerPro({ url, className }: Props) {
     });
   }, [tone, showShadow]);
 
-  // Fondo claro/oscuro (y contraste de líneas/material)
+  // Fondo claro/oscuro
   useEffect(() => {
     const scene = sceneRef.current as THREE.Scene | null;
     if (!scene) return;
     scene.background = new THREE.Color(bgLight ? 0xf7f7f8 : 0x0d0f12);
 
-    // Ajuste suave de contraste
-    const mesh = meshRef.current;
-    if (mesh && (mesh.material as THREE.MeshStandardMaterial)) {
-      (mesh.material as THREE.MeshStandardMaterial).color.setHex(bgLight ? 0xdedede : 0xaaaaaa);
-    }
-    const edges = edgesRef.current;
-    if (edges && (edges.material as THREE.LineBasicMaterial)) {
-      (edges.material as THREE.LineBasicMaterial).color.setHex(bgLight ? 0x262626 : 0xffffff);
-    }
+    const mesh = meshRef.current as any;
+    if (mesh?.material) (mesh.material as THREE.MeshStandardMaterial).color.setHex(bgLight ? 0xdedede : 0xaaaaaa);
+
+    const edges = edgesRef.current as any;
+    if (edges?.material) (edges.material as THREE.LineBasicMaterial).color.setHex(bgLight ? 0x262626 : 0xffffff);
   }, [bgLight]);
 
   function fitCameraToObject(obj: any) {
@@ -288,7 +283,7 @@ export default function STLViewerPro({ url, className }: Props) {
   // Cargar STL cuando cambie la URL
   useEffect(() => {
     const scene = sceneRef.current as THREE.Scene | null;
-    const group = groupRef.current;
+    const group = groupRef.current as THREE.Group | null;
     if (!scene || !group) return;
 
     // Limpiar grupo anterior
@@ -325,21 +320,21 @@ export default function STLViewerPro({ url, className }: Props) {
         group.add(mesh);
         meshRef.current = mesh;
 
-        // Contorno para resaltar textos
+        // Contorno para resaltar grabados
         const edgesGeom = new THREE.EdgesGeometry(geometry, 15);
-        const edgesMat = new THREE.LineBasicMaterial({ color: bgLight ? 0x262626 : 0xffffff, linewidth: 1 });
+        const edgesMat = new THREE.LineBasicMaterial({ color: bgLight ? 0x262626 : 0xffffff });
         const edges = new THREE.LineSegments(edgesGeom, edgesMat);
         group.add(edges);
         edgesRef.current = edges;
 
-        // Centrar grupo (usamos el bounding box)
+        // Centrar grupo
         geometry.computeBoundingBox();
         const bb = geometry.boundingBox!;
         const size = new THREE.Vector3().subVectors(bb.max, bb.min);
         const center = new THREE.Vector3().addVectors(bb.min, bb.max).multiplyScalar(0.5);
         group.position.set(-center.x, -center.y, -center.z);
 
-        // Reposicionar el suelo para recibir la sombra bajo la pieza
+        // Suelo bajo la pieza
         if (groundRef.current) {
           groundRef.current.position.y = -size.y / 2 - 0.02;
         }
