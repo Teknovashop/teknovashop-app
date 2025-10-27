@@ -30,14 +30,14 @@ function hasEntitlement(): boolean {
 export default function STLViewerPro({ url, className }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
 
-  // Refs laxos para compat con cualquier versión de three/@types
+  // Refs laxos para evitar choques con @types/three en Vercel
   const sceneRef = useRef<any>(null);
   const rendererRef = useRef<any>(null);
   const cameraRef = useRef<any>(null);
   const controlsRef = useRef<any>(null);
 
   // Objetos de escena
-  const groupRef = useRef<any>(null);      // mesh + edges
+  const groupRef = useRef<any>(null); // mesh + edges
   const meshRef = useRef<any>(null);
   const edgesRef = useRef<any>(null);
   const groundRef = useRef<any>(null);
@@ -232,7 +232,7 @@ export default function STLViewerPro({ url, className }: Props) {
     r.shadowMap.enabled = showShadow;
     if (dirLightRef.current) dirLightRef.current.castShadow = showShadow;
     if (groundRef.current) {
-      const gm = groundRef.current.material as THREE.ShadowMaterial;
+      const gm = (groundRef.current.material as any);
       gm.opacity = showShadow ? 0.18 : 0;
       gm.needsUpdate = true;
     }
@@ -246,15 +246,15 @@ export default function STLViewerPro({ url, className }: Props) {
 
   // Fondo claro/oscuro
   useEffect(() => {
-    const scene = sceneRef.current as THREE.Scene | null;
+    const scene = sceneRef.current as any;
     if (!scene) return;
     scene.background = new THREE.Color(bgLight ? 0xf7f7f8 : 0x0d0f12);
 
     const mesh = meshRef.current as any;
-    if (mesh?.material) (mesh.material as THREE.MeshStandardMaterial).color.setHex(bgLight ? 0xdedede : 0xaaaaaa);
+    if (mesh?.material) (mesh.material as any).color.setHex(bgLight ? 0xdedede : 0xaaaaaa);
 
     const edges = edgesRef.current as any;
-    if (edges?.material) (edges.material as THREE.LineBasicMaterial).color.setHex(bgLight ? 0x262626 : 0xffffff);
+    if (edges?.material) (edges.material as any).color.setHex(bgLight ? 0x262626 : 0xffffff);
   }, [bgLight]);
 
   function fitCameraToObject(obj: any) {
@@ -282,8 +282,8 @@ export default function STLViewerPro({ url, className }: Props) {
 
   // Cargar STL cuando cambie la URL
   useEffect(() => {
-    const scene = sceneRef.current as THREE.Scene | null;
-    const group = groupRef.current as THREE.Group | null;
+    const scene = sceneRef.current as any;
+    const group = groupRef.current as any;
     if (!scene || !group) return;
 
     // Limpiar grupo anterior
