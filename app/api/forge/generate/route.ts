@@ -66,7 +66,9 @@ export async function POST(req: Request) {
 
     // Normaliza numéricos y clampa fillet
     const params: Dict = { ...(body?.params || {}) };
-    for (const k of Object.keys(params)) {
+    
+    const model = slug.replace(/-/g, "_");
+for (const k of Object.keys(params)) {
       const val = n(params[k]);
       if (val != null) params[k] = val;
     }
@@ -78,7 +80,7 @@ export async function POST(req: Request) {
     const r = await fetch(`${BACKEND}/generate`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ slug, params, holes, text_ops, model: body?.model }),
+      body: JSON.stringify({ slug, params, holes, text_ops, model }),
       cache: "no-store",
     });
 

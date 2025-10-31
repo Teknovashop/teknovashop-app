@@ -90,7 +90,10 @@ export default function ForgeForm({
   useEffect(() => {
     (async () => {
       try {
-        const base = process.env.NEXT_PUBLIC_FORGE_URL || "";
+        const base = (process.env.NEXT_PUBLIC_FORGE_API_URL
+  || process.env.NEXT_PUBLIC_BACKEND_URL
+  || process.env.NEXT_PUBLIC_FORGE_URL
+  || "").replace(/\/+$/, "");
         if (!base) return;
         const res = await fetch(`${base}/debug/models`, { cache: "no-store" });
         if (!res.ok) return;
