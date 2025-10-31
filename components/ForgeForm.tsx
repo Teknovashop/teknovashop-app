@@ -79,56 +79,78 @@ export default function ForgeForm({
   initialParams,
   onGenerated,
 }: ForgeFormProps) {
+  // Normalizamos el initialModel (snake -> kebab)
   const normalizedInitial =
     (initialModel || "").toLowerCase().replace(/_/g, "-");
 
+  // Catálogo: empieza en fallback y si backend responde, lo sustituimos (no mezclamos)
   const [catalog, setCatalog] = useState<{ slug: string; label: string }[]>(
     FALLBACK_MODELS
   );
 
-  // Carga dinámica desde el backend (si falla, se queda el fallback)
-  useEffect(() => {
-    (async () => {
-      try {
-        const base = (process.env.NEXT_PUBLIC_FORGE_API_URL
-  || process.env.NEXT_PUBLIC_BACKEND_URL
-  || process.env.NEXT_PUBLIC_FORGE_URL
-  || "").replace(/\/+$/, "");
-        if (!base) return;
-        const res = await fetch(`${base}/debug/models`, { cache: "no-store" });
-        if (!res.ok) return;
-        const j = await res.json();
-        const slugs: string[] = (j?.models || []).map((s: string) =>
-          String(s || "").trim().toLowerCase().replace(/_/g, "-")
-        );
-        const uniq = Array.from(new Set(slugs));
-        if (uniq.length) {
-          setCatalog(
-            uniq
-              .map((slug) => ({
-                slug,
-                label:
-                  NICE[slug] ||
-                  slug
-                    .split("-")
-                    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
-                    .join(" "),
-              }))
-              .sort((a, b) => a.label.localeCompare(b.label, "es"))
-          );
-        }
-      } catch {
-        /* noop */
-      }
-    })();
-  }, []);
-
+  // Slug seleccionado
   const [slug, setSlug] = useState<string>(() => {
     const all = [...FALLBACK_MODELS];
     const found =
       all.find((m) => m.slug === normalizedInitial)?.slug || "vesa-adapter";
     return found;
   });
+
+  // Carga dinámica desde el backend (si falla, se queda el fallback)
+  useEffect(() => {
+    (async () => {
+      try {
+        const base = (
+          process.env.NEXT_PUBLIC_FORGE_API_URL ||
+          process.env.NEXT_PUBLIC_BACKEND_URL ||
+          process.env.NEXT_PUBLIC_FORGE_URL ||
+          ""
+        ).replace(/\/+$/, "");
+        if (!base) return;
+
+        const res = await fetch(`${base}/debug/models`, { cache: "no-store" });
+        if (!res.ok) return;
+
+        const j = await res.json();
+        // Normalizamos la lista del backend a kebab-case
+        const slugs: string[] = (j?.models || [])
+          .map((s: string) =>
+            String(s || "").trim().toLowerCase().replace(/_/g, "-")
+          )
+          .filter(Boolean);
+
+        const uniq = Array.from(new Set(slugs));
+        if (!uniq.length) return;
+
+        // Sustituimos completamente el catálogo por lo que soporta el backend
+        const mapped = uniq
+          .map((s) => ({
+            slug: s,
+            label:
+              NICE[s] ||
+              s
+                .split("-")
+                .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+                .join(" "),
+          }))
+          .sort((a, b) => a.label.localeCompare(b.label, "es"));
+
+        setCatalog(mapped);
+
+        // Ajustamos el slug seleccionado: preferimos el initialModel si existe en backend,
+        // si no, mantenemos el actual si es válido; de lo contrario, usamos el primero.
+        setSlug((prev) => {
+          const want = normalizedInitial && uniq.includes(normalizedInitial)
+            ? normalizedInitial
+            : prev;
+          return uniq.includes(want) ? want : uniq[0];
+        });
+      } catch {
+        /* noop: si falla seguimos en fallback */
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // solo una vez
 
   const [lengthMm, setLengthMm] = useState<number>(
     n(initialParams?.length_mm, DEFAULTS.length_mm)
@@ -152,7 +174,7 @@ export default function ForgeForm({
   );
   const [anchor, setAnchor] = useState<Anchor>("front");
 
-  // NUEVO: controles de texto
+  // Controles de texto
   const [textSize, setTextSize] = useState<number>(8);
   const [textDepth, setTextDepth] = useState<number>(1.2);
   const [textX, setTextX] = useState<number>(10);
@@ -229,7 +251,9 @@ export default function ForgeForm({
   async function handleGenerate() {
     try {
       setLoading(true);
-      const payload = { slug, params, holes, text_ops };
+      // Enviamos también el modelo canónico en snake_case (robusto con backend)
+      const model = slug.replace(/-/g, "_");
+      const payload = { slug, model, params, holes, text_ops };
       const data = await forgeGenerate(payload);
       const link = data?.signed_url || data?.url || "";
       if (!link) {
