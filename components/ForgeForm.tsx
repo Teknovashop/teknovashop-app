@@ -13,7 +13,9 @@ type ForgeFormProps = {
   onGenerated?: (url: string) => void;
 };
 
-/** Slugs que son alias/adaptadores → se consolidan al canónico */
+type CatalogItem = { slug: string; label: string };
+
+/** Slugs alias/adaptadores → consolidan al canónico (para evitar duplicados) */
 const CANONICAL: Record<string, string> = {
   "tablet-stand": "laptop-stand",
   "phone-dock": "phone-stand",
@@ -21,29 +23,7 @@ const CANONICAL: Record<string, string> = {
 };
 const HIDE_SLUGS = new Set<string>(Object.keys(CANONICAL));
 
-/** Fallback local por si el backend no responde (ya sin duplicados) */
-const FALLBACK_BASE: string[] = [
-  "vesa-adapter",
-  "router-mount",
-  "cable-tray",
-  "laptop-stand",
-  "phone-stand",
-  "ssd-holder",
-  "raspi-case",
-  "go-pro-mount",
-  "mic-arm-clip",
-  "camera-plate",
-  "wall-hook",
-  "wall-bracket",
-  "cable-clip",
-  "hub-holder",
-  "headset-stand",
-  "vesa-shelf",
-  "enclosure-ip65",
-  "qr-plate",
-];
-
-/** Etiquetas bonitas */
+/** Etiquetas “bonitas” */
 const NICE: Record<string, string> = {
   "vesa-adapter": "Adaptador VESA 75/100 -> 100/200",
   "router-mount": "Soporte de Router",
@@ -86,11 +66,27 @@ function canonicalize(s?: string) {
   return CANONICAL[k] || k;
 }
 
-type CatalogItem = { slug: string; label: string };
-
-const FALLBACK_MODELS: CatalogItem[] = Array.from(
-  new Set(FALLBACK_BASE.map((s) => canonicalize(s)))
-).map((slug) => ({
+/** Fallback (sin duplicados ya canónicos) */
+const FALLBACK_MODELS: CatalogItem[] = [
+  "vesa-adapter",
+  "router-mount",
+  "cable-tray",
+  "laptop-stand",
+  "phone-stand",
+  "ssd-holder",
+  "raspi-case",
+  "go-pro-mount",
+  "mic-arm-clip",
+  "camera-plate",
+  "wall-hook",
+  "wall-bracket",
+  "cable-clip",
+  "hub-holder",
+  "headset-stand",
+  "vesa-shelf",
+  "enclosure-ip65",
+  "qr-plate",
+].map((slug) => ({
   slug,
   label:
     NICE[slug] ||
@@ -105,21 +101,21 @@ export default function ForgeForm({
   initialParams,
   onGenerated,
 }: ForgeFormProps) {
-  // Normaliza initialModel (snake->kebab) y consolida al canónico
+  // Normaliza initialModel (snake->kebab) y consolida a canónico
   const normalizedInitial = canonicalize(initialModel);
 
-  // Catálogo: empieza en fallback; si el backend responde lo sustituimos
+  // Catálogo: arranca con fallback
   const [catalog, setCatalog] = useState<CatalogItem[]>(
-    FALLBACK_MODELS.sort((a, b) => a.label.localeCompare(b.label, "es"))
+    [...FALLBACK_MODELS].sort((a, b) => a.label.localeCompare(b.label, "es"))
   );
 
   // Slug seleccionado
   const [slug, setSlug] = useState<string>(() => {
-    const exists = FALLBACK_MODELS.find((m) => m.slug === normalizedInitial);
-    return exists?.slug || "vesa-adapter";
-    });
+    const found = FALLBACK_MODELS.find((m) => m.slug === normalizedInitial)?.slug;
+    return found || "vesa-adapter";
+  });
 
-  // Carga dinámica desde el backend (si falla, se queda el fallback)
+  // Carga dinámica desde backend (tipado explícito para evitar 'unknown[]')
   useEffect(() => {
     (async () => {
       try {
@@ -134,13 +130,18 @@ export default function ForgeForm({
         const res = await fetch(`${base}/debug/models`, { cache: "no-store" });
         if (!res.ok) return;
 
-        const j = await res.json();
-        // Normaliza lista del backend -> kebab -> canónico -> sin duplicados ni alias ocultos
-        const uniqCanon = Array.from(
+        const j: { models?: unknown } = await res.json();
+
+        // Aseguramos string[]
+        const rawModels: string[] = Array.isArray(j?.models)
+          ? (j!.models as unknown[]).map((x) => String(x))
+          : [];
+
+        const uniqCanon: string[] = Array.from(
           new Set(
-            (j?.models || [])
-              .map((s: string) => kebab(s))
-              .filter((s: string) => !HIDE_SLUGS.has(s))
+            rawModels
+              .map((s) => kebab(s))
+              .filter((s) => !!s && !HIDE_SLUGS.has(s))
               .map(canonicalize)
           )
         );
@@ -148,7 +149,7 @@ export default function ForgeForm({
         if (!uniqCanon.length) return;
 
         const mapped: CatalogItem[] = uniqCanon
-          .map((s) => ({
+          .map((s: string) => ({
             slug: s,
             label:
               NICE[s] ||
@@ -161,7 +162,7 @@ export default function ForgeForm({
 
         setCatalog(mapped);
 
-        // Ajusta selección: intenta initialModel; si no, conserva actual; si no, primero
+        // Selección: prioriza initialModel si existe; si no, mantiene actual; si no, el primero
         setSlug((prev) => {
           const prefer = normalizedInitial && uniqCanon.includes(normalizedInitial)
             ? normalizedInitial
@@ -169,7 +170,7 @@ export default function ForgeForm({
           return uniqCanon.includes(prefer) ? prefer : mapped[0].slug;
         });
       } catch {
-        /* noop */
+        /* noop: quedarse en fallback */
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -275,8 +276,7 @@ export default function ForgeForm({
     try {
       setLoading(true);
       const finalSlug = canonicalize(slug);
-      // Enviamos también el snake_case por compatibilidad con builders
-      const model = finalSlug.replace(/-/g, "_");
+      const model = finalSlug.replace(/-/g, "_"); // compat con builders
       const payload = { slug: finalSlug, model, params, holes, text_ops };
       const data = await forgeGenerate(payload);
       const link = data?.signed_url || data?.url || "";
