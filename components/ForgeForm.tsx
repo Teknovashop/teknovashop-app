@@ -13,29 +13,57 @@ type ForgeFormProps = {
   onGenerated?: (url: string) => void;
 };
 
-/** Fallback local por si el backend no responde */
-const FALLBACK_MODELS: { slug: string; label: string }[] = [
-  { slug: "vesa-adapter", label: "Adaptador VESA 75/100 -> 100/200" },
-  { slug: "router-mount", label: "Soporte de Router" },
-  { slug: "cable-tray", label: "Bandeja de Cables" },
-  { slug: "tablet-stand", label: "Soporte de Tablet" },
-  { slug: "monitor-stand", label: "Elevador de Monitor" },
-  { slug: "laptop-stand", label: "Soporte Laptop" },
-  { slug: "phone-dock", label: "Dock para Móvil (USB-C)" },
-  { slug: "phone-stand", label: "Soporte Móvil" },
-  { slug: "ssd-holder", label: "Caddy SSD 2.5 a 3.5" },
-  { slug: "raspi-case", label: "Caja Raspberry Pi" },
-  { slug: "go-pro-mount", label: "Soporte GoPro" },
-  { slug: "mic-arm-clip", label: "Clip Brazo Mic" },
-  { slug: "camera-plate", label: "Placa para Cámara" },
-  { slug: "wall-hook", label: "Colgador de Pared" },
-  { slug: "wall-bracket", label: "Escuadra de Pared" },
-  { slug: "cable-clip", label: "Clip de Cable" },
-  { slug: "hub-holder", label: "Soporte Hub USB" },
-  { slug: "headset-stand", label: "Soporte Auriculares" },
-  { slug: "vesa-shelf", label: "Bandeja VESA" },
-  { slug: "enclosure-ip65", label: "Caja IP65" },
+/** Slugs que son alias/adaptadores → se consolidan al canónico */
+const CANONICAL: Record<string, string> = {
+  "tablet-stand": "laptop-stand",
+  "phone-dock": "phone-stand",
+  "monitor-stand": "cable-tray",
+};
+const HIDE_SLUGS = new Set<string>(Object.keys(CANONICAL));
+
+/** Fallback local por si el backend no responde (ya sin duplicados) */
+const FALLBACK_BASE: string[] = [
+  "vesa-adapter",
+  "router-mount",
+  "cable-tray",
+  "laptop-stand",
+  "phone-stand",
+  "ssd-holder",
+  "raspi-case",
+  "go-pro-mount",
+  "mic-arm-clip",
+  "camera-plate",
+  "wall-hook",
+  "wall-bracket",
+  "cable-clip",
+  "hub-holder",
+  "headset-stand",
+  "vesa-shelf",
+  "enclosure-ip65",
+  "qr-plate",
 ];
+
+/** Etiquetas bonitas */
+const NICE: Record<string, string> = {
+  "vesa-adapter": "Adaptador VESA 75/100 -> 100/200",
+  "router-mount": "Soporte de Router",
+  "cable-tray": "Bandeja de Cables",
+  "laptop-stand": "Soporte Laptop / Tablet",
+  "phone-stand": "Soporte / Dock Móvil (USB-C)",
+  "ssd-holder": "Caddy SSD 2.5 a 3.5",
+  "raspi-case": "Caja Raspberry Pi",
+  "go-pro-mount": "Soporte GoPro",
+  "mic-arm-clip": "Clip Brazo Mic",
+  "camera-plate": "Placa para Cámara",
+  "wall-hook": "Colgador de Pared",
+  "wall-bracket": "Escuadra de Pared",
+  "cable-clip": "Clip de Cable",
+  "hub-holder": "Soporte Hub USB",
+  "headset-stand": "Soporte Auriculares",
+  "vesa-shelf": "Bandeja VESA",
+  "enclosure-ip65": "Caja IP65",
+  "qr-plate": "Placa (QR/Texto)",
+};
 
 const DEFAULTS = {
   length_mm: 120,
@@ -50,51 +78,46 @@ function n(v: any, fb: number) {
   return Number.isFinite(x) ? x : fb;
 }
 
-/** “Nombre bonito” para slugs que vengan del backend */
-const NICE: Record<string, string> = {
-  "vesa-adapter": "Adaptador VESA 75/100 -> 100/200",
-  "router-mount": "Soporte de Router",
-  "cable-tray": "Bandeja de Cables",
-  "tablet-stand": "Soporte de Tablet",
-  "monitor-stand": "Elevador de Monitor",
-  "ssd-holder": "Caddy SSD 2.5 a 3.5",
-  "raspi-case": "Caja Raspberry Pi",
-  "go-pro-mount": "Soporte GoPro",
-  "mic-arm-clip": "Clip Brazo Mic",
-  "camera-plate": "Placa para Cámara",
-  "wall-hook": "Colgador de Pared",
-  "wall-bracket": "Escuadra de Pared",
-  "phone-dock": "Dock para Móvil (USB-C)",
-  "qr-plate": "Placa (QR/Texto)",
-  "cable-clip": "Clip de Cable",
-  "laptop-stand": "Soporte Laptop",
-  "phone-stand": "Soporte Móvil",
-  "vesa-shelf": "Bandeja VESA",
-  "enclosure-ip65": "Caja IP65",
-  "headset-stand": "Soporte Auriculares",
-};
+function kebab(s?: string) {
+  return (s || "").trim().toLowerCase().replace(/_/g, "-");
+}
+function canonicalize(s?: string) {
+  const k = kebab(s);
+  return CANONICAL[k] || k;
+}
+
+type CatalogItem = { slug: string; label: string };
+
+const FALLBACK_MODELS: CatalogItem[] = Array.from(
+  new Set(FALLBACK_BASE.map((s) => canonicalize(s)))
+).map((slug) => ({
+  slug,
+  label:
+    NICE[slug] ||
+    slug
+      .split("-")
+      .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+      .join(" "),
+}));
 
 export default function ForgeForm({
   initialModel,
   initialParams,
   onGenerated,
 }: ForgeFormProps) {
-  // Normalizamos el initialModel (snake -> kebab)
-  const normalizedInitial =
-    (initialModel || "").toLowerCase().replace(/_/g, "-");
+  // Normaliza initialModel (snake->kebab) y consolida al canónico
+  const normalizedInitial = canonicalize(initialModel);
 
-  // Catálogo: empieza en fallback y si backend responde, lo sustituimos (no mezclamos)
-  const [catalog, setCatalog] = useState<{ slug: string; label: string }[]>(
-    FALLBACK_MODELS
+  // Catálogo: empieza en fallback; si el backend responde lo sustituimos
+  const [catalog, setCatalog] = useState<CatalogItem[]>(
+    FALLBACK_MODELS.sort((a, b) => a.label.localeCompare(b.label, "es"))
   );
 
   // Slug seleccionado
   const [slug, setSlug] = useState<string>(() => {
-    const all = [...FALLBACK_MODELS];
-    const found =
-      all.find((m) => m.slug === normalizedInitial)?.slug || "vesa-adapter";
-    return found;
-  });
+    const exists = FALLBACK_MODELS.find((m) => m.slug === normalizedInitial);
+    return exists?.slug || "vesa-adapter";
+    });
 
   // Carga dinámica desde el backend (si falla, se queda el fallback)
   useEffect(() => {
@@ -112,18 +135,19 @@ export default function ForgeForm({
         if (!res.ok) return;
 
         const j = await res.json();
-        // Normalizamos la lista del backend a kebab-case
-        const slugs: string[] = (j?.models || [])
-          .map((s: string) =>
-            String(s || "").trim().toLowerCase().replace(/_/g, "-")
+        // Normaliza lista del backend -> kebab -> canónico -> sin duplicados ni alias ocultos
+        const uniqCanon = Array.from(
+          new Set(
+            (j?.models || [])
+              .map((s: string) => kebab(s))
+              .filter((s: string) => !HIDE_SLUGS.has(s))
+              .map(canonicalize)
           )
-          .filter(Boolean);
+        );
 
-        const uniq = Array.from(new Set(slugs));
-        if (!uniq.length) return;
+        if (!uniqCanon.length) return;
 
-        // Sustituimos completamente el catálogo por lo que soporta el backend
-        const mapped = uniq
+        const mapped: CatalogItem[] = uniqCanon
           .map((s) => ({
             slug: s,
             label:
@@ -137,21 +161,21 @@ export default function ForgeForm({
 
         setCatalog(mapped);
 
-        // Ajustamos el slug seleccionado: preferimos el initialModel si existe en backend,
-        // si no, mantenemos el actual si es válido; de lo contrario, usamos el primero.
+        // Ajusta selección: intenta initialModel; si no, conserva actual; si no, primero
         setSlug((prev) => {
-          const want = normalizedInitial && uniq.includes(normalizedInitial)
+          const prefer = normalizedInitial && uniqCanon.includes(normalizedInitial)
             ? normalizedInitial
             : prev;
-          return uniq.includes(want) ? want : uniq[0];
+          return uniqCanon.includes(prefer) ? prefer : mapped[0].slug;
         });
       } catch {
-        /* noop: si falla seguimos en fallback */
+        /* noop */
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // solo una vez
+  }, []);
 
+  // --- Parámetros base ---
   const [lengthMm, setLengthMm] = useState<number>(
     n(initialParams?.length_mm, DEFAULTS.length_mm)
   );
@@ -168,19 +192,18 @@ export default function ForgeForm({
     n(initialParams?.fillet_mm, DEFAULTS.fillet_mm)
   );
 
+  // Texto
   const [text, setText] = useState<string>(initialParams?.text ?? "");
   const [textMode, setTextMode] = useState<TextMode>(
     (initialParams?.text_mode ?? "engrave") as TextMode
   );
   const [anchor, setAnchor] = useState<Anchor>("front");
-
-  // Controles de texto
   const [textSize, setTextSize] = useState<number>(8);
   const [textDepth, setTextDepth] = useState<number>(1.2);
   const [textX, setTextX] = useState<number>(10);
   const [textY, setTextY] = useState<number>(10);
 
-  // ------- Agujeros: UI -------
+  // Agujeros
   const [holes, setHoles] = useState<Hole[]>([]);
   const [bulk, setBulk] = useState("");
 
@@ -251,9 +274,10 @@ export default function ForgeForm({
   async function handleGenerate() {
     try {
       setLoading(true);
-      // Enviamos también el modelo canónico en snake_case (robusto con backend)
-      const model = slug.replace(/-/g, "_");
-      const payload = { slug, model, params, holes, text_ops };
+      const finalSlug = canonicalize(slug);
+      // Enviamos también el snake_case por compatibilidad con builders
+      const model = finalSlug.replace(/-/g, "_");
+      const payload = { slug: finalSlug, model, params, holes, text_ops };
       const data = await forgeGenerate(payload);
       const link = data?.signed_url || data?.url || "";
       if (!link) {
