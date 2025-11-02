@@ -2,6 +2,7 @@
 export const dynamic = 'force-dynamic';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import HeroVideo from '@/components/HeroVideo';
 import Pricing from '@/components/Pricing';
 
@@ -12,14 +13,14 @@ const HERO_VIDEO_SRC =
 const HERO_VIDEO_POSTER =
   process.env.NEXT_PUBLIC_HERO_POSTER_URL || '/hero/hero.png';
 
-/** Plantillas destacadas (tarjetas limpias que enlazan al configurador) */
-const TEMPLATES: { slug: string; title: string; desc: string }[] = [
-  { slug: "cable-tray",   title: "Bandeja de Cables",         desc: "Organizador modular bajo mesa" },
-  { slug: "vesa-adapter", title: "Adaptador VESA 75/100→200", desc: "Compatibiliza monitores y soportes" },
-  { slug: "laptop-stand", title: "Soporte Laptop / Tablet",   desc: "Ángulo y medidas a medida" },
-  { slug: "phone-stand",  title: "Dock Móvil (USB-C)",        desc: "Ranura y holgura configurables" },
-  { slug: "vesa-shelf",   title: "Bandeja VESA",              desc: "Para mini-PC / NUC en VESA" },
-  { slug: "camera-plate", title: "Placa para Cámara",         desc: "Ranuras y tornillería estándar" },
+/** Plantillas destacadas (con imagen local en /public/templates/*.webp) */
+const TEMPLATES: { slug: string; title: string; desc: string; img: string }[] = [
+  { slug: "cable-tray",   title: "Bandeja de Cables",         desc: "Organizador modular bajo mesa", img: "/templates/cable-tray.webp" },
+  { slug: "vesa-adapter", title: "Adaptador VESA 75/100→200", desc: "Compatibiliza monitores y soportes", img: "/templates/vesa-adapter.webp" },
+  { slug: "laptop-stand", title: "Soporte Laptop / Tablet",   desc: "Ángulo y medidas a medida", img: "/templates/laptop-stand.webp" },
+  { slug: "phone-stand",  title: "Dock Móvil (USB-C)",        desc: "Ranura y holgura configurables", img: "/templates/phone-stand.webp" },
+  { slug: "vesa-shelf",   title: "Bandeja VESA",              desc: "Para mini-PC / NUC en VESA", img: "/templates/vesa-shelf.webp" },
+  { slug: "camera-plate", title: "Placa para Cámara",         desc: "Ranuras y tornillería estándar", img: "/templates/camera-plate.webp" },
 ];
 
 export default function Page() {
@@ -84,11 +85,7 @@ export default function Page() {
 
             {/* Vídeo del hero */}
             <div className="flex items-center justify-center">
-              <HeroVideo
-                src={HERO_VIDEO_SRC}
-                poster={HERO_VIDEO_POSTER}
-                className="w-full"
-              />
+              <HeroVideo src={HERO_VIDEO_SRC} poster={HERO_VIDEO_POSTER} className="w-full" />
             </div>
           </div>
         </div>
@@ -109,11 +106,18 @@ export default function Page() {
               <Link
                 key={t.slug}
                 href={`/forge?model=${encodeURIComponent(t.slug)}`}
-                className="group rounded-2xl border border-[#e6eaf2] dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 hover:shadow-lg transition-shadow"
+                className="group rounded-2xl border border-[#e6eaf2] dark:border-neutral-800 bg-white dark:bg-neutral-900 overflow-hidden hover:shadow-lg transition-shadow"
               >
-                {/* Placeholder visual sobrio */}
-                <div className="h-40 rounded-xl bg-gradient-to-br from-neutral-200 to-neutral-100 dark:from-neutral-800 dark:to-neutral-700 group-hover:from-neutral-300 dark:group-hover:from-neutral-700" />
-                <div className="mt-4">
+                <div className="relative w-full aspect-[16/10] bg-neutral-100 dark:bg-neutral-800">
+                  <Image
+                    src={t.img}
+                    alt={t.title}
+                    fill
+                    className="object-cover"
+                    sizes="(max-width: 768px) 100vw, 33vw"
+                  />
+                </div>
+                <div className="p-6">
                   <h3 className="font-semibold text-[#0b1526] dark:text-white">{t.title}</h3>
                   <p className="text-sm text-[#6b7280] dark:text-neutral-400">{t.desc}</p>
                 </div>
@@ -143,11 +147,22 @@ export default function Page() {
         </div>
       </section>
 
-      {/* PRECIOS */}
+      {/* PRECIOS + CTAs accionables */}
       <section className="py-12">
         <div className="container mx-auto px-4 max-w-6xl">
           <h2 className="text-xl md:text-2xl font-semibold mb-4 text-[#0b1526] dark:text-white">Precios</h2>
           <Pricing />
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Link href="/forge?plan=one-time" className="px-4 py-2 rounded-xl bg-[#0b1526] text-white text-sm">
+              Comprar STL suelto
+            </Link>
+            <Link href="/forge?plan=maker" className="px-4 py-2 rounded-xl border text-sm">
+              Suscripción Maker
+            </Link>
+            <Link href="/forge?plan=commercial" className="px-4 py-2 rounded-xl border text-sm">
+              Licencia Comercial
+            </Link>
+          </div>
         </div>
       </section>
     </main>
