@@ -1,26 +1,26 @@
 // app/page.tsx
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
-import Link from 'next/link';
-import Image from 'next/image';
-import HeroVideo from '@/components/HeroVideo';
-import Pricing from '@/components/Pricing';
+import Link from "next/link";
+import Image from "next/image";
+import HeroVideo from "@/components/HeroVideo";
+import Pricing from "@/components/Pricing";
 
-const CONFIGURATOR_HREF = '/forge';
+const CONFIGURATOR_HREF = "/forge";
 
 const HERO_VIDEO_SRC =
-  process.env.NEXT_PUBLIC_HERO_VIDEO_URL || '/hero/hero.mp4';
+  process.env.NEXT_PUBLIC_HERO_VIDEO_URL || "/hero/hero.mp4";
 const HERO_VIDEO_POSTER =
-  process.env.NEXT_PUBLIC_HERO_POSTER_URL || '/hero/hero.png';
+  process.env.NEXT_PUBLIC_HERO_POSTER_URL || "/hero/hero.png";
 
-/** Plantillas destacadas (con imagen local en /public/templates/*.webp) */
-const TEMPLATES: { slug: string; title: string; desc: string; img: string }[] = [
-  { slug: "cable-tray",   title: "Bandeja de Cables",         desc: "Organizador modular bajo mesa", img: "/templates/cable-tray.webp" },
-  { slug: "vesa-adapter", title: "Adaptador VESA 75/100→200", desc: "Compatibiliza monitores y soportes", img: "/templates/vesa-adapter.webp" },
-  { slug: "laptop-stand", title: "Soporte Laptop / Tablet",   desc: "Ángulo y medidas a medida", img: "/templates/laptop-stand.webp" },
-  { slug: "phone-stand",  title: "Dock Móvil (USB-C)",        desc: "Ranura y holgura configurables", img: "/templates/phone-stand.webp" },
-  { slug: "vesa-shelf",   title: "Bandeja VESA",              desc: "Para mini-PC / NUC en VESA", img: "/templates/vesa-shelf.webp" },
-  { slug: "camera-plate", title: "Placa para Cámara",         desc: "Ranuras y tornillería estándar", img: "/templates/camera-plate.webp" },
+/** Plantillas destacadas con slug = nombre del jpg en /public/images/models */
+const TEMPLATES: { slug: string; title: string; desc: string }[] = [
+  { slug: "cable-tray",   title: "Bandeja de Cables",         desc: "Organizador modular bajo mesa" },
+  { slug: "vesa-adapter", title: "Adaptador VESA 75/100→200", desc: "Compatibiliza monitores y soportes" },
+  { slug: "laptop-stand", title: "Soporte Laptop / Tablet",   desc: "Ángulo y medidas a medida" },
+  { slug: "phone-stand",  title: "Dock Móvil (USB-C)",        desc: "Ranura y holgura configurables" },
+  { slug: "vesa-shelf",   title: "Bandeja VESA",              desc: "Para mini-PC / NUC en VESA" },
+  { slug: "camera-plate", title: "Placa para Cámara",         desc: "Ranuras y tornillería estándar" },
 ];
 
 export default function Page() {
@@ -92,7 +92,7 @@ export default function Page() {
       </section>
 
       {/* PLANTILLAS DESTACADAS */}
-      <section id="templates" className="py-12 bg-neutral-50 dark:bg-neutral-925">
+      <section id="templates" className="py-12 bg-neutral-50 dark:bg-neutral-900">
         <div className="container mx-auto px-4 max-w-6xl">
           <div className="flex items-end justify-between">
             <h2 className="text-xl md:text-2xl font-semibold text-[#0b1526] dark:text-white">Plantillas destacadas</h2>
@@ -106,18 +106,20 @@ export default function Page() {
               <Link
                 key={t.slug}
                 href={`/forge?model=${encodeURIComponent(t.slug)}`}
-                className="group rounded-2xl border border-[#e6eaf2] dark:border-neutral-800 bg-white dark:bg-neutral-900 overflow-hidden hover:shadow-lg transition-shadow"
+                className="group rounded-2xl border border-[#e6eaf2] dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 hover:shadow-lg transition-shadow"
               >
-                <div className="relative w-full aspect-[16/10] bg-neutral-100 dark:bg-neutral-800">
+                {/* Imagen del modelo desde /public/images/models/{slug}.jpg */}
+                <div className="relative h-40 w-full overflow-hidden rounded-xl">
                   <Image
-                    src={t.img}
+                    src={`/images/models/${t.slug}.jpg`}
                     alt={t.title}
                     fill
-                    className="object-cover"
                     sizes="(max-width: 768px) 100vw, 33vw"
+                    className="object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+                    priority={false}
                   />
                 </div>
-                <div className="p-6">
+                <div className="mt-4">
                   <h3 className="font-semibold text-[#0b1526] dark:text-white">{t.title}</h3>
                   <p className="text-sm text-[#6b7280] dark:text-neutral-400">{t.desc}</p>
                 </div>
@@ -147,22 +149,13 @@ export default function Page() {
         </div>
       </section>
 
-      {/* PRECIOS + CTAs accionables */}
+      {/* PRECIOS */}
       <section className="py-12">
         <div className="container mx-auto px-4 max-w-6xl">
           <h2 className="text-xl md:text-2xl font-semibold mb-4 text-[#0b1526] dark:text-white">Precios</h2>
           <Pricing />
-          <div className="mt-6 flex flex-wrap gap-3">
-            <Link href="/forge?plan=one-time" className="px-4 py-2 rounded-xl bg-[#0b1526] text-white text-sm">
-              Comprar STL suelto
-            </Link>
-            <Link href="/forge?plan=maker" className="px-4 py-2 rounded-xl border text-sm">
-              Suscripción Maker
-            </Link>
-            <Link href="/forge?plan=commercial" className="px-4 py-2 rounded-xl border text-sm">
-              Licencia Comercial
-            </Link>
-          </div>
+          {/* Si necesitas que los botones de Pricing apunten a URLs reales,
+              edita components/Pricing.tsx para poner los href deseados (checkout, mailto, etc.). */}
         </div>
       </section>
     </main>
