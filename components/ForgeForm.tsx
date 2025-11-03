@@ -15,14 +15,15 @@ type ForgeFormProps = {
 
 type CatalogItem = { slug: string; label: string };
 
-/** Aliases → slug canónico (evita duplicados de verdad) */
+/** Slugs alias/adaptadores → consolidan al canónico (para evitar duplicados) */
 const CANONICAL: Record<string, string> = {
   "tablet-stand": "laptop-stand",
   "phone-dock": "phone-stand",
-  "gopro-mount": "go-pro-mount",
   "monitor-stand": "cable-tray",
 };
+const HIDE_SLUGS = new Set<string>(Object.keys(CANONICAL));
 
+/** Etiquetas “bonitas” */
 const NICE: Record<string, string> = {
   "vesa-adapter": "Adaptador VESA 75/100 -> 100/200",
   "router-mount": "Soporte de Router",
@@ -65,7 +66,7 @@ function canonicalize(s?: string) {
   return CANONICAL[k] || k;
 }
 
-/** Fallback (ya canónico, sin duplicados) */
+/** Fallback (sin duplicados ya canónicos) */
 const FALLBACK_MODELS: CatalogItem[] = [
   "vesa-adapter",
   "router-mount",
@@ -103,18 +104,18 @@ export default function ForgeForm({
   // Normaliza initialModel (snake->kebab) y consolida a canónico
   const normalizedInitial = canonicalize(initialModel);
 
-  // Catálogo (empieza con fallback)
+  // Catálogo: arranca con fallback
   const [catalog, setCatalog] = useState<CatalogItem[]>(
     [...FALLBACK_MODELS].sort((a, b) => a.label.localeCompare(b.label, "es"))
   );
 
-  // Slug seleccionado inicial
+  // Slug seleccionado
   const [slug, setSlug] = useState<string>(() => {
     const found = FALLBACK_MODELS.find((m) => m.slug === normalizedInitial)?.slug;
     return found || "vesa-adapter";
   });
 
-  // Carga dinámica desde backend (canoniza *antes* de deduplicar)
+  // Carga dinámica desde backend (tipado explícito para evitar 'unknown[]')
   useEffect(() => {
     (async () => {
       try {
@@ -130,19 +131,25 @@ export default function ForgeForm({
         if (!res.ok) return;
 
         const j: { models?: unknown } = await res.json();
-        const raw: string[] = Array.isArray(j?.models)
+
+        // Aseguramos string[]
+        const rawModels: string[] = Array.isArray(j?.models)
           ? (j!.models as unknown[]).map((x) => String(x))
           : [];
 
-        // Canoniza → dedup → mapea a etiquetas
         const uniqCanon: string[] = Array.from(
-          new Set(raw.map((s) => canonicalize(s)))
-        ).filter(Boolean);
+          new Set(
+            rawModels
+              .map((s) => kebab(s))
+              .filter((s) => !!s && !HIDE_SLUGS.has(s))
+              .map(canonicalize)
+          )
+        );
 
         if (!uniqCanon.length) return;
 
         const mapped: CatalogItem[] = uniqCanon
-          .map((s) => ({
+          .map((s: string) => ({
             slug: s,
             label:
               NICE[s] ||
@@ -155,6 +162,7 @@ export default function ForgeForm({
 
         setCatalog(mapped);
 
+        // Selección: prioriza initialModel si existe; si no, mantiene actual; si no, el primero
         setSlug((prev) => {
           const prefer =
             normalizedInitial && uniqCanon.includes(normalizedInitial)
@@ -163,7 +171,7 @@ export default function ForgeForm({
           return uniqCanon.includes(prefer) ? prefer : mapped[0].slug;
         });
       } catch {
-        /* fallback silencioso */
+        /* noop: quedarse en fallback */
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -269,7 +277,7 @@ export default function ForgeForm({
     try {
       setLoading(true);
       const finalSlug = canonicalize(slug);
-      const model = finalSlug.replace(/-/g, "_"); // compat con builders snake_case
+      const model = finalSlug.replace(/-/g, "_"); // compat con builders
       const payload = { slug: finalSlug, model, params, holes, text_ops };
       const data = await forgeGenerate(payload);
       const link = data?.signed_url || data?.url || "";
@@ -292,7 +300,7 @@ export default function ForgeForm({
         <select
           className="w-full rounded border p-2"
           value={slug}
-          onChange={(e) => setSlug(canonicalize(e.target.value))}
+          onChange={(e) => setSlug(e.target.value)}
         >
           {catalog.map((m) => (
             <option key={m.slug} value={m.slug}>
