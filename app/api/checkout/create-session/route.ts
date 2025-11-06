@@ -2,54 +2,82 @@
 import Stripe from "stripe";
 import { NextResponse } from "next/server";
 
-export const runtime = "nodejs";          // ⚠️ importante: Node runtime
+export const runtime = "nodejs"; // Node runtime
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2024-06-20",
-});
+const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY || "";
+const stripe = new Stripe(STRIPE_SECRET, { apiVersion: "2024-06-20" });
+
+type PriceKey = "oneoff" | "maker" | "commercial";
 
 type Body = {
-  email: string;
-  price: "oneoff" | "maker" | "commercial";
+  // Email ahora es OPCIONAL: si no viene, Stripe lo pedirá en Checkout
+  email?: string | null;
+  price: PriceKey;
   model_kind?: string;
   params?: unknown;
   object_key?: string | null;
 };
 
+const PRICE_ENV: Record<PriceKey, string | undefined> = {
+  oneoff: process.env.STRIPE_PRICE_ONEOFF,
+  maker: process.env.STRIPE_PRICE_MAKER,
+  commercial: process.env.STRIPE_PRICE_COMMERCIAL,
+};
+
+function siteUrlFromReq(req: Request): string {
+  const envSite = process.env.NEXT_PUBLIC_SITE_URL;
+  if (envSite) return envSite.replace(/\/+$/, "");
+
+  // Deducción automática en plataformas como Vercel si no se configuró la anterior
+  const origin = req.headers.get("origin");
+  if (origin) return origin.replace(/\/+$/, "");
+
+  const proto = req.headers.get("x-forwarded-proto") || "https";
+  const host =
+    req.headers.get("x-forwarded-host") ||
+    req.headers.get("host") ||
+    "teknovashop-app.vercel.app";
+  return `${proto}://${host}`.replace(/\/+$/, "");
+}
+
 export async function POST(req: Request) {
   try {
-    const { email, price, model_kind, params, object_key }: Body = await req.json();
-
-    if (!email) {
-      return NextResponse.json({ error: "EMAIL_REQUIRED" }, { status: 400 });
+    if (!STRIPE_SECRET) {
+      return NextResponse.json(
+        { error: "STRIPE_SECRET_KEY not set" },
+        { status: 500 }
+      );
     }
 
-    const priceId =
-      price === "oneoff"
-        ? process.env.STRIPE_PRICE_ONEOFF
-        : price === "maker"
-        ? process.env.STRIPE_PRICE_MAKER
-        : process.env.STRIPE_PRICE_COMMERCIAL;
+    const body = (await req.json()) as Body;
 
+    if (!body?.price) {
+      return NextResponse.json({ error: "PRICE_REQUIRED" }, { status: 400 });
+    }
+
+    const priceId = PRICE_ENV[body.price];
     if (!priceId) {
-      return NextResponse.json({ error: "PRICE_NOT_CONFIGURED" }, { status: 400 });
+      return NextResponse.json(
+        { error: "PRICE_NOT_CONFIGURED" },
+        { status: 400 }
+      );
     }
 
-    const site = process.env.NEXT_PUBLIC_SITE_URL || "https://teknovashop-app.vercel.app";
+    const site = siteUrlFromReq(req);
 
     const session = await stripe.checkout.sessions.create({
-      mode: price === "oneoff" ? "payment" : "subscription",
+      mode: body.price === "oneoff" ? "payment" : "subscription",
       payment_method_types: ["card"],
-      customer_email: email,
+      customer_email: body.email || undefined, // opcional; Stripe la pedirá si falta
       line_items: [{ price: priceId, quantity: 1 }],
-      automatic_tax: { enabled: true },
       allow_promotion_codes: true,
+      automatic_tax: { enabled: true },
       success_url: `${site}/forge?status=success`,
       cancel_url: `${site}/forge?status=cancel`,
       metadata: {
-        model_kind: String(model_kind ?? ""),
-        params: JSON.stringify(params ?? {}),
-        object_key: object_key ?? "",
+        model_kind: String(body.model_kind ?? ""),
+        params: JSON.stringify(body.params ?? {}),
+        object_key: String(body.object_key ?? ""),
       },
     });
 
