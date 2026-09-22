@@ -11,7 +11,7 @@ const CONFIGURATOR_HREF = "/forge";
 const HERO_VIDEO_SRC =
   process.env.NEXT_PUBLIC_HERO_VIDEO_URL || "/hero/hero.mp4";
 const HERO_VIDEO_POSTER =
-  process.env.NEXT_PUBLIC_HERO_POSTER_URL || "/hero/hero.png";
+  process.env.NEXT_PUBLIC_HERO_POSTER_URL || undefined;
 
 /** Plantillas destacadas con slug = nombre del jpg en /public/images/models */
 const TEMPLATES: { slug: string; title: string; desc: string }[] = [
