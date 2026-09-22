@@ -355,59 +355,35 @@ export async function forgeGenerate(body: {
 }) {
   const payload = normalizePayload(body);
 
-// intenta sacar el UID automáticamente si no viene
-let userId: string | null = payload.user_id ?? null;
-if (!userId) {
-  userId = await tryGetUserId(); // esta función ya hace try/catch interno y devuelve null si falla
-}
-
-  // 1) Next API (preferido si existe y aplica tu lógica de SSR)
-  try {
-    const r = await fetch("/api/forge/generate", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(userId ? { "x-user-id": String(userId) } : {}),
-      },
-      body: JSON.stringify({ ...payload, user_id: userId }),
-    });
-    if (r.status === 402) {
-      const j = await r.json().catch(() => ({}));
-      throw new Error(j?.detail || "Pago requerido para generar este modelo.");
-    }
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(data?.detail || data?.message || "Forge generate failed");
-    return data as {
-      ok: boolean;
-      slug: string;
-      path: string;
-      url?: string;
-      signed_url?: string;
-    };
-  } catch (err) {
-    // 2) Fallback directo al backend
-    const r2 = await fetch(`${FORGE_BASE}/generate`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(userId ? { "x-user-id": String(userId) } : {}),
-      },
-      body: JSON.stringify({ ...payload, user_id: userId }),
-    });
-    if (r2.status === 402) {
-      const j = await r2.json().catch(() => ({}));
-      throw new Error(j?.detail || "Pago requerido para generar este modelo.");
-    }
-    const data2 = await r2.json().catch(() => ({}));
-    if (!r2.ok) {
-      throw new Error(data2?.detail || data2?.message || r2.statusText);
-    }
-    return data2 as {
-      ok: boolean;
-      slug: string;
-      path: string;
-      url?: string;
-      signed_url?: string;
-    };
+  let userId: string | null = payload.user_id ?? null;
+  if (!userId) {
+    userId = await tryGetUserId();
   }
+
+  const r = await fetch("/api/forge/generate", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(userId ? { "x-user-id": String(userId) } : {}),
+    },
+    body: JSON.stringify({ ...payload, user_id: userId }),
+  });
+
+  const data = await r.json().catch(() => ({}));
+
+  if (!r.ok) {
+    const detail = data?.detail ? ` — ${data.detail}` : "";
+    throw new Error(
+      (data?.error || data?.message || `HTTP ${r.status}`) + detail
+    );
+  }
+
+  return data as {
+    ok: boolean;
+    slug?: string;
+    path?: string;
+    url?: string;
+    signed_url?: string;
+    source?: string;
+  };
 }
