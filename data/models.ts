@@ -11,11 +11,11 @@ export type ForgeModel = {
 export const MODELS: ForgeModel[] = [
   {
     id: "vesa-adapter",
-    name: "Adaptador VESA 75/100 -> 100/200",
+    name: "Adaptador VESA (2 patrones)",
     slug: "vesa-adapter",
     thumbnail: "/images/models/vesa-adapter.jpg",
     stlPath: "vesa-adapter",
-    description: "Placa adaptadora entre patrones VESA.",
+    description: "Placa adaptadora configurable entre dos patrones VESA.",
     tips: [
       "Confirma ambos patrones antes de imprimir",
       "Aumenta perímetros si el monitor pesa >6kg",
