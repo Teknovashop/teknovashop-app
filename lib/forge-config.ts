@@ -154,7 +154,6 @@ export const DEFAULT_PARAMS: Record<ForgeModelSlug, ForgeParams> = {
     opening: 0.6,
     clip_t: 3.0,
     width: 14.0,
-    wall: 3,
   },
   "camera-plate": {
     width: 45,
@@ -324,7 +323,6 @@ export const FIELDS: Partial<Record<ForgeModelSlug, Fields>> = {
     opening:{ label: "Apertura (mm)",    type: "number", step: 0.1, min: 0,  defaultValue: 0.6 },
     clip_t: { label: "Grosor clip (mm)", type: "number", step: 0.2, min: 2,  defaultValue: 3.0 },
     width:  { label: "Ancho clip (mm)",  type: "number", step: 0.5, min: 8,  defaultValue: 14.0 },
-    wall:   { label: "Grosor extra (mm)",type: "number", step: 0.2, min: 2,  defaultValue: 3 },
   },
   "camera-plate": {
     width:    { label: "Ancho (mm)",         type: "number", step: 1,   min: 36, defaultValue: 45 },
