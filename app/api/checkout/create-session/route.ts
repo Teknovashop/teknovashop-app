@@ -138,10 +138,10 @@ export async function POST(req: Request) {
       product_version: design?.product_version || "",
     };
 
-    const mode: Stripe.Checkout.SessionCreateParams.Mode =
+    const mode: "payment" | "subscription" =
       plan === "oneoff" ? "payment" : "subscription";
 
-    const session = await stripe.checkout.sessions.create({
+    const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode,
       payment_method_types: ["card"],
       customer_email: user.email || undefined,
@@ -160,18 +160,15 @@ export async function POST(req: Request) {
           ? `${site}/forge?status=cancel&design_id=${encodeURIComponent(design.id)}`
           : `${site}/#precios`,
       metadata,
-      ...(mode === "subscription"
-        ? {
-            subscription_data: {
-              metadata,
-            },
-          }
-        : {
-            payment_intent_data: {
-              metadata,
-            },
-          }),
-    });
+    };
+
+    if (mode === "subscription") {
+      sessionParams.subscription_data = { metadata };
+    } else {
+      sessionParams.payment_intent_data = { metadata };
+    }
+
+    const session = await stripe.checkout.sessions.create(sessionParams);
 
     return json({ ok: true, url: session.url }, 200);
   } catch (err: any) {
