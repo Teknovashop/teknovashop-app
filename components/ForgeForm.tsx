@@ -271,7 +271,8 @@ export default function ForgeForm({
   }, [slug, productMeta]);
 
   const supportsFreeHoles =
-    productMeta[slug]?.capabilities?.free_holes ?? slug === "qr-plate";
+    productMeta[slug]?.capabilities?.free_holes ??
+    ["qr-plate", "vesa-adapter"].includes(slug);
 
   useEffect(() => {
     const defaults = {
@@ -790,7 +791,8 @@ export default function ForgeForm({
               Pegado rápido
             </label>
             <p className="mb-2 text-[10px] leading-4 text-neutral-500">
-              Formato: <code>x,y,Ø x,y,Ø</code>. Ejemplo:{" "}
+              X/Y se miden desde el centro de la pieza. Formato:{" "}
+              <code>x,y,Ø x,y,Ø</code>. Ejemplo:{" "}
               <code>5,5,5 30,5,3.2</code>
             </p>
             <div className="flex gap-2">
