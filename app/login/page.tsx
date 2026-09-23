@@ -1,12 +1,15 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { FormEvent, useEffect, useState } from "react";
 import { getSupabase } from "@/lib/supabaseClient";
 
 export default function LoginPage() {
-  const search = useSearchParams();
-  const next = useMemo(() => search.get("next") || "/forge", [search]);
+  const [next, setNext] = useState("/forge");
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setNext(params.get("next") || "/forge");
+  }, []);
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [message, setMessage] = useState("");
