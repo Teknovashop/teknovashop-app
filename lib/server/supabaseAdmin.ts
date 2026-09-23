@@ -1,8 +1,11 @@
 import { createClient } from "@supabase/supabase-js";
 
-let admin: ReturnType<typeof createClient> | null = null;
+// Server-only admin client. The database schema is created by SQL migrations and
+// is not generated into TypeScript yet, so keep this client intentionally
+// untyped until we add generated Supabase Database types.
+let admin: any = null;
 
-export function getSupabaseAdmin() {
+export function getSupabaseAdmin(): any {
   if (admin) return admin;
 
   const url =
@@ -17,7 +20,7 @@ export function getSupabaseAdmin() {
     );
   }
 
-  admin = createClient(url, serviceRole, {
+  admin = createClient<any>(url, serviceRole, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
