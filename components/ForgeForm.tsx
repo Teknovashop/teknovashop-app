@@ -24,7 +24,7 @@ const CANONICAL: Record<string, string> = {
 const HIDE_SLUGS = new Set<string>(Object.keys(CANONICAL));
 
 const NICE: Record<string, string> = {
-  "vesa-adapter": "Adaptador VESA 75/100 → 100/200",
+  "vesa-adapter": "Adaptador VESA (2 patrones)",
   "router-mount": "Soporte de Router",
   "cable-tray": "Bandeja de Cables",
   "laptop-stand": "Soporte Laptop / Tablet",
