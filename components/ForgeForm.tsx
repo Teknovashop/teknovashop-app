@@ -16,6 +16,14 @@ type ForgeFormProps = {
 
 type CatalogItem = { slug: string; label: string };
 
+type CatalogProduct = {
+  slug: string;
+  name: string;
+  version?: string;
+  stage?: string;
+  defaults?: Record<string, number>;
+};
+
 type LastDesign = {
   designId?: string;
   productName?: string;
@@ -76,6 +84,32 @@ function canonicalize(s?: string) {
   return CANONICAL[k] || k;
 }
 
+function humanizeParameter(key: string) {
+  const explicit: Record<string, string> = {
+    margin: "Margen",
+    finger_h: "Altura dedos",
+    hole_off: "Margen taladros",
+    slot_w: "Ancho ranura",
+    slot_d: "Fondo ranura",
+  };
+  if (explicit[key]) return explicit[key];
+
+  return key
+    .replace(/_mm$/i, "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (m) => m.toUpperCase());
+}
+
+function fallbackField(key: string, value: any) {
+  const numeric = Number(value);
+  return {
+    label: humanizeParameter(key),
+    type: "number",
+    step: Number.isInteger(numeric) ? 1 : 0.1,
+    defaultValue: Number.isFinite(numeric) ? numeric : 0,
+  };
+}
+
 const FALLBACK_MODELS: CatalogItem[] = [
   "vesa-adapter",
   "router-mount",
@@ -115,6 +149,7 @@ export default function ForgeForm({
   const [catalog, setCatalog] = useState<CatalogItem[]>(
     [...FALLBACK_MODELS].sort((a, b) => a.label.localeCompare(b.label, "es"))
   );
+  const [productMeta, setProductMeta] = useState<Record<string, CatalogProduct>>({});
 
   const [slug, setSlug] = useState<string>(() => {
     const found = FALLBACK_MODELS.find((m) => m.slug === normalizedInitial)?.slug;
@@ -138,44 +173,44 @@ export default function ForgeForm({
 
         if (!base) return;
 
-        const res = await fetch(`${base}/debug/models`, { cache: "no-store" });
+        const res = await fetch(`${base}/catalog/products`, { cache: "no-store" });
         if (!res.ok) return;
 
-        const j: { models?: unknown } = await res.json();
-        const rawModels: string[] = Array.isArray(j?.models)
-          ? (j.models as unknown[]).map((x) => String(x))
+        const j: { products?: unknown } = await res.json();
+        const products: CatalogProduct[] = Array.isArray(j?.products)
+          ? (j.products as any[])
+              .map((p) => ({
+                slug: canonicalize(String(p?.slug || "")),
+                name: String(p?.name || ""),
+                version: p?.version ? String(p.version) : undefined,
+                stage: p?.stage ? String(p.stage) : undefined,
+                defaults:
+                  p?.defaults && typeof p.defaults === "object"
+                    ? p.defaults
+                    : {},
+              }))
+              .filter((p) => !!p.slug)
           : [];
 
-        const uniqCanon: string[] = Array.from(
-          new Set(
-            rawModels
-              .map((s) => kebab(s))
-              .filter((s) => !!s && !HIDE_SLUGS.has(s))
-              .map(canonicalize)
-          )
-        );
+        if (!products.length) return;
 
-        if (!uniqCanon.length) return;
-
-        const mapped: CatalogItem[] = uniqCanon
-          .map((s: string) => ({
-            slug: s,
-            label:
-              NICE[s] ||
-              s
-                .split("-")
-                .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
-                .join(" "),
+        const meta = Object.fromEntries(products.map((p) => [p.slug, p]));
+        const mapped: CatalogItem[] = products
+          .map((p) => ({
+            slug: p.slug,
+            label: p.name || NICE[p.slug] || humanizeParameter(p.slug),
           }))
           .sort((a, b) => a.label.localeCompare(b.label, "es"));
 
+        setProductMeta(meta);
         setCatalog(mapped);
         setSlug((prev) => {
+          const slugs = new Set(products.map((p) => p.slug));
           const prefer =
-            normalizedInitial && uniqCanon.includes(normalizedInitial)
+            normalizedInitial && slugs.has(normalizedInitial)
               ? normalizedInitial
               : prev;
-          return uniqCanon.includes(prefer) ? prefer : mapped[0].slug;
+          return slugs.has(prefer) ? prefer : mapped[0].slug;
         });
       } catch {
         // Mantener catálogo local como fallback.
@@ -200,18 +235,33 @@ export default function ForgeForm({
     n(initialParams?.fillet_mm, DEFAULTS.fillet_mm)
   );
 
-  const modelSchema = useMemo(
-    () => (FIELDS as any)[slug as ForgeModelSlug] || {},
-    [slug]
-  );
+  const modelSchema = useMemo(() => {
+    const local = { ...(((FIELDS as any)[slug as ForgeModelSlug]) || {}) };
+    const remoteDefaults = productMeta[slug]?.defaults || {};
+
+    for (const [key, value] of Object.entries(remoteDefaults)) {
+      if (local[key]) {
+        local[key] = {
+          ...local[key],
+          defaultValue: value,
+        };
+      } else {
+        local[key] = fallbackField(key, value);
+      }
+    }
+    return local;
+  }, [slug, productMeta]);
 
   useEffect(() => {
-    const defaults = { ...(((DEFAULT_PARAMS as any)[slug]) || {}) };
+    const defaults = {
+      ...(((DEFAULT_PARAMS as any)[slug]) || {}),
+      ...(productMeta[slug]?.defaults || {}),
+    };
     const schemaDefaults = Object.fromEntries(
       Object.entries(modelSchema).map(([key, cfg]: [string, any]) => [key, cfg.defaultValue])
     );
     setModelParams({ ...schemaDefaults, ...defaults });
-  }, [slug, modelSchema]);
+  }, [slug, modelSchema, productMeta]);
 
   const [text, setText] = useState<string>(initialParams?.text ?? "");
   const [textMode, setTextMode] = useState<TextMode>(
@@ -238,7 +288,10 @@ export default function ForgeForm({
 
   function resetDimensions() {
     if (Object.keys(modelSchema).length) {
-      const defaults = { ...(((DEFAULT_PARAMS as any)[slug]) || {}) };
+      const defaults = {
+      ...(((DEFAULT_PARAMS as any)[slug]) || {}),
+      ...(productMeta[slug]?.defaults || {}),
+    };
       const schemaDefaults = Object.fromEntries(
         Object.entries(modelSchema).map(([key, cfg]: [string, any]) => [key, cfg.defaultValue])
       );
