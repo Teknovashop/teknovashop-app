@@ -13,6 +13,13 @@ const stripe = new Stripe(STRIPE_SECRET, { apiVersion: "2024-06-20" });
 
 type PriceKey = "oneoff" | "maker" | "commercial";
 
+type DesignRow = {
+  id: string;
+  user_id: string | null;
+  product_slug: string;
+  product_version: string;
+};
+
 type Body = {
   // Email ahora es OPCIONAL: si no viene, Stripe lo pedirá en Checkout
   email?: string | null;
@@ -70,6 +77,8 @@ export async function POST(req: Request) {
     await admin.from("designs").select("id").limit(1);
 
     const body = (await req.json()) as Body;
+    let design: DesignRow | null = null;
+
     if (body.price === "oneoff") {
       const designId = String(body.design_id || "").trim();
       if (!designId) {
@@ -92,6 +101,16 @@ export async function POST(req: Request) {
         );
       }
 
+      const row = data as unknown as DesignRow;
+
+      if (row.user_id && row.user_id !== user.id) {
+        return NextResponse.json(
+          { error: "DESIGN_NOT_OWNED" },
+          { status: 403 }
+        );
+      }
+
+      design = row;
     }
 
     if (!body?.price) {
@@ -113,6 +132,9 @@ export async function POST(req: Request) {
       plan: body.price,
       terms_version: TERMS_VERSION,
       license_version: LICENSE_VERSION,
+      design_id: design?.id || "",
+      product_slug: design?.product_slug || "",
+      product_version: design?.product_version || "",
       model_kind: String(body.model_kind ?? ""),
     };
 
@@ -124,7 +146,10 @@ export async function POST(req: Request) {
       line_items: [{ price: priceId, quantity: 1 }],
       allow_promotion_codes: true,
       automatic_tax: { enabled: true },
-      success_url: `${site}/forge/success?session_id={CHECKOUT_SESSION_ID}`,
+      success_url:
+        body.price === "oneoff" && design
+          ? `${site}/forge/success?session_id={CHECKOUT_SESSION_ID}&design_id=${encodeURIComponent(design.id)}`
+          : `${site}/forge/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${site}/forge?status=cancel`,
       metadata,
     });
