@@ -21,6 +21,10 @@ type CatalogProduct = {
   name: string;
   version?: string;
   stage?: string;
+  capabilities?: {
+    text?: boolean;
+    free_holes?: boolean;
+  };
   defaults?: Record<string, number>;
 };
 
@@ -184,6 +188,10 @@ export default function ForgeForm({
                 name: String(p?.name || ""),
                 version: p?.version ? String(p.version) : undefined,
                 stage: p?.stage ? String(p.stage) : undefined,
+                capabilities:
+                  p?.capabilities && typeof p.capabilities === "object"
+                    ? p.capabilities
+                    : {},
                 defaults:
                   p?.defaults && typeof p.defaults === "object"
                     ? p.defaults
@@ -251,6 +259,9 @@ export default function ForgeForm({
     }
     return local;
   }, [slug, productMeta]);
+
+  const supportsFreeHoles =
+    productMeta[slug]?.capabilities?.free_holes ?? slug === "qr-plate";
 
   useEffect(() => {
     const defaults = {
@@ -473,6 +484,8 @@ export default function ForgeForm({
               setSlug(e.target.value);
               setFeedback(null);
               setLastDesign(null);
+              setHoles([]);
+              setBulk("");
             }}
           >
             {catalog.map((m) => (
@@ -599,6 +612,7 @@ export default function ForgeForm({
           </div>
         </PanelSection>
 
+        {supportsFreeHoles && (
         <PanelSection
           title="Agujeros"
           subtitle={
@@ -702,6 +716,7 @@ export default function ForgeForm({
             </div>
           </div>
         </PanelSection>
+        )}
       </div>
 
       <div className="border-t border-neutral-200 bg-neutral-50 p-4">
