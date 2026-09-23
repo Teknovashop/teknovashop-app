@@ -10,6 +10,44 @@ import { STLExporter } from "three/examples/jsm/exporters/STLExporter.js";
 
 type Props = { url?: string | null; className?: string };
 type Unit = "mm" | "cm";
+type ToolMode = "orbit" | "measure";
+type Point3 = { x: number; y: number; z: number };
+
+function makeDimensionLabel(text: string, scale: number) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 384;
+  canvas.height = 96;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "rgba(255,255,255,0.94)";
+  ctx.strokeStyle = "rgba(148,163,184,0.9)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(2, 2, canvas.width - 4, canvas.height - 4, 16);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = "#0f172a";
+  ctx.font = "600 34px system-ui, -apple-system, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const material = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+    depthTest: false,
+    depthWrite: false,
+  });
+  const sprite = new THREE.Sprite(material);
+  sprite.scale.set(scale * 4, scale, 1);
+  sprite.renderOrder = 50;
+  return sprite;
+}
 
 function niceStep(raw: number) {
   if (!Number.isFinite(raw) || raw <= 0) return 10;
@@ -66,6 +104,11 @@ export default function STLViewerPro({ url, className }: Props) {
   const edgesRef = useRef<any>(null);
   const groundRef = useRef<any>(null);
   const dirLightRef = useRef<any>(null);
+  const dimensionGroupRef = useRef<any>(null);
+  const measureGroupRef = useRef<any>(null);
+  const pointerDownRef = useRef<{ x: number; y: number } | null>(null);
+  const toolModeRef = useRef<ToolMode>("orbit");
+  const measurePointsRef = useRef<Point3[]>([]);
 
   const [bgLight, setBgLight] = useState(true);
   const [tone, setTone] = useState(0.5);
@@ -74,6 +117,9 @@ export default function STLViewerPro({ url, className }: Props) {
   const [unit, setUnit] = useState<Unit>("mm");
   const [ruler, setRuler] = useState({ spanX: 400, spanY: 300, step: 50 });
   const [modelInfo, setModelInfo] = useState<{ x: number; y: number; z: number; triangles: number } | null>(null);
+  const [toolMode, setToolMode] = useState<ToolMode>("orbit");
+  const [showDimensions, setShowDimensions] = useState(true);
+  const [measurePoints, setMeasurePoints] = useState<Point3[]>([]);
 
   const paywall = isPaywallOn();
   const entitled = useMemo(() => hasEntitlement(), []);
@@ -139,6 +185,174 @@ export default function STLViewerPro({ url, className }: Props) {
     URL.revokeObjectURL(a.href);
   };
 
+  function disposeObject(root: any) {
+    if (!root) return;
+    root.traverse?.((obj: any) => {
+      obj.geometry?.dispose?.();
+      const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
+      materials.forEach((m: any) => {
+        if (m?.map) m.map.dispose?.();
+        m?.dispose?.();
+      });
+    });
+    root.removeFromParent?.();
+  }
+
+  function clearMeasurement() {
+    const scene = sceneRef.current as any;
+    if (measureGroupRef.current && scene) {
+      scene.remove(measureGroupRef.current);
+      disposeObject(measureGroupRef.current);
+    }
+    measureGroupRef.current = null;
+    measurePointsRef.current = [];
+    setMeasurePoints([]);
+  }
+
+  function drawMeasurement(points: Point3[]) {
+    const scene = sceneRef.current as any;
+    if (!scene) return;
+
+    if (measureGroupRef.current) {
+      scene.remove(measureGroupRef.current);
+      disposeObject(measureGroupRef.current);
+    }
+
+    const group = new THREE.Group();
+    const markerGeometry = new THREE.SphereGeometry(1.8, 18, 18);
+    const markerMaterial = new THREE.MeshBasicMaterial({
+      color: 0xf97316,
+      depthTest: false,
+    });
+
+    points.forEach((p) => {
+      const marker = new THREE.Mesh(markerGeometry.clone(), markerMaterial.clone());
+      marker.position.set(p.x, p.y, p.z);
+      marker.renderOrder = 60;
+      group.add(marker);
+    });
+
+    if (points.length === 2) {
+      const a = new THREE.Vector3(points[0].x, points[0].y, points[0].z);
+      const b = new THREE.Vector3(points[1].x, points[1].y, points[1].z);
+      const geometry = new THREE.BufferGeometry().setFromPoints([a, b]);
+      const material = new THREE.LineBasicMaterial({
+        color: 0xf97316,
+        depthTest: false,
+        linewidth: 2,
+      });
+      const line = new THREE.Line(geometry, material);
+      line.renderOrder = 59;
+      group.add(line);
+
+      const distance = a.distanceTo(b);
+      const label = makeDimensionLabel(
+        `${distance.toFixed(distance < 10 ? 2 : 1)} mm`,
+        Math.max(distance * 0.08, 5)
+      );
+      if (label) {
+        label.position.copy(a.clone().add(b).multiplyScalar(0.5));
+        label.position.y += Math.max(distance * 0.05, 3);
+        group.add(label);
+      }
+    }
+
+    scene.add(group);
+    measureGroupRef.current = group;
+  }
+
+  function addDimensionLine(
+    parent: THREE.Group,
+    start: THREE.Vector3,
+    end: THREE.Vector3,
+    labelText: string,
+    labelScale: number
+  ) {
+    const color = 0x2563eb;
+    const geometry = new THREE.BufferGeometry().setFromPoints([start, end]);
+    const material = new THREE.LineBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.95,
+      depthTest: false,
+    });
+    const line = new THREE.Line(geometry, material);
+    line.renderOrder = 40;
+    parent.add(line);
+
+    const tickSize = Math.max(labelScale * 0.45, 2);
+    const direction = end.clone().sub(start).normalize();
+    let tickAxis = new THREE.Vector3(0, 1, 0);
+    if (Math.abs(direction.dot(tickAxis)) > 0.9) tickAxis = new THREE.Vector3(1, 0, 0);
+
+    [start, end].forEach((p) => {
+      const a = p.clone().add(tickAxis.clone().multiplyScalar(-tickSize));
+      const b = p.clone().add(tickAxis.clone().multiplyScalar(tickSize));
+      const tickGeom = new THREE.BufferGeometry().setFromPoints([a, b]);
+      const tick = new THREE.Line(tickGeom, material.clone());
+      tick.renderOrder = 40;
+      parent.add(tick);
+    });
+
+    const label = makeDimensionLabel(labelText, labelScale);
+    if (label) {
+      label.position.copy(start.clone().add(end).multiplyScalar(0.5));
+      label.position.y += labelScale * 0.7;
+      parent.add(label);
+    }
+  }
+
+  function buildDimensionHelpers(
+    group: THREE.Group,
+    bb: THREE.Box3,
+    objectSize: THREE.Vector3
+  ) {
+    if (dimensionGroupRef.current) {
+      group.remove(dimensionGroupRef.current);
+      disposeObject(dimensionGroupRef.current);
+    }
+
+    const dims = new THREE.Group();
+    dims.visible = showDimensions;
+
+    const maxDim = Math.max(objectSize.x, objectSize.y, objectSize.z, 1);
+    const offset = Math.max(maxDim * 0.08, 5);
+    const labelScale = Math.max(maxDim * 0.07, 5);
+
+    const xY = bb.min.y - offset;
+    const xZ = bb.max.z + offset;
+    addDimensionLine(
+      dims,
+      new THREE.Vector3(bb.min.x, xY, xZ),
+      new THREE.Vector3(bb.max.x, xY, xZ),
+      `X ${objectSize.x.toFixed(objectSize.x < 10 ? 2 : 1)} mm`,
+      labelScale
+    );
+
+    const yX = bb.min.x - offset;
+    const yZ = bb.max.z + offset;
+    addDimensionLine(
+      dims,
+      new THREE.Vector3(yX, bb.min.y, yZ),
+      new THREE.Vector3(yX, bb.max.y, yZ),
+      `Y ${objectSize.y.toFixed(objectSize.y < 10 ? 2 : 1)} mm`,
+      labelScale
+    );
+
+    const zX = bb.max.x + offset;
+    const zY = bb.min.y - offset;
+    addDimensionLine(
+      dims,
+      new THREE.Vector3(zX, zY, bb.min.z),
+      new THREE.Vector3(zX, zY, bb.max.z),
+      `Z ${objectSize.z.toFixed(objectSize.z < 10 ? 2 : 1)} mm`,
+      labelScale
+    );
+
+    group.add(dims);
+    dimensionGroupRef.current = dims;
+  }
+
   function updateRuler() {
     const camera = cameraRef.current as any;
     const controls = controlsRef.current as any;
@@ -179,6 +393,19 @@ export default function STLViewerPro({ url, className }: Props) {
     controls.update();
     updateRuler();
   }
+
+  useEffect(() => {
+    toolModeRef.current = toolMode;
+    if (controlsRef.current) {
+      controlsRef.current.enabled = toolMode === "orbit";
+    }
+  }, [toolMode]);
+
+  useEffect(() => {
+    if (dimensionGroupRef.current) {
+      dimensionGroupRef.current.visible = showDimensions;
+    }
+  }, [showDimensions]);
 
   // Init escena
   useEffect(() => {
@@ -250,6 +477,42 @@ export default function STLViewerPro({ url, className }: Props) {
 
     mount.appendChild(renderer.domElement);
 
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+
+    const onPointerDown = (ev: PointerEvent) => {
+      pointerDownRef.current = { x: ev.clientX, y: ev.clientY };
+    };
+
+    const onPointerUp = (ev: PointerEvent) => {
+      if (toolModeRef.current !== "measure" || !meshRef.current) return;
+
+      const start = pointerDownRef.current;
+      pointerDownRef.current = null;
+      if (start && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) > 5) return;
+
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointer.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(pointer, camera);
+
+      const hits = raycaster.intersectObject(meshRef.current, false);
+      if (!hits.length) return;
+
+      const p = hits[0].point;
+      const next: Point3[] =
+        measurePointsRef.current.length === 1
+          ? [measurePointsRef.current[0], { x: p.x, y: p.y, z: p.z }]
+          : [{ x: p.x, y: p.y, z: p.z }];
+
+      measurePointsRef.current = next;
+      setMeasurePoints(next);
+      drawMeasurement(next);
+    };
+
+    renderer.domElement.addEventListener("pointerdown", onPointerDown);
+    renderer.domElement.addEventListener("pointerup", onPointerUp);
+
     const onResize = () => {
       const { clientWidth, clientHeight } = mount;
       camera.aspect = Math.max(1e-6, clientWidth / Math.max(1, clientHeight));
@@ -273,6 +536,8 @@ export default function STLViewerPro({ url, className }: Props) {
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
+      renderer.domElement.removeEventListener("pointerdown", onPointerDown);
+      renderer.domElement.removeEventListener("pointerup", onPointerUp);
       (controls as any).removeEventListener("change", updateRuler);
       controls.dispose();
       renderer.dispose();
@@ -288,6 +553,8 @@ export default function STLViewerPro({ url, className }: Props) {
       edgesRef.current = null;
       groundRef.current = null;
       dirLightRef.current = null;
+      dimensionGroupRef.current = null;
+      measureGroupRef.current = null;
       groupRef.current = null;
       controlsRef.current = null;
     };
@@ -371,6 +638,8 @@ export default function STLViewerPro({ url, className }: Props) {
     }
     meshRef.current = null;
     edgesRef.current = null;
+    dimensionGroupRef.current = null;
+    clearMeasurement();
     setModelInfo(null);
 
     if (!url) return;
@@ -408,6 +677,7 @@ export default function STLViewerPro({ url, className }: Props) {
         const triangles = Math.round((geometry.getAttribute("position")?.count ?? 0) / 3);
         setModelInfo({ x: size.x, y: size.y, z: size.z, triangles });
         group.position.set(-center.x, -center.y, -center.z);
+        buildDimensionHelpers(group, bb, size);
 
         // Suelo bajo la pieza
         if (groundRef.current) {
@@ -497,6 +767,42 @@ export default function STLViewerPro({ url, className }: Props) {
           <button onClick={() => setView("right")} className="border-l px-2 py-1 text-xs hover:bg-neutral-100">Derecha</button>
         </div>
 
+        <button
+          type="button"
+          onClick={() => {
+            const next = toolMode === "measure" ? "orbit" : "measure";
+            setToolMode(next);
+            if (next === "measure") clearMeasurement();
+          }}
+          className={`rounded-md border px-2 py-1 text-xs font-medium ${
+            toolMode === "measure"
+              ? "border-orange-300 bg-orange-50 text-orange-700"
+              : "border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50"
+          }`}
+          title="Medir distancia entre dos puntos"
+        >
+          {toolMode === "measure" ? "Midiendo…" : "Medir"}
+        </button>
+
+        {measurePoints.length > 0 && (
+          <button
+            type="button"
+            onClick={clearMeasurement}
+            className="rounded-md border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-600 hover:bg-neutral-50"
+          >
+            Limpiar medida
+          </button>
+        )}
+
+        <label className="flex items-center gap-1.5 text-xs">
+          <input
+            type="checkbox"
+            checked={showDimensions}
+            onChange={(e) => setShowDimensions(e.target.checked)}
+          />
+          Cotas
+        </label>
+
         <select
           value={unit}
           onChange={(e) => setUnit(e.target.value as Unit)}
@@ -555,7 +861,13 @@ export default function STLViewerPro({ url, className }: Props) {
       )}
 
       <div className="pointer-events-none absolute bottom-3 right-3 z-20 rounded-md bg-neutral-900/75 px-2.5 py-1.5 text-[10px] text-white">
-        Arrastrar: rotar · Rueda: zoom · Botón derecho: desplazar
+        {toolMode === "measure"
+          ? measurePoints.length === 0
+            ? "Medir: selecciona el primer punto"
+            : measurePoints.length === 1
+              ? "Medir: selecciona el segundo punto"
+              : "Medición completada · pulsa Medir para salir"
+          : "Arrastrar: rotar · Rueda: zoom · Botón derecho: desplazar"}
       </div>
     </div>
   );
