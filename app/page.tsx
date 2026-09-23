@@ -16,11 +16,12 @@ const HERO_VIDEO_POSTER =
   process.env.NEXT_PUBLIC_HERO_POSTER_URL || "/hero/hero.jpg";
 
 const TEMPLATES = [
-  ["cable-tray", "Bandeja de cables", "Ordena alimentación, hubs y cableado bajo mesa.", "Escritorio"],
-  ["laptop-stand", "Soporte para portátil", "Ajusta medidas reales y eleva el equipo con precisión.", "Ergonomía"],
-  ["ssd-holder", "Caddy SSD 2.5 a 3.5", "Adaptador paramétrico con base y guías laterales.", "Hardware"],
-  ["hub-holder", "Soporte USB Hub", "Alojamiento configurable para integrar tu hub.", "Setup"],
-  ["camera-plate", "Placa para cámara", "Tornillo 1/4 y ranura de ajuste.", "Creator"],
+  ["vesa-adapter", "Adaptador VESA (2 patrones)", "Adapta dos patrones VESA con medidas reales y perforaciones verificadas.", "Montaje", "/images/products/vesa-adapter.webp"],
+  ["cable-tray", "Bandeja de Cables", "Canaliza hubs, fuentes y cableado bajo mesa con una bandeja configurable.", "Escritorio", "/images/products/cable-tray.webp"],
+  ["laptop-stand", "Soporte Laptop / Tablet", "Ajusta apoyo, ángulo y dimensiones para tu equipo.", "Ergonomía", "/images/products/laptop-stand.webp"],
+  ["phone-stand", "Soporte / Dock Móvil (USB-C)", "Configura un soporte inclinado con paso para cable USB-C.", "Dock", "/images/products/phone-stand.webp"],
+  ["router-mount", "Soporte de Router", "Base y respaldo configurables para alojar el router con holgura.", "Red", "/images/products/router-mount.webp"],
+  ["ip65-box", "Caja IP65", "Caja técnica configurable para electrónica y proyectos protegidos.", "Electrónica", "/images/products/ip65-box.webp"],
 ];
 
 const BENEFITS = [
@@ -130,7 +131,7 @@ export default function Page() {
                     <div className="text-xs font-bold">Del parámetro a una pieza real</div>
                     <div className="text-[10px] text-slate-400">Configura · valida · genera</div>
                   </div>
-                  <span className="rounded-lg bg-white/10 px-2.5 py-1 text-[10px] font-bold text-cyan-200">EN DIRECTO</span>
+                  <span className="rounded-lg bg-white/10 px-2.5 py-1 text-[10px] font-bold text-cyan-200">DEMO PRODUCTO</span>
                 </div>
               </div>
             </Reveal>
@@ -141,7 +142,7 @@ export default function Page() {
           <div className="mx-auto grid max-w-7xl grid-cols-2 divide-x divide-white/10 px-5 md:grid-cols-4 lg:px-8">
             {[
               ["18", "modelos paramétricos canónicos"],
-              ["170", "pruebas automáticas de calidad"],
+              ["172", "pruebas automáticas de calidad"],
               ["SHA-256", "trazabilidad por diseño"],
               ["3D", "previsualización antes de comprar"],
             ].map((item) => (
@@ -166,7 +167,7 @@ export default function Page() {
           </Reveal>
 
           <Reveal delay={90}>
-            <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {TEMPLATES.map((template) => (
               <Link
                 key={template[0]}
@@ -175,10 +176,10 @@ export default function Page() {
               >
                 <div className="relative aspect-[4/3] overflow-hidden bg-slate-100">
                   <Image
-                    src={"/images/models/" + template[0] + ".jpg"}
+                    src={template[4]}
                     alt={template[1]}
                     fill
-                    sizes="(max-width: 640px) 100vw, 20vw"
+                    sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
                     className="object-cover transition duration-500 group-hover:scale-105"
                   />
                   <span className="absolute left-3 top-3 rounded-full bg-white/90 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-slate-700">
@@ -249,13 +250,13 @@ export default function Page() {
             <p className="home-eyebrow">Confianza verificable</p>
             <h2 className="home-title">Primero demostramos que funciona.</h2>
             <p className="home-copy">
-              Mientras construimos comunidad real, la confianza de Teknovashop Forge se apoya en pruebas técnicas y trazabilidad, no en testimonios inventados.
+              Cada modelo entra en catálogo con un contrato de producto, pruebas automáticas y trazabilidad reproducible. La confianza se apoya en lo que podemos verificar.
             </p>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             {[
               ["18 modelos canónicos", "Cada producto corresponde a una geometría concreta y parametrizable."],
-              ["170 checks automatizados", "Regresión de geometría, parámetros, exportación y trazabilidad."],
+              ["172 checks automatizados", "Regresión de geometría, parámetros, exportación y trazabilidad."],
               ["Design ID único", "Cada generación puede identificarse, versionarse y licenciarse."],
               ["Manifiesto reproducible", "Parámetros, versión y SHA-256 acompañan al diseño final."],
             ].map((proof) => (
