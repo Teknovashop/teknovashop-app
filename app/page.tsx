@@ -1,127 +1,188 @@
 // app/page.tsx
 export const dynamic = "force-dynamic";
 
-import Link from "next/link";
 import Image from "next/image";
+import Link from "next/link";
 import HeroVideo from "@/components/HeroVideo";
 import Pricing from "@/components/Pricing";
 
 const CONFIGURATOR_HREF = "/forge";
-
 const HERO_VIDEO_SRC =
   process.env.NEXT_PUBLIC_HERO_VIDEO_URL || "/hero/hero.mp4";
 const HERO_VIDEO_POSTER =
-  process.env.NEXT_PUBLIC_HERO_POSTER_URL || undefined;
+  process.env.NEXT_PUBLIC_HERO_POSTER_URL || "/hero/hero.jpg";
 
-/** Plantillas destacadas con slug = nombre del jpg en /public/images/models */
-const TEMPLATES: { slug: string; title: string; desc: string }[] = [
-  { slug: "cable-tray",    title: "Bandeja de Cables",       desc: "Organizador modular bajo mesa" },
-  { slug: "laptop-stand",  title: "Soporte de Portátil",     desc: "Apoyo elevado con geometría configurable" },
-  { slug: "headset-stand", title: "Soporte de Auriculares",  desc: "Base, mástil y apoyo superior paramétricos" },
-  { slug: "ssd-holder",    title: "Caddy SSD 2.5 a 3.5",     desc: "Adaptador con base y guías laterales" },
-  { slug: "hub-holder",    title: "Soporte USB Hub",         desc: "Alojamiento abierto con holgura configurable" },
-  { slug: "camera-plate",  title: "Placa para Cámara",       desc: "Placa con tornillo 1/4 y ranura de ajuste" },
+const TEMPLATES = [
+  ["cable-tray", "Bandeja de cables", "Ordena alimentación, hubs y cableado bajo mesa.", "Escritorio"],
+  ["laptop-stand", "Soporte para portátil", "Ajusta medidas reales y eleva el equipo con precisión.", "Ergonomía"],
+  ["ssd-holder", "Caddy SSD 2.5 a 3.5", "Adaptador paramétrico con base y guías laterales.", "Hardware"],
+  ["hub-holder", "Soporte USB Hub", "Alojamiento configurable para integrar tu hub.", "Setup"],
+  ["camera-plate", "Placa para cámara", "Tornillo 1/4 y ranura de ajuste.", "Creator"],
 ];
+
+const BENEFITS = [
+  ["Parametrización real", "Cada producto expone solo controles con efecto geométrico real."],
+  ["Vista 3D a escala", "Reglas, cotas, vistas CAD y medición punto a punto en milímetros."],
+  ["Calidad automatizada", "Geometría, volumen y exportación STL pasan por pruebas automáticas."],
+  ["Diseños trazables", "Cada generación incorpora design ID, versión y huella SHA-256."],
+  ["Licencias claras", "Compra una configuración concreta o trabaja con suscripción."],
+  ["De idea a slicer", "Configura, valida y genera sin rehacer cada variante desde cero."],
+];
+
+function Arrow() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
+      <path d="M5 12h14M14 7l5 5-5 5" />
+    </svg>
+  );
+}
+
+function Cube() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
+      <path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z" />
+      <path d="m4.4 7.7 7.6 4.2 7.6-4.2M12 12v9" />
+    </svg>
+  );
+}
 
 export default function Page() {
   return (
-    <main className="min-h-screen">
-      {/* HERO */}
-      <section className="relative overflow-hidden">
-        <div className="absolute inset-0 pointer-events-none">
-          <div className="h-[38rem] bg-gradient-to-b from-[#f4f7fb] to-transparent dark:from-neutral-900/50" />
-        </div>
+    <main className="min-h-screen bg-[#f6f8fc] text-[#07111f]">
+      <section className="relative overflow-hidden bg-[#071321] text-white">
+        <div className="home-hero-glow absolute inset-0 pointer-events-none" />
 
-        <div className="relative container mx-auto px-4 max-w-6xl py-6 md:py-10">
-          <div className="flex justify-end mb-6">
-            <Link
-              href={CONFIGURATOR_HREF}
-              className="inline-flex items-center gap-2 rounded-xl px-4 py-2 bg-[#2663EB] hover:bg-[#1f55c8] text-white shadow-md transition"
-            >
-              Abrir Configurador
+        <header className="sticky top-0 z-40 border-b border-white/10 bg-[#071321]/85 backdrop-blur-xl">
+          <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 lg:px-8">
+            <Link href="/" className="flex items-center gap-2.5 font-black">
+              <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 shadow-lg">
+                <Cube />
+              </span>
+              <span>Teknovashop <span className="text-cyan-300">Forge</span></span>
             </Link>
-          </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-stretch">
-            {/* Copy */}
-            <div className="flex flex-col justify-center">
-              <h1 className="text-3xl md:text-5xl font-extrabold leading-tight tracking-tight text-[#0b1526] dark:text-white">
-                Diseña accesorios tech <span className="text-[#2663EB]">paramétricos</span> en segundos
+            <nav className="hidden items-center gap-7 text-sm text-slate-300 lg:flex">
+              <a href="#templates" className="hover:text-white">Plantillas</a>
+              <a href="#how" className="hover:text-white">Cómo funciona</a>
+              <a href="#quality" className="hover:text-white">Tecnología</a>
+              <a href="#pricing" className="hover:text-white">Precios</a>
+              <a href="#faq" className="hover:text-white">FAQ</a>
+            </nav>
+
+            <div className="flex items-center gap-2">
+              <Link href="/login?next=/forge" className="hidden rounded-xl border border-white/15 px-4 py-2 text-sm font-semibold sm:inline-flex">
+                Iniciar sesión
+              </Link>
+              <Link href={CONFIGURATOR_HREF} className="home-primary-btn">
+                Probar configurador <Arrow />
+              </Link>
+            </div>
+          </div>
+        </header>
+
+        <div className="relative mx-auto max-w-7xl px-5 py-14 lg:px-8 lg:py-20">
+          <div className="grid items-center gap-12 lg:grid-cols-2">
+            <div className="home-reveal">
+              <div className="home-pill">
+                <span className="h-1.5 w-1.5 rounded-full bg-cyan-300" />
+                Diseño paramétrico listo para imprimir
+              </div>
+
+              <h1 className="mt-6 text-5xl font-black leading-[0.98] tracking-[-0.045em] sm:text-6xl lg:text-7xl">
+                Diseña accesorios tech paramétricos <span className="home-gradient-text">en minutos.</span>
               </h1>
-              <p className="mt-4 text-base md:text-lg text-[#4a5568] dark:text-neutral-300">
-                Define medidas, previsualiza en 3D y descarga un STL optimizado listo para imprimir.
+
+              <p className="mt-6 max-w-xl text-base leading-7 text-slate-300 sm:text-lg">
+                Ajusta medidas reales, valida la pieza en 3D y genera un diseño trazable preparado para tu slicer. Sin rehacer cada variante desde cero en CAD.
               </p>
 
-              <div className="mt-6 flex items-center gap-3">
-                <Link
-                  href={CONFIGURATOR_HREF}
-                  className="inline-flex items-center gap-2 rounded-xl px-5 py-3 bg-[#2663EB] hover:bg-[#1f55c8] text-white font-medium shadow-lg transition"
-                >
-                  Crear diseño
+              <div className="mt-8 flex flex-wrap gap-3">
+                <Link href={CONFIGURATOR_HREF} className="home-primary-btn home-primary-btn-lg">
+                  Probar configurador <Arrow />
                 </Link>
-                <a
-                  href="#templates"
-                  className="inline-flex items-center gap-2 rounded-xl px-5 py-3 bg-white hover:bg-[#f6f8fb] text-[#0b1526] dark:bg-neutral-900 dark:text-white border border-[#e6eaf2] dark:border-neutral-800 shadow-sm transition"
-                >
-                  Ver plantillas
-                </a>
+                <a href="#templates" className="home-secondary-btn">Ver plantillas</a>
               </div>
 
-              <div className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="rounded-2xl border border-[#e6eaf2] dark:border-neutral-800 bg-white dark:bg-neutral-900 px-4 py-3 shadow-sm">
-                  <p className="font-semibold text-[#0b1526] dark:text-white">Rápido</p>
-                  <p className="text-sm text-[#6b7280] dark:text-neutral-400">STL al vuelo, watertight y ligero.</p>
-                </div>
-                <div className="rounded-2xl border border-[#e6eaf2] dark:border-neutral-800 bg-white dark:bg-neutral-900 px-4 py-3 shadow-sm">
-                  <p className="font-semibold text-[#0b1526] dark:text-white">Pro</p>
-                  <p className="text-sm text-[#6b7280] dark:text-neutral-400">Visor 3D con controles tipo CAD.</p>
-                </div>
-                <div className="rounded-2xl border border-[#e6eaf2] dark:border-neutral-800 bg-white dark:bg-neutral-900 px-4 py-3 shadow-sm">
-                  <p className="font-semibold text-[#0b1526] dark:text-white">Escalable</p>
-                  <p className="text-sm text-[#6b7280] dark:text-neutral-400">Listo para licencias y packs.</p>
-                </div>
+              <div className="mt-8 flex flex-wrap gap-x-6 gap-y-3 text-xs text-slate-300">
+                {["Sin experiencia CAD obligatoria", "Vista 3D a escala", "STL validado", "Diseño trazable"].map((item) => (
+                  <span key={item} className="flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full bg-cyan-300" />
+                    {item}
+                  </span>
+                ))}
               </div>
             </div>
 
-            {/* Vídeo del hero */}
-            <div className="flex items-center justify-center">
-              <HeroVideo src={HERO_VIDEO_SRC} poster={HERO_VIDEO_POSTER} className="w-full" />
+            <div className="relative home-reveal">
+              <div className="absolute -inset-8 rounded-[2.5rem] bg-blue-500/10 blur-3xl" />
+              <div className="relative rounded-[1.6rem] border border-white/15 bg-white/5 p-2 shadow-2xl">
+                <HeroVideo
+                  src={HERO_VIDEO_SRC}
+                  poster={HERO_VIDEO_POSTER}
+                  className="!rounded-[1.2rem] !border-white/10 !bg-[#081421]"
+                />
+                <div className="absolute bottom-5 left-5 right-5 flex items-center justify-between rounded-xl border border-white/10 bg-[#071321]/80 px-4 py-3 backdrop-blur-xl">
+                  <div>
+                    <div className="text-xs font-bold">Del parámetro a una pieza real</div>
+                    <div className="text-[10px] text-slate-400">Configura · valida · genera</div>
+                  </div>
+                  <span className="rounded-lg bg-white/10 px-2.5 py-1 text-[10px] font-bold text-cyan-200">EN DIRECTO</span>
+                </div>
+              </div>
             </div>
+          </div>
+        </div>
+
+        <div className="border-y border-white/10 bg-white/[0.035]">
+          <div className="mx-auto grid max-w-7xl grid-cols-2 divide-x divide-white/10 px-5 md:grid-cols-4 lg:px-8">
+            {[
+              ["18", "modelos paramétricos canónicos"],
+              ["170", "pruebas automáticas de calidad"],
+              ["SHA-256", "trazabilidad por diseño"],
+              ["3D", "previsualización antes de comprar"],
+            ].map((item) => (
+              <div key={item[0]} className="px-4 py-5 text-center">
+                <div className="font-black">{item[0]}</div>
+                <div className="mt-1 text-[11px] leading-4 text-slate-400">{item[1]}</div>
+              </div>
+            ))}
           </div>
         </div>
       </section>
 
-      {/* PLANTILLAS DESTACADAS */}
-      <section id="templates" className="py-12 bg-neutral-50 dark:bg-neutral-900">
-        <div className="container mx-auto px-4 max-w-6xl">
-          <div className="flex items-end justify-between">
-            <h2 className="text-xl md:text-2xl font-semibold text-[#0b1526] dark:text-white">Plantillas destacadas</h2>
-            <Link href={CONFIGURATOR_HREF} className="text-sm text-[#2663EB] hover:underline">
-              Ver todas
-            </Link>
+      <section id="templates" className="home-section">
+        <div className="mx-auto max-w-7xl px-5 lg:px-8">
+          <div className="home-section-head">
+            <div>
+              <p className="home-eyebrow">Empieza con una base sólida</p>
+              <h2 className="home-title">Plantillas destacadas</h2>
+              <p className="home-copy">Geometrías útiles con parámetros reales, no simples escalados de un STL.</p>
+            </div>
+            <Link href="/catalog" className="home-text-link">Ver todas <Arrow /></Link>
           </div>
 
-          <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {TEMPLATES.map((t) => (
+          <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-5">
+            {TEMPLATES.map((template) => (
               <Link
-                key={t.slug}
-                href={`/forge?model=${encodeURIComponent(t.slug)}`}
-                className="group rounded-2xl border border-[#e6eaf2] dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 hover:shadow-lg transition-shadow"
+                key={template[0]}
+                href={"/forge?model=" + encodeURIComponent(template[0])}
+                className="home-product-card group"
               >
-                {/* Imagen del modelo desde /public/images/models/{slug}.jpg */}
-                <div className="relative h-40 w-full overflow-hidden rounded-xl">
+                <div className="relative aspect-[4/3] overflow-hidden bg-slate-100">
                   <Image
-                    src={`/images/models/${t.slug}.jpg`}
-                    alt={t.title}
+                    src={"/images/models/" + template[0] + ".jpg"}
+                    alt={template[1]}
                     fill
-                    sizes="(max-width: 768px) 100vw, 33vw"
-                    className="object-cover transition-transform duration-300 group-hover:scale-[1.02]"
-                    priority={false}
+                    sizes="(max-width: 640px) 100vw, 20vw"
+                    className="object-cover transition duration-500 group-hover:scale-105"
                   />
+                  <span className="absolute left-3 top-3 rounded-full bg-white/90 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-slate-700">
+                    {template[3]}
+                  </span>
                 </div>
-                <div className="mt-4">
-                  <h3 className="font-semibold text-[#0b1526] dark:text-white">{t.title}</h3>
-                  <p className="text-sm text-[#6b7280] dark:text-neutral-400">{t.desc}</p>
+                <div className="p-4">
+                  <h3 className="text-sm font-extrabold">{template[1]}</h3>
+                  <p className="mt-1.5 text-xs leading-5 text-slate-500">{template[2]}</p>
                 </div>
               </Link>
             ))}
@@ -129,35 +190,136 @@ export default function Page() {
         </div>
       </section>
 
-      {/* CÓMO FUNCIONA */}
-      <section className="py-12">
-        <div className="container mx-auto px-4 max-w-6xl">
-          <h2 className="text-xl md:text-2xl font-semibold text-[#0b1526] dark:text-white">Cómo funciona</h2>
-          <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+      <section id="how" className="home-section border-y border-slate-200 bg-white">
+        <div className="mx-auto max-w-7xl px-5 lg:px-8">
+          <div className="text-center">
+            <p className="home-eyebrow">Un flujo corto, una salida profesional</p>
+            <h2 className="home-title mx-auto">De una medida a una pieza real</h2>
+          </div>
+
+          <div className="mt-10 grid gap-5 lg:grid-cols-3">
             {[
-              { t: "Configura", d: "Elige plantilla y define medidas." },
-              { t: "Genera STL", d: "STL watertight optimizado para slicer." },
-              { t: "Imprime", d: "Descarga y manda a tu impresora 3D." },
-            ].map((s, i) => (
-              <div key={i} className="rounded-2xl border border-[#e6eaf2] dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6">
-                <div className="text-3xl font-bold text-[#2663EB]">{i + 1}</div>
-                <div className="mt-2 font-semibold text-[#0b1526] dark:text-white">{s.t}</div>
-                <div className="text-sm text-[#6b7280] dark:text-neutral-400">{s.d}</div>
+              ["01", "Configura", "Elige un producto y ajusta solo los parámetros que tienen sentido para esa geometría."],
+              ["02", "Valida en 3D", "Comprueba cotas, escala, orientación y detalles antes de generar el diseño final."],
+              ["03", "Genera y fabrica", "Obtén el paquete trazable y llévalo a tu flujo de slicing e impresión 3D."],
+            ].map((step) => (
+              <div key={step[0]} className="home-feature-card">
+                <span className="text-xs font-black tracking-[0.18em] text-blue-500">{step[0]}</span>
+                <h3 className="mt-6 text-xl font-black">{step[1]}</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-500">{step[2]}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* PRECIOS */}
-      <section className="py-12">
-        <div className="container mx-auto px-4 max-w-6xl">
-          <h2 className="text-xl md:text-2xl font-semibold mb-4 text-[#0b1526] dark:text-white">Precios</h2>
-          <Pricing />
-          {/* Si necesitas que los botones de Pricing apunten a URLs reales,
-              edita components/Pricing.tsx para poner los href deseados (checkout, mailto, etc.). */}
+      <section id="quality" className="home-section">
+        <div className="mx-auto max-w-7xl px-5 lg:px-8">
+          <p className="home-eyebrow">No es una biblioteca de archivos</p>
+          <h2 className="home-title">Un configurador construido como producto.</h2>
+          <p className="home-copy">La diferencia está en que cada diseño sea parametrizable, verificable y repetible.</p>
+
+          <div className="mt-9 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {BENEFITS.map((benefit) => (
+              <div key={benefit[0]} className="home-feature-card">
+                <div className="grid h-10 w-10 place-items-center rounded-xl bg-[#0c2039] text-cyan-300"><Cube /></div>
+                <h3 className="mt-5 font-black">{benefit[0]}</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-500">{benefit[1]}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
+
+      <section className="home-section border-y border-slate-200 bg-white">
+        <div className="mx-auto grid max-w-7xl gap-8 px-5 lg:grid-cols-2 lg:items-center lg:px-8">
+          <div>
+            <p className="home-eyebrow">Confianza verificable</p>
+            <h2 className="home-title">Primero demostramos que funciona.</h2>
+            <p className="home-copy">
+              Mientras construimos comunidad real, la confianza de Teknovashop Forge se apoya en pruebas técnicas y trazabilidad, no en testimonios inventados.
+            </p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {[
+              ["18 modelos canónicos", "Cada producto corresponde a una geometría concreta y parametrizable."],
+              ["170 checks automatizados", "Regresión de geometría, parámetros, exportación y trazabilidad."],
+              ["Design ID único", "Cada generación puede identificarse, versionarse y licenciarse."],
+              ["Manifiesto reproducible", "Parámetros, versión y SHA-256 acompañan al diseño final."],
+            ].map((proof) => (
+              <div key={proof[0]} className="rounded-2xl border border-slate-200 bg-[#f8faff] p-5">
+                <div className="text-[10px] font-black uppercase tracking-wider text-blue-600">Verificado</div>
+                <h3 className="mt-3 font-black">{proof[0]}</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-500">{proof[1]}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section id="pricing" className="home-section">
+        <div className="mx-auto max-w-7xl px-5 lg:px-8">
+          <div className="text-center">
+            <p className="home-eyebrow">Paga por lo que necesitas</p>
+            <h2 className="home-title mx-auto">Un diseño concreto o acceso continuo.</h2>
+            <p className="home-copy mx-auto">Compra una configuración específica o trabaja con suscripción según tu ritmo de creación.</p>
+          </div>
+          <div className="mt-9"><Pricing /></div>
+        </div>
+      </section>
+
+      <section id="faq" className="home-section border-y border-slate-200 bg-white">
+        <div className="mx-auto grid max-w-7xl gap-10 px-5 lg:grid-cols-[0.75fr_1.25fr] lg:px-8">
+          <div>
+            <p className="home-eyebrow">Lo esencial antes de empezar</p>
+            <h2 className="home-title">Preguntas frecuentes</h2>
+          </div>
+          <div className="space-y-3">
+            {[
+              ["¿Necesito saber CAD?", "No. Cada producto expone controles específicos y el visor permite validar el resultado en 3D."],
+              ["¿Qué recibo al descargar?", "El flujo comercial está preparado para entregar STL, manifiesto, licencia y README técnico."],
+              ["¿Puedo comprar una sola pieza?", "Sí. La compra única se vincula al design ID exacto de la configuración generada."],
+              ["¿Las medidas están en milímetros?", "Sí. Configurador, visor, cotas y STL trabajan en milímetros."],
+              ["¿Qué diferencia hay con una suscripción?", "La compra única licencia un diseño concreto; la suscripción está pensada para uso recurrente."],
+            ].map((faq) => (
+              <details key={faq[0]} className="group rounded-2xl border border-slate-200 bg-[#fbfcff]">
+                <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4 text-sm font-black">
+                  {faq[0]} <span className="text-xl font-light text-blue-600 transition group-open:rotate-45">+</span>
+                </summary>
+                <p className="px-5 pb-5 text-sm leading-6 text-slate-500">{faq[1]}</p>
+              </details>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="px-5 py-12 lg:px-8">
+        <div className="mx-auto max-w-7xl rounded-[2rem] bg-[#071321] px-8 py-10 text-white shadow-2xl lg:flex lg:items-center lg:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-widest text-cyan-300">Tu siguiente pieza empieza con una medida</p>
+            <h2 className="mt-3 text-3xl font-black">Configura algo útil hoy.</h2>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-slate-300">Comprueba el resultado en 3D antes de decidir si quieres descargarlo.</p>
+          </div>
+          <Link href={CONFIGURATOR_HREF} className="home-primary-btn home-primary-btn-lg mt-6 lg:mt-0">
+            Probar configurador <Arrow />
+          </Link>
+        </div>
+      </section>
+
+      <footer className="border-t border-slate-200 bg-white">
+        <div className="mx-auto flex max-w-7xl flex-col gap-6 px-5 py-9 sm:flex-row sm:items-center sm:justify-between lg:px-8">
+          <div>
+            <div className="font-black">Teknovashop <span className="text-blue-600">Forge</span></div>
+            <p className="mt-1 text-sm text-slate-500">Diseña · valida · fabrica</p>
+          </div>
+          <div className="flex flex-wrap gap-5 text-sm font-semibold text-slate-600">
+            <a href="#templates">Plantillas</a>
+            <a href="#pricing">Precios</a>
+            <a href="#faq">FAQ</a>
+            <Link href="/login?next=/forge">Iniciar sesión</Link>
+          </div>
+        </div>
+      </footer>
     </main>
   );
 }
