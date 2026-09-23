@@ -1,12 +1,11 @@
 // components/STLViewerPro.tsx
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
-import { STLExporter } from "three/examples/jsm/exporters/STLExporter.js";
 
 type Props = { url?: string | null; className?: string };
 type Unit = "mm" | "cm";
@@ -72,23 +71,6 @@ function fmtDim(valueMm: number, unit: Unit) {
     : `${valueMm.toFixed(valueMm < 10 ? 1 : 0)} mm`;
 }
 
-function isPaywallOn(): boolean {
-  const v = (process.env.NEXT_PUBLIC_PAYWALL_PREVIEW ?? "0") as string;
-  return v === "1";
-}
-
-function hasEntitlement(): boolean {
-  if (typeof window === "undefined") return false;
-  const sp = new URLSearchParams(window.location.search);
-  if (sp.get("status") === "success") {
-    localStorage.setItem("entitled", "1");
-    sp.delete("status");
-    const clean = `${window.location.pathname}${sp.toString() ? "?" + sp.toString() : ""}`;
-    window.history.replaceState({}, "", clean);
-  }
-  return localStorage.getItem("entitled") === "1";
-}
-
 export default function STLViewerPro({ url, className }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
 
@@ -120,70 +102,6 @@ export default function STLViewerPro({ url, className }: Props) {
   const [toolMode, setToolMode] = useState<ToolMode>("orbit");
   const [showDimensions, setShowDimensions] = useState(true);
   const [measurePoints, setMeasurePoints] = useState<Point3[]>([]);
-
-  const paywall = isPaywallOn();
-  const entitled = useMemo(() => hasEntitlement(), []);
-
-  async function startCheckout(price: "oneoff" | "maker" | "commercial" = "maker") {
-    try {
-      const email = window.prompt("Introduce tu email para la compra (Stripe)")?.trim() || "";
-      if (!email) return;
-
-      const primary = await fetch("/api/stripe/checkout", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email, price, model_kind: "stl_download" }),
-      });
-
-      let res = primary;
-      if (!primary.ok) {
-        res = await fetch("/api/checkout/create-session", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ email, price, model_kind: "stl_download", params: {}, object_key: "" }),
-        });
-      }
-
-      const { url } = await res.json();
-      if (res.ok && url) window.location.href = url as string;
-      else alert("No se pudo iniciar el checkout.");
-    } catch {
-      alert("Error iniciando el checkout.");
-    }
-  }
-
-  const downloadCurrentSTL = () => {
-    if (paywall && !entitled) {
-      startCheckout("maker");
-      return;
-    }
-    const mesh = meshRef.current;
-    if (!mesh) return;
-
-    const exporter = new STLExporter();
-    const parsed = exporter.parse(mesh, { binary: true }) as ArrayBuffer | DataView | string;
-
-    // Normalizar a ArrayBuffer real
-    let bytes: Uint8Array;
-    if (parsed instanceof ArrayBuffer) {
-      bytes = new Uint8Array(parsed);
-    } else if (parsed instanceof DataView) {
-      const view = new Uint8Array(parsed.buffer as ArrayBufferLike, parsed.byteOffset, parsed.byteLength);
-      bytes = new Uint8Array(parsed.byteLength);
-      bytes.set(view);
-    } else {
-      bytes = new TextEncoder().encode(parsed as string);
-    }
-    const ab = new ArrayBuffer(bytes.byteLength);
-    new Uint8Array(ab).set(bytes);
-
-    const blob = new Blob([ab], { type: "model/stl" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "forge-output.stl";
-    a.click();
-    URL.revokeObjectURL(a.href);
-  };
 
   function disposeObject(root: any) {
     if (!root) return;
@@ -835,15 +753,12 @@ export default function STLViewerPro({ url, className }: Props) {
           />
         </div>
 
-        <button
-          onClick={downloadCurrentSTL}
-          className={`rounded-md px-2.5 py-1 text-xs font-semibold text-white ${
-            paywall && !entitled ? "bg-neutral-900 hover:bg-black" : "bg-blue-600 hover:bg-blue-700"
-          }`}
-          title={paywall && !entitled ? "Necesitas comprar para descargar" : "Descargar STL"}
+        <span
+          className="rounded-md border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-[11px] font-medium text-neutral-500"
+          title="La descarga oficial se realiza desde el paquete autorizado del diseño"
         >
-          {paywall && !entitled ? "Comprar para descargar" : "Descargar STL"}
-        </button>
+          Vista previa
+        </span>
       </div>
 
       {modelInfo && (
