@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { forgeGenerate } from "@/lib/forge-config";
+import { forgeGenerate, DEFAULT_PARAMS, FIELDS } from "@/lib/forge-config";
+import type { ForgeModelSlug } from "@/lib/forge-spec";
 
 type TextMode = "engrave" | "emboss";
 type Anchor = "front" | "back" | "left" | "right" | "top" | "bottom";
@@ -111,6 +112,11 @@ export default function ForgeForm({
     return found || "vesa-adapter";
   });
 
+  const [modelParams, setModelParams] = useState<Record<string, any>>(() => ({
+    ...((DEFAULT_PARAMS as any)[normalizedInitial || "vesa-adapter"] || {}),
+    ...(initialParams || {}),
+  }));
+
   useEffect(() => {
     (async () => {
       try {
@@ -185,6 +191,19 @@ export default function ForgeForm({
     n(initialParams?.fillet_mm, DEFAULTS.fillet_mm)
   );
 
+  const modelSchema = useMemo(
+    () => (FIELDS as any)[slug as ForgeModelSlug] || {},
+    [slug]
+  );
+
+  useEffect(() => {
+    const defaults = { ...(((DEFAULT_PARAMS as any)[slug]) || {}) };
+    const schemaDefaults = Object.fromEntries(
+      Object.entries(modelSchema).map(([key, cfg]: [string, any]) => [key, cfg.defaultValue])
+    );
+    setModelParams({ ...schemaDefaults, ...defaults });
+  }, [slug, modelSchema]);
+
   const [text, setText] = useState<string>(initialParams?.text ?? "");
   const [textMode, setTextMode] = useState<TextMode>(
     (initialParams?.text_mode ?? "engrave") as TextMode
@@ -208,6 +227,14 @@ export default function ForgeForm({
   >(null);
 
   function resetDimensions() {
+    if (Object.keys(modelSchema).length) {
+      const defaults = { ...(((DEFAULT_PARAMS as any)[slug]) || {}) };
+      const schemaDefaults = Object.fromEntries(
+        Object.entries(modelSchema).map(([key, cfg]: [string, any]) => [key, cfg.defaultValue])
+      );
+      setModelParams({ ...schemaDefaults, ...defaults });
+      return;
+    }
     setLengthMm(DEFAULTS.length_mm);
     setWidthMm(DEFAULTS.width_mm);
     setHeightMm(DEFAULTS.height_mm);
@@ -267,6 +294,16 @@ export default function ForgeForm({
   }
 
   const params = useMemo(() => {
+    if (Object.keys(modelSchema).length) {
+      const out: Record<string, any> = {};
+      for (const [key, cfg] of Object.entries(modelSchema) as Array<[string, any]>) {
+        const raw = modelParams[key] ?? cfg.defaultValue;
+        const value = Number(raw);
+        out[key] = Number.isFinite(value) ? value : cfg.defaultValue;
+      }
+      return out;
+    }
+
     const L = n(lengthMm, DEFAULTS.length_mm);
     const W = n(widthMm, DEFAULTS.width_mm);
     const H = n(heightMm, DEFAULTS.height_mm);
@@ -281,7 +318,7 @@ export default function ForgeForm({
       thickness_mm: T,
       fillet_mm: R,
     };
-  }, [lengthMm, widthMm, heightMm, thicknessMm, filletMm]);
+  }, [modelSchema, modelParams, lengthMm, widthMm, heightMm, thicknessMm, filletMm]);
 
   const text_ops = useMemo(() => {
     if (!text?.trim()) return undefined;
@@ -393,28 +430,53 @@ export default function ForgeForm({
             </button>
           }
         >
-          <div className="grid grid-cols-2 gap-3">
-            <MetricField label="Largo" value={lengthMm} onChange={setLengthMm} />
-            <MetricField label="Ancho" value={widthMm} onChange={setWidthMm} />
-            <MetricField label="Altura" value={heightMm} onChange={setHeightMm} />
-            <MetricField
-              label="Espesor"
-              value={thicknessMm}
-              onChange={setThicknessMm}
-              step={0.1}
-            />
-            <MetricField
-              label="Redondeo"
-              value={filletMm}
-              onChange={setFilletMm}
-              step={0.1}
-            />
-          </div>
+          {Object.keys(modelSchema).length ? (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                {Object.entries(modelSchema).map(([key, cfg]: [string, any]) => (
+                  <ModelMetricField
+                    key={key}
+                    label={cfg.label}
+                    value={Number(modelParams[key] ?? cfg.defaultValue)}
+                    step={cfg.step}
+                    min={cfg.min}
+                    max={cfg.max}
+                    onChange={(value) =>
+                      setModelParams((prev) => ({ ...prev, [key]: value }))
+                    }
+                  />
+                ))}
+              </div>
+              <div className="mt-3 rounded-xl bg-neutral-50 px-3 py-2 text-[11px] leading-5 text-neutral-500">
+                {Object.keys(modelSchema).length} parámetros específicos para {NICE[slug] || slug}.
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <MetricField label="Largo" value={lengthMm} onChange={setLengthMm} />
+                <MetricField label="Ancho" value={widthMm} onChange={setWidthMm} />
+                <MetricField label="Altura" value={heightMm} onChange={setHeightMm} />
+                <MetricField
+                  label="Espesor"
+                  value={thicknessMm}
+                  onChange={setThicknessMm}
+                  step={0.1}
+                />
+                <MetricField
+                  label="Redondeo"
+                  value={filletMm}
+                  onChange={setFilletMm}
+                  step={0.1}
+                />
+              </div>
 
-          <div className="mt-3 rounded-xl bg-neutral-50 px-3 py-2 text-[11px] leading-5 text-neutral-500">
-            Volumen de referencia: {params.length_mm} × {params.width_mm} ×{" "}
-            {params.height_mm} mm · espesor {params.thickness_mm} mm
-          </div>
+              <div className="mt-3 rounded-xl bg-neutral-50 px-3 py-2 text-[11px] leading-5 text-neutral-500">
+                Volumen de referencia: {params.length_mm} × {params.width_mm} ×{" "}
+                {params.height_mm} mm · espesor {params.thickness_mm} mm
+              </div>
+            </>
+          )}
         </PanelSection>
 
         <PanelSection
@@ -676,6 +738,52 @@ function MetricField({
         <span className="flex items-center border-l border-neutral-200 bg-neutral-50 px-2 text-[10px] font-medium text-neutral-500">
           mm
         </span>
+      </span>
+    </label>
+  );
+}
+
+function ModelMetricField({
+  label,
+  value,
+  onChange,
+  step = 1,
+  min,
+  max,
+}: {
+  label: string;
+  value: number;
+  onChange: (n: number) => void;
+  step?: number;
+  min?: number;
+  max?: number;
+}) {
+  const unit = label.includes("°")
+    ? "°"
+    : /Nº|número|refuerzos/i.test(label)
+      ? ""
+      : "mm";
+
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-[11px] font-semibold text-neutral-600">
+        {label.replace(/\s*\((mm|°)\)\s*$/i, "")}
+      </span>
+      <span className="flex overflow-hidden rounded-xl border border-neutral-300 bg-white transition focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100">
+        <input
+          type="number"
+          step={step}
+          min={min}
+          max={max}
+          className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-neutral-900 outline-none"
+          value={Number.isFinite(value) ? value : 0}
+          onChange={(e) => onChange(parseFloat(e.target.value))}
+        />
+        {unit && (
+          <span className="flex items-center border-l border-neutral-200 bg-neutral-50 px-2 text-[10px] font-medium text-neutral-500">
+            {unit}
+          </span>
+        )}
       </span>
     </label>
   );
