@@ -7,6 +7,7 @@ import { getSupabaseAdmin } from "@/lib/server/supabaseAdmin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 const BACKEND = (
   process.env.NEXT_PUBLIC_FORGE_API_URL ||
@@ -181,14 +182,25 @@ export async function POST(req: Request) {
         user_id: userId || null,
       }),
       cache: "no-store",
-      signal: AbortSignal.timeout(45000),
+      signal: AbortSignal.timeout(55000),
     });
   } catch (e: any) {
+    const message = e?.message || String(e);
+    const timedOut =
+      e?.name === "TimeoutError" ||
+      e?.name === "AbortError" ||
+      /timeout|aborted/i.test(message);
+
     return json(
       {
         ok: false,
-        error: "Forge backend unreachable",
-        detail: e?.message || String(e),
+        error: timedOut
+          ? "El motor 3D no ha respondido a tiempo"
+          : "No se ha podido conectar con el motor 3D",
+        code: timedOut ? "FORGE_TIMEOUT" : "FORGE_UNREACHABLE",
+        detail: timedOut
+          ? "El servicio de generación puede estar arrancando. Vuelve a intentarlo en unos segundos."
+          : message,
         backendUrl: BACKEND,
       },
       502
