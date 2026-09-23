@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
+import { getSupabaseAdmin } from "@/lib/server/supabaseAdmin";
 
 export const runtime = "nodejs"; // Node runtime
 
@@ -62,6 +63,9 @@ export async function POST(req: Request) {
         { status: 401 }
       );
     }
+
+    const admin = getSupabaseAdmin();
+    await admin.from("designs").select("id").limit(1);
 
     const body = (await req.json()) as Body;
 
