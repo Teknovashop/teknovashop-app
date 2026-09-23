@@ -138,8 +138,10 @@ export async function POST(req: Request) {
       model_kind: String(body.model_kind ?? ""),
     };
 
-    const session = await stripe.checkout.sessions.create({
-      mode: body.price === "oneoff" ? "payment" : "subscription",
+    const mode = body.price === "oneoff" ? "payment" : "subscription";
+
+    const sessionParams: any = {
+      mode,
       payment_method_types: ["card"],
       customer_email: user.email || undefined,
       client_reference_id: user.id,
@@ -152,7 +154,15 @@ export async function POST(req: Request) {
           : `${site}/forge/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${site}/forge?status=cancel`,
       metadata,
-    });
+    };
+
+    if (mode === "subscription") {
+      sessionParams.subscription_data = { metadata };
+    } else {
+      sessionParams.payment_intent_data = { metadata };
+    }
+
+    const session = await stripe.checkout.sessions.create(sessionParams);
 
     return NextResponse.json({ url: session.url }, { status: 200 });
   } catch (err: any) {
