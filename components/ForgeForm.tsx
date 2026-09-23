@@ -31,7 +31,7 @@ const NICE: Record<string, string> = {
   "laptop-stand": "Soporte Laptop / Tablet",
   "phone-stand": "Soporte / Dock Móvil (USB-C)",
   "ssd-holder": "Caddy SSD 2.5 a 3.5",
-  "raspi-case": "Caja Raspberry Pi",
+  "raspi-case": "Caja Raspberry Pi 4 Model B",
   "go-pro-mount": "Soporte GoPro",
   "mic-arm-clip": "Clip Brazo Mic",
   "camera-plate": "Placa para Cámara",
@@ -41,8 +41,8 @@ const NICE: Record<string, string> = {
   "hub-holder": "Soporte Hub USB",
   "headset-stand": "Soporte Auriculares",
   "vesa-shelf": "Bandeja VESA",
-  "enclosure-ip65": "Caja IP65",
-  "qr-plate": "Placa (QR/Texto)",
+  "enclosure-ip65": "Caja técnica con tapa",
+  "qr-plate": "Placa de identificación / Texto",
 };
 
 const DEFAULTS = {
