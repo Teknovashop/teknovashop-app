@@ -6,7 +6,6 @@ import {
   TERMS_VERSION,
   type CommercePlan,
 } from "@/lib/commerce";
-import { getSupabaseAdmin } from "@/lib/server/supabaseAdmin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,11 +14,105 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2024-06-20",
 });
 
+const SUPABASE_URL = (
+  process.env.SUPABASE_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  ""
+).replace(/\/+$/, "");
+
+const SUPABASE_SERVICE_ROLE_KEY =
+  process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+
 type IdRow = { id: string };
 type StripeEventRow = { event_id: string };
 
-function firstRow<T>(rows: unknown): T | null {
-  return Array.isArray(rows) && rows.length ? (rows[0] as T) : null;
+function assertSupabaseServerConfig() {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error("Supabase server configuration missing");
+  }
+}
+
+function restHeaders(extra?: Record<string, string>) {
+  assertSupabaseServerConfig();
+  return {
+    apikey: SUPABASE_SERVICE_ROLE_KEY,
+    Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+    "content-type": "application/json",
+    ...extra,
+  };
+}
+
+async function restSelect<T>(
+  table: string,
+  params: URLSearchParams
+): Promise<T[]> {
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/${table}?${params.toString()}`,
+    {
+      method: "GET",
+      headers: restHeaders(),
+      cache: "no-store",
+    }
+  );
+
+  if (!res.ok) {
+    throw new Error(
+      `Supabase SELECT ${table} failed: ${res.status} ${await res.text()}`
+    );
+  }
+
+  const json = await res.json();
+  return Array.isArray(json) ? (json as T[]) : [];
+}
+
+async function restInsert(table: string, row: Record<string, any>) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+    method: "POST",
+    headers: restHeaders({ Prefer: "return=minimal" }),
+    body: JSON.stringify(row),
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    throw new Error(
+      `Supabase INSERT ${table} failed: ${res.status} ${await res.text()}`
+    );
+  }
+}
+
+async function restUpdate(
+  table: string,
+  params: URLSearchParams,
+  row: Record<string, any>
+) {
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/${table}?${params.toString()}`,
+    {
+      method: "PATCH",
+      headers: restHeaders({ Prefer: "return=minimal" }),
+      body: JSON.stringify(row),
+      cache: "no-store",
+    }
+  );
+
+  if (!res.ok) {
+    throw new Error(
+      `Supabase UPDATE ${table} failed: ${res.status} ${await res.text()}`
+    );
+  }
+}
+
+function selectOneParams(
+  filters: Record<string, string>,
+  select = "*"
+) {
+  const params = new URLSearchParams();
+  params.set("select", select);
+  params.set("limit", "1");
+  for (const [key, value] of Object.entries(filters)) {
+    params.set(key, `eq.${value}`);
+  }
+  return params;
 }
 
 function asId(value: string | { id: string } | null | undefined) {
@@ -43,19 +136,20 @@ async function createOrUpdateDesignEntitlement(args: {
   termsVersion: string;
   licenseVersion: string;
 }) {
-  const admin = getSupabaseAdmin();
+  const rows = await restSelect<IdRow>(
+    "entitlements",
+    selectOneParams(
+      {
+        user_id: args.userId,
+        kind: "design",
+        design_id: args.designId,
+      },
+      "id"
+    )
+  );
 
-  const { data: rows, error: lookupError } = await admin
-    .from("entitlements")
-    .select("*")
-    .eq("user_id", args.userId)
-    .eq("kind", "design")
-    .eq("design_id", args.designId)
-    .limit(1);
+  const existing = rows[0] || null;
 
-  if (lookupError) throw lookupError;
-
-  const existing = firstRow<IdRow>(rows);
   const payload = {
     user_id: args.userId,
     kind: "design",
@@ -74,20 +168,16 @@ async function createOrUpdateDesignEntitlement(args: {
   };
 
   if (existing?.id) {
-    const { error } = await admin
-      .from("entitlements")
-      .update(payload)
-      .eq("id", existing.id);
-    if (error) throw error;
+    await restUpdate(
+      "entitlements",
+      selectOneParams({ id: existing.id }, "id"),
+      payload
+    );
     return existing.id;
   }
 
   const id = crypto.randomUUID();
-  const { error } = await admin
-    .from("entitlements")
-    .insert({ id, ...payload });
-
-  if (error) throw error;
+  await restInsert("entitlements", { id, ...payload });
   return id;
 }
 
@@ -100,18 +190,18 @@ async function createOrUpdateSubscriptionEntitlement(args: {
   termsVersion: string;
   licenseVersion: string;
 }) {
-  const admin = getSupabaseAdmin();
   const subscriptionId = String(args.subscription?.id || "");
 
-  const { data: rows, error: lookupError } = await admin
-    .from("entitlements")
-    .select("*")
-    .eq("stripe_subscription_id", subscriptionId)
-    .limit(1);
+  const rows = await restSelect<IdRow>(
+    "entitlements",
+    selectOneParams(
+      { stripe_subscription_id: subscriptionId },
+      "id"
+    )
+  );
 
-  if (lookupError) throw lookupError;
+  const existing = rows[0] || null;
 
-  const existing = firstRow<IdRow>(rows);
   const payload = {
     user_id: args.userId,
     kind: "subscription",
@@ -132,25 +222,20 @@ async function createOrUpdateSubscriptionEntitlement(args: {
   };
 
   if (existing?.id) {
-    const { error } = await admin
-      .from("entitlements")
-      .update(payload)
-      .eq("id", existing.id);
-    if (error) throw error;
+    await restUpdate(
+      "entitlements",
+      selectOneParams({ id: existing.id }, "id"),
+      payload
+    );
     return existing.id;
   }
 
   const id = crypto.randomUUID();
-  const { error } = await admin
-    .from("entitlements")
-    .insert({ id, ...payload });
-
-  if (error) throw error;
+  await restInsert("entitlements", { id, ...payload });
   return id;
 }
 
 async function recordOrder(session: Stripe.Checkout.Session) {
-  const admin = getSupabaseAdmin();
   const md = session.metadata || {};
   const userId = md.user_id || session.client_reference_id;
   const plan = md.plan as CommercePlan | undefined;
@@ -159,29 +244,26 @@ async function recordOrder(session: Stripe.Checkout.Session) {
     throw new Error("Checkout session is missing user_id or plan metadata");
   }
 
-  const { data: rows, error: lookupError } = await admin
-    .from("orders")
-    .select("*")
-    .eq("stripe_checkout_session_id", session.id)
-    .limit(1);
+  const rows = await restSelect<IdRow>(
+    "orders",
+    selectOneParams(
+      { stripe_checkout_session_id: session.id },
+      "id"
+    )
+  );
 
-  if (lookupError) throw lookupError;
-
-  const existing = firstRow<IdRow>(rows);
+  const existing = rows[0] || null;
   if (existing?.id) return existing.id;
 
   const id = crypto.randomUUID();
-  const subscriptionId = asId(session.subscription as any);
-  const paymentIntentId = asId(session.payment_intent as any);
-  const customerId = asId(session.customer as any);
 
-  const { error } = await admin.from("orders").insert({
+  await restInsert("orders", {
     id,
     user_id: userId,
     stripe_checkout_session_id: session.id,
-    stripe_payment_intent_id: paymentIntentId,
-    stripe_customer_id: customerId,
-    stripe_subscription_id: subscriptionId,
+    stripe_payment_intent_id: asId(session.payment_intent as any),
+    stripe_customer_id: asId(session.customer as any),
+    stripe_subscription_id: asId(session.subscription as any),
     mode: session.mode,
     plan,
     design_id: md.design_id || null,
@@ -193,7 +275,6 @@ async function recordOrder(session: Stripe.Checkout.Session) {
     license_version: md.license_version || LICENSE_VERSION,
   });
 
-  if (error) throw error;
   return id;
 }
 
@@ -279,28 +360,16 @@ export async function POST(req: Request) {
     return new NextResponse("Bad signature", { status: 400 });
   }
 
-  const admin = getSupabaseAdmin();
-
-  const { data: eventRows, error: eventLookupError } = await admin
-    .from("stripe_events")
-    .select("*")
-    .eq("event_id", event.id)
-    .limit(1);
-
-  if (eventLookupError) {
-    console.error("Stripe event lookup failed", eventLookupError.message);
-    return NextResponse.json(
-      { received: false, error: "EVENT_LOOKUP_FAILED" },
-      { status: 500 }
-    );
-  }
-
-  const processed = firstRow<StripeEventRow>(eventRows);
-  if (processed?.event_id) {
-    return NextResponse.json({ received: true, duplicate: true });
-  }
-
   try {
+    const rows = await restSelect<StripeEventRow>(
+      "stripe_events",
+      selectOneParams({ event_id: event.id }, "event_id")
+    );
+
+    if (rows[0]?.event_id) {
+      return NextResponse.json({ received: true, duplicate: true });
+    }
+
     switch (event.type) {
       case "checkout.session.completed":
         await processCheckoutCompleted(
@@ -317,12 +386,10 @@ export async function POST(req: Request) {
         break;
     }
 
-    const { error: eventError } = await admin.from("stripe_events").insert({
+    await restInsert("stripe_events", {
       event_id: event.id,
       event_type: event.type,
     });
-
-    if (eventError) throw eventError;
 
     return NextResponse.json({ received: true });
   } catch (err: any) {
