@@ -1,0 +1,39 @@
+name: Frontend Build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build
+        env:
+          NEXT_PUBLIC_FORGE_API_URL: https://teknovashop-forge.onrender.com
+          NEXT_PUBLIC_BACKEND_URL: https://teknovashop-forge.onrender.com
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: test-anon-key
+          NEXT_PUBLIC_SUPABASE_BUCKET: forge-stl
+          SUPABASE_URL: https://example.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
+          STRIPE_SECRET_KEY: sk_test_placeholder
+          STRIPE_WEBHOOK_SECRET: whsec_placeholder
+          STRIPE_PRICE_ONEOFF: price_placeholder
+          STRIPE_PRICE_MAKER: price_placeholder
+          STRIPE_PRICE_COMMERCIAL: price_placeholder
+          NEXT_PUBLIC_SITE_URL: https://teknovashop-app.vercel.app
+        run: npm run build
