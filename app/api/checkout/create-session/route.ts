@@ -70,8 +70,6 @@ export async function POST(req: Request) {
     await admin.from("designs").select("id").limit(1);
 
     const body = (await req.json()) as Body;
-    let design: any = null;
-
     if (body.price === "oneoff") {
       const designId = String(body.design_id || "").trim();
       if (!designId) {
@@ -94,7 +92,6 @@ export async function POST(req: Request) {
         );
       }
 
-      design = { id: data.id };
     }
 
     if (!body?.price) {
