@@ -52,6 +52,19 @@ function clampFillet(p: Dict) {
       : Math.max(0, Math.min(f, maxR));
 }
 
+function traceMeta(data: any) {
+  return {
+    design_id: data?.design_id,
+    product_name: data?.product_name,
+    product_version: data?.product_version,
+    product_stage: data?.product_stage,
+    generated_at: data?.generated_at,
+    manifest_path: data?.manifest_path,
+    manifest_signed_url: data?.manifest_signed_url,
+    sha256: data?.sha256,
+  };
+}
+
 function messageFrom(x: any): string {
   if (!x) return "Unknown error";
   if (typeof x === "string") return x;
@@ -147,6 +160,7 @@ export async function POST(req: Request) {
       path: data.path,
       slug: data.slug || slug,
       source: "backend-signed",
+      ...traceMeta(data),
     });
   }
 
@@ -157,6 +171,7 @@ export async function POST(req: Request) {
       path: data.path,
       slug: data.slug || slug,
       source: "backend-public",
+      ...traceMeta(data),
     });
   }
 
@@ -166,6 +181,7 @@ export async function POST(req: Request) {
       url: data.stl_data_url,
       slug: data.slug || slug,
       source: "data-url",
+      ...traceMeta(data),
     });
   }
 
@@ -217,6 +233,7 @@ export async function POST(req: Request) {
       object_key: objectPath,
       slug: data.slug || slug,
       source: "signed-in-vercel",
+      ...traceMeta(data),
     });
   } catch (e: any) {
     return json(
