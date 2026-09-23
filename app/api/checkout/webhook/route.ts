@@ -27,7 +27,7 @@ function unixToIso(value: number | null | undefined) {
   return value ? new Date(value * 1000).toISOString() : null;
 }
 
-function subscriptionIsActive(status: Stripe.Subscription.Status) {
+function subscriptionIsActive(status: string | null | undefined) {
   return status === "active" || status === "trialing";
 }
 
@@ -92,7 +92,7 @@ async function createOrUpdateSubscriptionEntitlement(args: {
   plan: Exclude<CommercePlan, "oneoff">;
   sessionId?: string | null;
   customerId: string | null;
-  subscription: Stripe.Subscription;
+  subscription: any;
   termsVersion: string;
   licenseVersion: string;
 }) {
@@ -225,7 +225,7 @@ async function processCheckoutCompleted(session: Stripe.Checkout.Session) {
     throw new Error("Subscription checkout completed without subscription id");
   }
 
-  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  const subscription: any = await stripe.subscriptions.retrieve(subscriptionId);
   await createOrUpdateSubscriptionEntitlement({
     userId,
     plan,
@@ -237,7 +237,7 @@ async function processCheckoutCompleted(session: Stripe.Checkout.Session) {
   });
 }
 
-async function processSubscriptionChange(subscription: Stripe.Subscription) {
+async function processSubscriptionChange(subscription: any) {
   const md = subscription.metadata || {};
   const userId = md.user_id;
   const plan = md.plan as Exclude<CommercePlan, "oneoff"> | undefined;
@@ -298,7 +298,7 @@ export async function POST(req: Request) {
       case "customer.subscription.updated":
       case "customer.subscription.deleted":
         await processSubscriptionChange(
-          event.data.object as Stripe.Subscription
+          event.data.object as any
         );
         break;
 
