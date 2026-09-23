@@ -17,6 +17,7 @@ type Body = {
   // Email ahora es OPCIONAL: si no viene, Stripe lo pedirá en Checkout
   email?: string | null;
   price: PriceKey;
+  design_id?: string | null;
   model_kind?: string;
   params?: unknown;
   object_key?: string | null;
@@ -69,6 +70,29 @@ export async function POST(req: Request) {
     await admin.from("designs").select("id").limit(1);
 
     const body = (await req.json()) as Body;
+
+    if (body.price === "oneoff") {
+      const designId = String(body.design_id || "").trim();
+      if (!designId) {
+        return NextResponse.json(
+          { error: "DESIGN_REQUIRED" },
+          { status: 400 }
+        );
+      }
+
+      const { data, error } = await admin
+        .from("designs")
+        .select("id")
+        .eq("id", designId)
+        .maybeSingle();
+
+      if (error || !data) {
+        return NextResponse.json(
+          { error: "DESIGN_NOT_FOUND" },
+          { status: 404 }
+        );
+      }
+    }
 
     if (!body?.price) {
       return NextResponse.json({ error: "PRICE_REQUIRED" }, { status: 400 });
