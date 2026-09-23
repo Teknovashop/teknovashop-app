@@ -29,7 +29,7 @@ export async function POST(req: Request) {
   }
 
   const admin = getSupabaseAdmin();
-  void admin;
+  await admin.from("stripe_events").select("*").limit(1);
 
   try {
     switch (event.type) {
