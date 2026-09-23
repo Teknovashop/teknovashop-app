@@ -297,8 +297,8 @@ export default function ForgeForm({
   const [holes, setHoles] = useState<Hole[]>([]);
   const [bulk, setBulk] = useState("");
 
-  const [dimensionsOpen, setDimensionsOpen] = useState(true);
-  const [textOpen, setTextOpen] = useState(true);
+  const [dimensionsOpen, setDimensionsOpen] = useState(false);
+  const [textOpen, setTextOpen] = useState(false);
   const [holesOpen, setHolesOpen] = useState(false);
 
   const [loading, setLoading] = useState(false);
