@@ -1,5 +1,9 @@
 // app/api/forge/generate/route.ts
 import { NextResponse } from "next/server";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { cookies } from "next/headers";
+
+import { getSupabaseAdmin } from "@/lib/server/supabaseAdmin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -63,6 +67,64 @@ function traceMeta(data: any) {
     manifest_signed_url: data?.manifest_signed_url,
     sha256: data?.sha256,
   };
+}
+
+async function registerDesign(args: {
+  req: Request;
+  slug: string;
+  params: Dict;
+  data: any;
+}) {
+  const designId = String(args.data?.design_id || "").trim();
+  const stlPath = String(args.data?.path || args.data?.object_key || "").trim();
+  const manifestPath = String(args.data?.manifest_path || "").trim();
+  const sha256 = String(args.data?.sha256 || "").trim();
+
+  if (!designId || !stlPath || !manifestPath || sha256.length !== 64) return;
+
+  let userId: string | null = null;
+  try {
+    const supabase = createRouteHandlerClient({ cookies });
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    userId = user?.id || null;
+  } catch {
+    userId = null;
+  }
+
+  const admin = getSupabaseAdmin();
+  const { data: existing } = await admin
+    .from("designs")
+    .select("id,user_id")
+    .eq("id", designId)
+    .maybeSingle();
+
+  if (existing?.user_id && userId && existing.user_id !== userId) {
+    return;
+  }
+
+  const row = {
+    id: designId,
+    user_id: existing?.user_id || userId,
+    product_slug: args.slug,
+    product_name: String(args.data?.product_name || args.slug),
+    product_version: String(args.data?.product_version || "unversioned"),
+    product_stage: String(args.data?.product_stage || "unversioned"),
+    parameters: args.params || {},
+    stl_path: stlPath,
+    manifest_path: manifestPath,
+    sha256,
+    generated_at: String(args.data?.generated_at || new Date().toISOString()),
+  };
+
+  const { error } = existing?.id
+    ? await admin.from("designs").update(row).eq("id", designId)
+    : await admin.from("designs").insert(row);
+
+  if (error) {
+    console.error("design registration failed", designId, error.message);
+  }
 }
 
 function messageFrom(x: any): string {
@@ -152,6 +214,13 @@ export async function POST(req: Request) {
       r.status
     );
   }
+
+  await registerDesign({
+    req,
+    slug,
+    params,
+    data,
+  });
 
   if (data?.signed_url) {
     return json({
