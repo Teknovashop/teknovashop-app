@@ -15,12 +15,12 @@ const HERO_VIDEO_POSTER =
 
 /** Plantillas destacadas con slug = nombre del jpg en /public/images/models */
 const TEMPLATES: { slug: string; title: string; desc: string }[] = [
-  { slug: "cable-tray",   title: "Bandeja de Cables",         desc: "Organizador modular bajo mesa" },
-  { slug: "vesa-adapter", title: "Adaptador VESA 75/100→200", desc: "Compatibiliza monitores y soportes" },
-  { slug: "laptop-stand", title: "Soporte Laptop / Tablet",   desc: "Ángulo y medidas a medida" },
-  { slug: "phone-stand",  title: "Dock Móvil (USB-C)",        desc: "Ranura y holgura configurables" },
-  { slug: "vesa-shelf",   title: "Bandeja VESA",              desc: "Para mini-PC / NUC en VESA" },
-  { slug: "camera-plate", title: "Placa para Cámara",         desc: "Ranuras y tornillería estándar" },
+  { slug: "cable-tray",    title: "Bandeja de Cables",       desc: "Organizador modular bajo mesa" },
+  { slug: "laptop-stand",  title: "Soporte de Portátil",     desc: "Apoyo elevado con geometría configurable" },
+  { slug: "headset-stand", title: "Soporte de Auriculares",  desc: "Base, mástil y apoyo superior paramétricos" },
+  { slug: "ssd-holder",    title: "Caddy SSD 2.5 a 3.5",     desc: "Adaptador con base y guías laterales" },
+  { slug: "hub-holder",    title: "Soporte USB Hub",         desc: "Alojamiento abierto con holgura configurable" },
+  { slug: "camera-plate",  title: "Placa para Cámara",       desc: "Placa con tornillo 1/4 y ranura de ajuste" },
 ];
 
 export default function Page() {
