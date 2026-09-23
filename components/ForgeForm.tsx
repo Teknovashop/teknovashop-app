@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { forgeGenerate, DEFAULT_PARAMS, FIELDS } from "@/lib/forge-config";
 import type { ForgeModelSlug } from "@/lib/forge-spec";
 
@@ -35,6 +36,13 @@ type LastDesign = {
   stage?: string;
   manifestUrl?: string;
   sha256?: string;
+};
+
+type AccessState = {
+  loading: boolean;
+  authenticated: boolean;
+  hasAccess: boolean;
+  plan?: string;
 };
 
 const CANONICAL: Record<string, string> = {
@@ -148,6 +156,8 @@ export default function ForgeForm({
   initialParams,
   onGenerated,
 }: ForgeFormProps) {
+  const searchParams = useSearchParams();
+  const pendingBuyDesignId = searchParams.get("buy");
   const normalizedInitial = canonicalize(initialModel);
 
   const [catalog, setCatalog] = useState<CatalogItem[]>(
@@ -296,6 +306,11 @@ export default function ForgeForm({
     { type: "success" | "error"; message: string } | null
   >(null);
   const [lastDesign, setLastDesign] = useState<LastDesign | null>(null);
+  const [access, setAccess] = useState<AccessState>({
+    loading: false,
+    authenticated: false,
+    hasAccess: false,
+  });
 
   function resetDimensions() {
     if (Object.keys(modelSchema).length) {
@@ -410,6 +425,71 @@ export default function ForgeForm({
     ];
   }, [text, textMode, anchor, textSize, textDepth, textX, textY]);
 
+  async function refreshAccess(designId: string) {
+    if (!designId) return;
+    setAccess((prev) => ({ ...prev, loading: true }));
+
+    try {
+      const res = await fetch(
+        `/api/entitlements?design_id=${encodeURIComponent(designId)}`,
+        { cache: "no-store" }
+      );
+      const data = await res.json().catch(() => ({}));
+
+      setAccess({
+        loading: false,
+        authenticated: !!data?.authenticated,
+        hasAccess: !!data?.hasAccess,
+        plan: data?.plan,
+      });
+    } catch {
+      setAccess({
+        loading: false,
+        authenticated: false,
+        hasAccess: false,
+      });
+    }
+  }
+
+  async function startOneoffPurchase(designId: string) {
+    if (!designId) return;
+
+    try {
+      const res = await fetch("/api/checkout/create-session", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          price: "oneoff",
+          design_id: designId,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (res.status === 401 && data?.login_url) {
+        window.location.href = data.login_url;
+        return;
+      }
+
+      if (!res.ok || !data?.url) {
+        throw new Error(data?.detail || data?.error || "No se pudo iniciar el pago");
+      }
+
+      window.location.href = data.url;
+    } catch (e: any) {
+      setFeedback({
+        type: "error",
+        message: e?.message || "No se pudo iniciar el pago",
+      });
+    }
+  }
+
+  useEffect(() => {
+    if (!pendingBuyDesignId) return;
+    void startOneoffPurchase(pendingBuyDesignId);
+    // El parámetro ?buy= solo existe para reanudar una compra iniciada antes del login.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingBuyDesignId]);
+
   async function handleGenerate() {
     try {
       setLoading(true);
@@ -439,9 +519,14 @@ export default function ForgeForm({
         manifestUrl: data.manifest_signed_url,
         sha256: data.sha256,
       });
+
+      if (data.design_id) {
+        await refreshAccess(data.design_id);
+      }
+
       setFeedback({
         type: "success",
-        message: "STL generado correctamente. El visor se ha actualizado.",
+        message: "Diseño generado correctamente. El visor se ha actualizado.",
       });
     } catch (e: any) {
       setFeedback({
@@ -764,6 +849,39 @@ export default function ForgeForm({
                 >
                   Ficha técnica
                 </a>
+              )}
+            </div>
+
+            <div className="mt-3 border-t border-blue-200/70 pt-3">
+              {access.loading ? (
+                <div className="text-[11px] text-neutral-500">
+                  Comprobando licencia…
+                </div>
+              ) : access.hasAccess ? (
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-[11px] text-emerald-700">
+                    Licencia activa{access.plan ? ` · ${access.plan}` : ""}
+                  </div>
+                  <a
+                    href={`/api/download/${encodeURIComponent(lastDesign.designId)}`}
+                    className="rounded-lg bg-emerald-600 px-3 py-2 text-[11px] font-semibold text-white hover:bg-emerald-700"
+                  >
+                    Descargar paquete
+                  </a>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-[11px] leading-4 text-neutral-600">
+                    Compra esta configuración concreta o usa una suscripción activa.
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => startOneoffPurchase(lastDesign.designId!)}
+                    className="shrink-0 rounded-lg bg-blue-600 px-3 py-2 text-[11px] font-semibold text-white hover:bg-blue-700"
+                  >
+                    Comprar pieza
+                  </button>
+                </div>
               )}
             </div>
           </div>
