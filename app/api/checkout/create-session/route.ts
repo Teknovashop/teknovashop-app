@@ -70,6 +70,7 @@ export async function POST(req: Request) {
     await admin.from("designs").select("id").limit(1);
 
     const body = (await req.json()) as Body;
+    let design: any = null;
 
     if (body.price === "oneoff") {
       const designId = String(body.design_id || "").trim();
@@ -82,7 +83,7 @@ export async function POST(req: Request) {
 
       const { data, error } = await admin
         .from("designs")
-        .select("id")
+        .select("id,user_id,product_slug,product_version")
         .eq("id", designId)
         .maybeSingle();
 
@@ -92,6 +93,15 @@ export async function POST(req: Request) {
           { status: 404 }
         );
       }
+
+      if (data.user_id && data.user_id !== user.id) {
+        return NextResponse.json(
+          { error: "DESIGN_NOT_OWNED" },
+          { status: 403 }
+        );
+      }
+
+      design = data;
     }
 
     if (!body?.price) {
