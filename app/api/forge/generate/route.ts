@@ -1,8 +1,13 @@
 // app/api/forge/generate/route.ts
 import { NextResponse } from "next/server";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { cookies } from "next/headers";
+
+import { getSupabaseAdmin } from "@/lib/server/supabaseAdmin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 const BACKEND = (
   process.env.NEXT_PUBLIC_FORGE_API_URL ||
@@ -32,6 +37,10 @@ const n = (v: any): number | undefined => {
 };
 
 type Dict = Record<string, any>;
+type ExistingDesignRow = {
+  id: string;
+  user_id: string | null;
+};
 
 function clampFillet(p: Dict) {
   const candidates = [
@@ -63,6 +72,66 @@ function traceMeta(data: any) {
     manifest_signed_url: data?.manifest_signed_url,
     sha256: data?.sha256,
   };
+}
+
+async function registerDesign(args: {
+  req: Request;
+  slug: string;
+  params: Dict;
+  data: any;
+}) {
+  const designId = String(args.data?.design_id || "").trim();
+  const stlPath = String(args.data?.path || args.data?.object_key || "").trim();
+  const manifestPath = String(args.data?.manifest_path || "").trim();
+  const sha256 = String(args.data?.sha256 || "").trim();
+
+  if (!designId || !stlPath || !manifestPath || sha256.length !== 64) return;
+
+  let userId: string | null = null;
+  try {
+    const supabase = createRouteHandlerClient({ cookies });
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    userId = user?.id || null;
+  } catch {
+    userId = null;
+  }
+
+  const admin = getSupabaseAdmin();
+  const { data: existing } = await admin
+    .from("designs")
+    .select("id,user_id")
+    .eq("id", designId)
+    .maybeSingle();
+
+  const existingRow = existing as unknown as ExistingDesignRow | null;
+
+  if (existingRow?.user_id && userId && existingRow.user_id !== userId) {
+    return;
+  }
+
+  const row = {
+    id: designId,
+    user_id: existingRow?.user_id || userId,
+    product_slug: args.slug,
+    product_name: String(args.data?.product_name || args.slug),
+    product_version: String(args.data?.product_version || "unversioned"),
+    product_stage: String(args.data?.product_stage || "unversioned"),
+    parameters: args.params || {},
+    stl_path: stlPath,
+    manifest_path: manifestPath,
+    sha256,
+    generated_at: String(args.data?.generated_at || new Date().toISOString()),
+  };
+
+  const { error } = existingRow?.id
+    ? await admin.from("designs").update(row).eq("id", designId)
+    : await admin.from("designs").insert(row);
+
+  if (error) {
+    console.error("design registration failed", designId, error.message);
+  }
 }
 
 function messageFrom(x: any): string {
@@ -119,14 +188,25 @@ export async function POST(req: Request) {
         user_id: userId || null,
       }),
       cache: "no-store",
-      signal: AbortSignal.timeout(45000),
+      signal: AbortSignal.timeout(55000),
     });
   } catch (e: any) {
+    const message = e?.message || String(e);
+    const timedOut =
+      e?.name === "TimeoutError" ||
+      e?.name === "AbortError" ||
+      /timeout|aborted/i.test(message);
+
     return json(
       {
         ok: false,
-        error: "Forge backend unreachable",
-        detail: e?.message || String(e),
+        error: timedOut
+          ? "El motor 3D no ha respondido a tiempo"
+          : "No se ha podido conectar con el motor 3D",
+        code: timedOut ? "FORGE_TIMEOUT" : "FORGE_UNREACHABLE",
+        detail: timedOut
+          ? "El servicio de generación puede estar arrancando. Vuelve a intentarlo en unos segundos."
+          : message,
         backendUrl: BACKEND,
       },
       502
@@ -152,6 +232,13 @@ export async function POST(req: Request) {
       r.status
     );
   }
+
+  await registerDesign({
+    req,
+    slug,
+    params,
+    data,
+  });
 
   if (data?.signed_url) {
     return json({
