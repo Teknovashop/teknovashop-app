@@ -16,6 +16,17 @@ export const dynamic = "force-dynamic";
 const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY || "";
 const stripe = new Stripe(STRIPE_SECRET, { apiVersion: "2024-06-20" });
 
+type DesignRow = {
+  id: string;
+  user_id: string | null;
+  product_slug: string;
+  product_name: string;
+  product_version: string;
+  stl_path: string;
+  manifest_path: string;
+  sha256: string;
+};
+
 type Body = {
   price: CommercePlan;
   design_id?: string | null;
@@ -106,11 +117,14 @@ export async function POST(req: Request) {
       if (error || !data) {
         return json({ ok: false, error: "DESIGN_NOT_FOUND" }, 404);
       }
-      if (data.user_id && data.user_id !== user.id) {
+
+      const row = data as unknown as DesignRow;
+
+      if (row.user_id && row.user_id !== user.id) {
         return json({ ok: false, error: "DESIGN_NOT_OWNED" }, 403);
       }
 
-      if (!data.user_id) {
+      if (!row.user_id) {
         const { error: claimError } = await admin
           .from("designs")
           .update({ user_id: user.id })
@@ -120,9 +134,11 @@ export async function POST(req: Request) {
         if (claimError) {
           return json({ ok: false, error: "DESIGN_CLAIM_FAILED" }, 500);
         }
+
+        row.user_id = user.id;
       }
 
-      design = data;
+      design = row;
     }
 
     const priceId = PRICE_ENV[plan]!;
