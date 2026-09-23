@@ -262,9 +262,9 @@ export default function STLViewerPro({ url, className }: Props) {
   }
 
   function addDimensionLine(
-    parent: THREE.Group,
-    start: THREE.Vector3,
-    end: THREE.Vector3,
+    parent: any,
+    start: any,
+    end: any,
     labelText: string,
     labelScale: number
   ) {
@@ -303,9 +303,9 @@ export default function STLViewerPro({ url, className }: Props) {
   }
 
   function buildDimensionHelpers(
-    group: THREE.Group,
-    bb: THREE.Box3,
-    objectSize: THREE.Vector3
+    group: any,
+    bb: any,
+    objectSize: any
   ) {
     if (dimensionGroupRef.current) {
       group.remove(dimensionGroupRef.current);
