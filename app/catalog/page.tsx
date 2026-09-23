@@ -4,19 +4,20 @@ import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { MODELS } from "@/data/models";
+import { normalizeModelSearch } from "@/lib/model-routing";
 import CatalogFilters from "@/components/CatalogFilters";
 
 export default function CatalogPage() {
   const [q, setQ] = useState("");
 
   const filtered = useMemo(() => {
-    const t = q.trim().toLowerCase();
+    const t = normalizeModelSearch(q);
     if (!t) return MODELS;
     return MODELS.filter(
       (m) =>
-        m.name.toLowerCase().includes(t) ||
-        m.slug.toLowerCase().includes(t) ||
-        m.description.toLowerCase().includes(t)
+        normalizeModelSearch(m.name).includes(t) ||
+        normalizeModelSearch(m.slug).includes(t) ||
+        normalizeModelSearch(m.description).includes(t)
     );
   }, [q]);
 
@@ -46,15 +47,15 @@ export default function CatalogPage() {
 
       <section className="border-b border-slate-200 bg-white">
         <div className="mx-auto max-w-7xl px-5 py-12 lg:px-8">
-          <p className="home-eyebrow">Catálogo canónico</p>
+          <p className="home-eyebrow">Encuentra tu próxima pieza</p>
           <div className="mt-2 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <h1 className="text-3xl font-black tracking-[-0.035em] sm:text-4xl">
-                18 modelos paramétricos reales
+                {MODELS.length} modelos a tu medida
               </h1>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500">
-                Cada entrada corresponde a una geometría concreta del motor Forge.
-                Elige una pieza, abre el configurador y adapta sus parámetros reales.
+                Elige una pieza, ajusta sus medidas y comprueba el resultado en 3D
+                antes de preparar tu impresión.
               </p>
             </div>
             <CatalogFilters value={q} onChange={setQ} />
@@ -64,7 +65,7 @@ export default function CatalogPage() {
 
       <section className="mx-auto max-w-7xl px-5 py-10 lg:px-8">
         <div className="mb-5 flex items-center justify-between gap-4 text-xs text-slate-500">
-          <span>
+          <span role="status" aria-live="polite">
             Mostrando <strong className="text-slate-800">{filtered.length}</strong>{" "}
             de {MODELS.length} modelos
           </span>
@@ -84,7 +85,7 @@ export default function CatalogPage() {
             {filtered.map((m) => (
               <Link
                 key={m.id}
-                href={"/forge?model=" + encodeURIComponent(m.slug)}
+                href={"/forge/" + encodeURIComponent(m.slug)}
                 className="group overflow-hidden rounded-[1.25rem] border border-slate-200 bg-white shadow-[0_16px_50px_rgba(15,23,42,.055)] transition duration-300 hover:-translate-y-1 hover:border-blue-300 hover:shadow-[0_24px_70px_rgba(15,23,42,.11)]"
               >
                 <div className="relative aspect-[4/3] overflow-hidden bg-[#edf3fb]">
@@ -124,7 +125,7 @@ export default function CatalogPage() {
           <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center">
             <h2 className="font-black">No encontramos ese modelo</h2>
             <p className="mt-2 text-sm text-slate-500">
-              Prueba con otro nombre, slug o tipo de pieza.
+              Prueba con otro nombre o tipo de pieza.
             </p>
           </div>
         )}

@@ -21,7 +21,7 @@ const TEMPLATES = [
   ["laptop-stand", "Soporte Laptop / Tablet", "Ajusta apoyo, ángulo y dimensiones para tu equipo.", "Ergonomía", "/images/products/laptop-stand.webp"],
   ["phone-stand", "Soporte / Dock Móvil (USB-C)", "Configura un soporte inclinado con paso para cable USB-C.", "Dock", "/images/products/phone-stand.webp"],
   ["router-mount", "Soporte de Router", "Base y respaldo configurables para alojar el router con holgura.", "Red", "/images/products/router-mount.webp"],
-  ["ip65-box", "Caja IP65", "Caja técnica configurable para electrónica y proyectos protegidos.", "Electrónica", "/images/products/ip65-box.webp"],
+  ["enclosure-ip65", "Caja técnica con tapa", "Caja técnica configurable para electrónica y proyectos protegidos.", "Electrónica", "/images/products/ip65-box.webp"],
 ];
 
 const BENEFITS = [
