@@ -12,6 +12,19 @@ export const dynamic = "force-dynamic";
 
 const BUCKET = process.env.NEXT_PUBLIC_SUPABASE_BUCKET || "forge-stl";
 
+type DownloadDesignRow = {
+  id: string;
+  user_id: string | null;
+  product_slug: string;
+  product_name: string;
+  product_version: string;
+  product_stage: string;
+  stl_path: string;
+  manifest_path: string;
+  sha256: string;
+  generated_at: string;
+};
+
 function isCurrent(row: any) {
   if (!row?.active) return false;
   if (!row?.expires_at) return true;
@@ -67,7 +80,9 @@ export async function GET(
     );
   }
 
-  if (design.user_id && design.user_id !== user.id) {
+  const designRow = design as unknown as DownloadDesignRow;
+
+  if (designRow.user_id && designRow.user_id !== user.id) {
     return NextResponse.json(
       { ok: false, error: "DESIGN_NOT_OWNED" },
       { status: 403 }
@@ -101,7 +116,7 @@ export async function GET(
     );
   }
 
-  if (!design.user_id) {
+  if (!designRow.user_id) {
     const { error: claimError } = await admin
       .from("designs")
       .update({ user_id: user.id })
@@ -116,7 +131,7 @@ export async function GET(
     }
   }
 
-  const stlDownload = await admin.storage.from(BUCKET).download(design.stl_path);
+  const stlDownload = await admin.storage.from(BUCKET).download(designRow.stl_path);
   if (stlDownload.error || !stlDownload.data) {
     return NextResponse.json(
       { ok: false, error: "STL_STORAGE_ERROR" },
@@ -126,7 +141,7 @@ export async function GET(
 
   const manifestDownload = await admin.storage
     .from(BUCKET)
-    .download(design.manifest_path);
+    .download(designRow.manifest_path);
   if (manifestDownload.error || !manifestDownload.data) {
     return NextResponse.json(
       { ok: false, error: "MANIFEST_STORAGE_ERROR" },
@@ -141,21 +156,21 @@ export async function GET(
   const license = buildLicenseText({
     plan,
     designId,
-    productName: design.product_name,
-    productVersion: design.product_version,
-    sha256: design.sha256,
+    productName: designRow.product_name,
+    productVersion: designRow.product_version,
+    sha256: designRow.sha256,
   });
 
   const readme = [
     "TEKNOVASHOP FORGE — DESIGN PACKAGE",
     "",
-    `Product: ${design.product_name}`,
-    `Product version: ${design.product_version}`,
-    `Product stage: ${design.product_stage}`,
-    `Design ID: ${design.id}`,
-    `Generated at: ${design.generated_at}`,
+    `Product: ${designRow.product_name}`,
+    `Product version: ${designRow.product_version}`,
+    `Product stage: ${designRow.product_stage}`,
+    `Design ID: ${designRow.id}`,
+    `Generated at: ${designRow.generated_at}`,
     `Units: millimetres (mm)`,
-    `STL SHA-256: ${design.sha256}`,
+    `STL SHA-256: ${designRow.sha256}`,
     `License tier: ${plan}`,
     "",
     "PACKAGE CONTENTS",
@@ -169,8 +184,8 @@ export async function GET(
   ].join("\n");
 
   const base =
-    safeFilePart(design.product_slug || design.product_name) || "teknovashop-design";
-  const shortId = design.id.slice(0, 10);
+    safeFilePart(designRow.product_slug || designRow.product_name) || "teknovashop-design";
+  const shortId = designRow.id.slice(0, 10);
 
   const zip = buildZip([
     {
@@ -193,7 +208,7 @@ export async function GET(
 
   await admin.from("download_events").insert({
     user_id: user.id,
-    design_id: design.id,
+    design_id: designRow.id,
     entitlement_id: entitlement.id,
   });
 
