@@ -468,5 +468,13 @@ export async function forgeGenerate(body: {
     url?: string;
     signed_url?: string;
     source?: string;
+    design_id?: string;
+    product_name?: string;
+    product_version?: string;
+    product_stage?: string;
+    generated_at?: string;
+    manifest_path?: string;
+    manifest_signed_url?: string;
+    sha256?: string;
   };
 }
