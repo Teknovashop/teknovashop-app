@@ -4,20 +4,19 @@ import { NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
 import { getSupabaseAdmin } from "@/lib/server/supabaseAdmin";
-import { LICENSE_VERSION, TERMS_VERSION, type CommercePlan } from "@/lib/commerce";
+import { LICENSE_VERSION, TERMS_VERSION } from "@/lib/commerce";
 
 export const runtime = "nodejs"; // Node runtime
 
 const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY || "";
 const stripe = new Stripe(STRIPE_SECRET, { apiVersion: "2024-06-20" });
 
-type PriceKey = CommercePlan;
+type PriceKey = "oneoff" | "maker" | "commercial";
 
 type Body = {
   // Email ahora es OPCIONAL: si no viene, Stripe lo pedirá en Checkout
   email?: string | null;
   price: PriceKey;
-  design_id?: string | null;
   model_kind?: string;
   params?: unknown;
   object_key?: string | null;
@@ -67,41 +66,9 @@ export async function POST(req: Request) {
     }
 
     const admin = getSupabaseAdmin();
+    await admin.from("designs").select("id").limit(1);
 
     const body = (await req.json()) as Body;
-    let design: any = null;
-
-    if (body.price === "oneoff") {
-      const designId = String(body.design_id || "").trim();
-      if (!designId) {
-        return NextResponse.json(
-          { error: "DESIGN_REQUIRED" },
-          { status: 400 }
-        );
-      }
-
-      const { data, error } = await admin
-        .from("designs")
-        .select("id,user_id,product_slug,product_version")
-        .eq("id", designId)
-        .maybeSingle();
-
-      if (error || !data) {
-        return NextResponse.json(
-          { error: "DESIGN_NOT_FOUND" },
-          { status: 404 }
-        );
-      }
-
-      if (data.user_id && data.user_id !== user.id) {
-        return NextResponse.json(
-          { error: "DESIGN_NOT_OWNED" },
-          { status: 403 }
-        );
-      }
-
-      design = data;
-    }
 
     if (!body?.price) {
       return NextResponse.json({ error: "PRICE_REQUIRED" }, { status: 400 });
@@ -122,9 +89,6 @@ export async function POST(req: Request) {
       plan: body.price,
       terms_version: TERMS_VERSION,
       license_version: LICENSE_VERSION,
-      design_id: design?.id || "",
-      product_slug: design?.product_slug || "",
-      product_version: design?.product_version || "",
       model_kind: String(body.model_kind ?? ""),
     };
 
@@ -136,10 +100,7 @@ export async function POST(req: Request) {
       line_items: [{ price: priceId, quantity: 1 }],
       allow_promotion_codes: true,
       automatic_tax: { enabled: true },
-      success_url:
-        body.price === "oneoff" && design
-          ? `${site}/forge/success?session_id={CHECKOUT_SESSION_ID}&design_id=${encodeURIComponent(design.id)}`
-          : `${site}/forge/success?session_id={CHECKOUT_SESSION_ID}`,
+      success_url: `${site}/forge/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${site}/forge?status=cancel`,
       metadata,
     });
