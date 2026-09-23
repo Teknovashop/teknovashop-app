@@ -162,13 +162,57 @@ body {
   box-shadow: 0 24px 70px rgba(15, 23, 42, 0.1);
 }
 
-.home-reveal {
-  animation: home-enter 700ms cubic-bezier(.2,.8,.2,1) both;
+.home-scroll-reveal {
+  opacity: 0;
+  transform: translateY(22px) scale(0.992);
+  transition:
+    opacity 620ms cubic-bezier(.2,.8,.2,1),
+    transform 620ms cubic-bezier(.2,.8,.2,1);
+  will-change: opacity, transform;
 }
 
-@keyframes home-enter {
-  from { opacity: 0; transform: translateY(16px); }
-  to { opacity: 1; transform: translateY(0); }
+.home-scroll-reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.home-skip-link {
+  position: fixed;
+  left: 1rem;
+  top: 1rem;
+  z-index: 100;
+  transform: translateY(-180%);
+  border-radius: 0.75rem;
+  background: white;
+  padding: 0.7rem 1rem;
+  color: #07111f;
+  font-size: 0.8rem;
+  font-weight: 800;
+  box-shadow: 0 10px 35px rgba(15,23,42,.2);
+  transition: transform 160ms ease;
+}
+
+.home-skip-link:focus {
+  transform: translateY(0);
+}
+
+.home-primary-btn:focus-visible,
+.home-secondary-btn:focus-visible,
+.home-text-link:focus-visible,
+.home-product-card:focus-visible,
+summary:focus-visible,
+button:focus-visible,
+a:focus-visible {
+  outline: 3px solid rgba(103, 232, 249, 0.78);
+  outline-offset: 3px;
+}
+
+.home-text-link svg {
+  transition: transform 180ms ease;
+}
+
+.home-text-link:hover svg {
+  transform: translateX(3px);
 }
 
 @media (min-width: 640px) {
@@ -180,7 +224,21 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .home-reveal {
-    animation: none;
+  html,
+  body {
+    scroll-behavior: auto;
+  }
+
+  .home-scroll-reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  .home-product-card,
+  .home-feature-card,
+  .home-primary-btn,
+  .home-secondary-btn {
+    transition: none;
   }
 }
