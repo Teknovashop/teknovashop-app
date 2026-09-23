@@ -16,6 +16,15 @@ type ForgeFormProps = {
 
 type CatalogItem = { slug: string; label: string };
 
+type LastDesign = {
+  designId?: string;
+  productName?: string;
+  version?: string;
+  stage?: string;
+  manifestUrl?: string;
+  sha256?: string;
+};
+
 const CANONICAL: Record<string, string> = {
   "tablet-stand": "laptop-stand",
   "phone-dock": "phone-stand",
@@ -225,6 +234,7 @@ export default function ForgeForm({
   const [feedback, setFeedback] = useState<
     { type: "success" | "error"; message: string } | null
   >(null);
+  const [lastDesign, setLastDesign] = useState<LastDesign | null>(null);
 
   function resetDimensions() {
     if (Object.keys(modelSchema).length) {
@@ -340,6 +350,7 @@ export default function ForgeForm({
     try {
       setLoading(true);
       setFeedback(null);
+      setLastDesign(null);
 
       const finalSlug = canonicalize(slug);
       const model = finalSlug.replace(/-/g, "_");
@@ -356,6 +367,14 @@ export default function ForgeForm({
       }
 
       onGenerated?.(link);
+      setLastDesign({
+        designId: data.design_id,
+        productName: data.product_name,
+        version: data.product_version,
+        stage: data.product_stage,
+        manifestUrl: data.manifest_signed_url,
+        sha256: data.sha256,
+      });
       setFeedback({
         type: "success",
         message: "STL generado correctamente. El visor se ha actualizado.",
@@ -400,6 +419,7 @@ export default function ForgeForm({
             onChange={(e) => {
               setSlug(e.target.value);
               setFeedback(null);
+              setLastDesign(null);
             }}
           >
             {catalog.map((m) => (
@@ -641,6 +661,43 @@ export default function ForgeForm({
             }`}
           >
             {feedback.message}
+          </div>
+        )}
+
+        {lastDesign?.designId && (
+          <div className="mb-3 rounded-xl border border-blue-200 bg-blue-50/70 px-3 py-2.5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-blue-700">
+                  Diseño trazable
+                </div>
+                <div className="mt-1 truncate text-xs font-semibold text-neutral-900">
+                  {lastDesign.productName || NICE[slug] || slug}
+                  {lastDesign.version ? ` · v${lastDesign.version}` : ""}
+                </div>
+                <div className="mt-1 font-mono text-[10px] text-neutral-600">
+                  ID {lastDesign.designId}
+                </div>
+                {lastDesign.sha256 && (
+                  <div
+                    className="mt-0.5 truncate font-mono text-[9px] text-neutral-500"
+                    title={lastDesign.sha256}
+                  >
+                    SHA-256 {lastDesign.sha256}
+                  </div>
+                )}
+              </div>
+              {lastDesign.manifestUrl && (
+                <a
+                  href={lastDesign.manifestUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="shrink-0 rounded-lg border border-blue-200 bg-white px-2 py-1.5 text-[10px] font-semibold text-blue-700 hover:bg-blue-50"
+                >
+                  Ficha técnica
+                </a>
+              )}
+            </div>
           </div>
         )}
 
