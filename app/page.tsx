@@ -5,6 +5,9 @@ import Image from "next/image";
 import Link from "next/link";
 import HeroVideo from "@/components/HeroVideo";
 import Pricing from "@/components/Pricing";
+import HomeHeader from "@/components/HomeHeader";
+import Reveal from "@/components/Reveal";
+import MobileCta from "@/components/MobileCta";
 
 const CONFIGURATOR_HREF = "/forge";
 const HERO_VIDEO_SRC =
@@ -29,6 +32,26 @@ const BENEFITS = [
   ["De idea a slicer", "Configura, valida y genera sin rehacer cada variante desde cero."],
 ];
 
+const SOFTWARE_JSON_LD = {
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  name: "Teknovashop Forge",
+  applicationCategory: "DesignApplication",
+  operatingSystem: "Web",
+  url:
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    "https://teknovashop-app.vercel.app",
+  description:
+    "Configurador paramétrico para adaptar medidas reales, validar geometrías en 3D y generar diseños STL trazables listos para imprimir.",
+  featureList: [
+    "Modelos paramétricos",
+    "Previsualización 3D a escala",
+    "Cotas y medición",
+    "Generación STL",
+    "Design ID y manifiesto SHA-256",
+  ],
+};
+
 function Arrow() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
@@ -48,41 +71,22 @@ function Cube() {
 
 export default function Page() {
   return (
-    <main className="min-h-screen bg-[#f6f8fc] text-[#07111f]">
+    <main id="main-content" className="min-h-screen bg-[#f6f8fc] text-[#07111f]">
+      <a href="#main-content" className="home-skip-link">
+        Saltar al contenido
+      </a>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(SOFTWARE_JSON_LD) }}
+      />
       <section className="relative overflow-hidden bg-[#071321] text-white">
         <div className="home-hero-glow absolute inset-0 pointer-events-none" />
 
-        <header className="sticky top-0 z-40 border-b border-white/10 bg-[#071321]/85 backdrop-blur-xl">
-          <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 lg:px-8">
-            <Link href="/" className="flex items-center gap-2.5 font-black">
-              <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 shadow-lg">
-                <Cube />
-              </span>
-              <span>Teknovashop <span className="text-cyan-300">Forge</span></span>
-            </Link>
-
-            <nav className="hidden items-center gap-7 text-sm text-slate-300 lg:flex">
-              <a href="#templates" className="hover:text-white">Plantillas</a>
-              <a href="#how" className="hover:text-white">Cómo funciona</a>
-              <a href="#quality" className="hover:text-white">Tecnología</a>
-              <a href="#pricing" className="hover:text-white">Precios</a>
-              <a href="#faq" className="hover:text-white">FAQ</a>
-            </nav>
-
-            <div className="flex items-center gap-2">
-              <Link href="/login?next=/forge" className="hidden rounded-xl border border-white/15 px-4 py-2 text-sm font-semibold sm:inline-flex">
-                Iniciar sesión
-              </Link>
-              <Link href={CONFIGURATOR_HREF} className="home-primary-btn">
-                Probar configurador <Arrow />
-              </Link>
-            </div>
-          </div>
-        </header>
+        <HomeHeader />
 
         <div className="relative mx-auto max-w-7xl px-5 py-14 lg:px-8 lg:py-20">
           <div className="grid items-center gap-12 lg:grid-cols-2">
-            <div className="home-reveal">
+            <Reveal>
               <div className="home-pill">
                 <span className="h-1.5 w-1.5 rounded-full bg-cyan-300" />
                 Diseño paramétrico listo para imprimir
@@ -111,9 +115,9 @@ export default function Page() {
                   </span>
                 ))}
               </div>
-            </div>
+            </Reveal>
 
-            <div className="relative home-reveal">
+            <Reveal delay={120} className="relative">
               <div className="absolute -inset-8 rounded-[2.5rem] bg-blue-500/10 blur-3xl" />
               <div className="relative rounded-[1.6rem] border border-white/15 bg-white/5 p-2 shadow-2xl">
                 <HeroVideo
@@ -129,7 +133,7 @@ export default function Page() {
                   <span className="rounded-lg bg-white/10 px-2.5 py-1 text-[10px] font-bold text-cyan-200">EN DIRECTO</span>
                 </div>
               </div>
-            </div>
+            </Reveal>
           </div>
         </div>
 
@@ -152,16 +156,17 @@ export default function Page() {
 
       <section id="templates" className="home-section">
         <div className="mx-auto max-w-7xl px-5 lg:px-8">
-          <div className="home-section-head">
+          <Reveal className="home-section-head">
             <div>
               <p className="home-eyebrow">Empieza con una base sólida</p>
               <h2 className="home-title">Plantillas destacadas</h2>
               <p className="home-copy">Geometrías útiles con parámetros reales, no simples escalados de un STL.</p>
             </div>
             <Link href="/catalog" className="home-text-link">Ver todas <Arrow /></Link>
-          </div>
+          </Reveal>
 
-          <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-5">
+          <Reveal delay={90}>
+            <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-5">
             {TEMPLATES.map((template) => (
               <Link
                 key={template[0]}
@@ -186,18 +191,20 @@ export default function Page() {
                 </div>
               </Link>
             ))}
-          </div>
+            </div>
+          </Reveal>
         </div>
       </section>
 
       <section id="how" className="home-section border-y border-slate-200 bg-white">
         <div className="mx-auto max-w-7xl px-5 lg:px-8">
-          <div className="text-center">
+          <Reveal className="text-center">
             <p className="home-eyebrow">Un flujo corto, una salida profesional</p>
             <h2 className="home-title mx-auto">De una medida a una pieza real</h2>
-          </div>
+          </Reveal>
 
-          <div className="mt-10 grid gap-5 lg:grid-cols-3">
+          <Reveal delay={80}>
+            <div className="mt-10 grid gap-5 lg:grid-cols-3">
             {[
               ["01", "Configura", "Elige un producto y ajusta solo los parámetros que tienen sentido para esa geometría."],
               ["02", "Valida en 3D", "Comprueba cotas, escala, orientación y detalles antes de generar el diseño final."],
@@ -209,17 +216,21 @@ export default function Page() {
                 <p className="mt-2 text-sm leading-6 text-slate-500">{step[2]}</p>
               </div>
             ))}
-          </div>
+            </div>
+          </Reveal>
         </div>
       </section>
 
       <section id="quality" className="home-section">
         <div className="mx-auto max-w-7xl px-5 lg:px-8">
-          <p className="home-eyebrow">No es una biblioteca de archivos</p>
+          <Reveal>
+            <p className="home-eyebrow">No es una biblioteca de archivos</p>
           <h2 className="home-title">Un configurador construido como producto.</h2>
-          <p className="home-copy">La diferencia está en que cada diseño sea parametrizable, verificable y repetible.</p>
+            <p className="home-copy">La diferencia está en que cada diseño sea parametrizable, verificable y repetible.</p>
+          </Reveal>
 
-          <div className="mt-9 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Reveal delay={80}>
+            <div className="mt-9 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {BENEFITS.map((benefit) => (
               <div key={benefit[0]} className="home-feature-card">
                 <div className="grid h-10 w-10 place-items-center rounded-xl bg-[#0c2039] text-cyan-300"><Cube /></div>
@@ -227,7 +238,8 @@ export default function Page() {
                 <p className="mt-2 text-sm leading-6 text-slate-500">{benefit[1]}</p>
               </div>
             ))}
-          </div>
+            </div>
+          </Reveal>
         </div>
       </section>
 
@@ -306,7 +318,9 @@ export default function Page() {
         </div>
       </section>
 
-      <footer className="border-t border-slate-200 bg-white">
+      <MobileCta />
+
+      <footer className="border-t border-slate-200 bg-white pb-20 md:pb-0">
         <div className="mx-auto flex max-w-7xl flex-col gap-6 px-5 py-9 sm:flex-row sm:items-center sm:justify-between lg:px-8">
           <div>
             <div className="font-black">Teknovashop <span className="text-blue-600">Forge</span></div>
