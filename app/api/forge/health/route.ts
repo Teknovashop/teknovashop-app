@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+export const maxDuration = 45;
 
 const BACKEND = (
   process.env.NEXT_PUBLIC_FORGE_API_URL ||
@@ -17,7 +18,7 @@ export async function GET() {
   try {
     const r = await fetch(`${BACKEND}/health`, {
       cache: "no-store",
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(35000),
     });
 
     const raw = await r.text();
