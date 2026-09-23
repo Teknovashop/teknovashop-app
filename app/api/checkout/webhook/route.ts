@@ -6,7 +6,6 @@ import {
   TERMS_VERSION,
   type CommercePlan,
 } from "@/lib/commerce";
-import { getSupabaseAdmin } from "@/lib/server/supabaseAdmin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,8 +14,106 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2024-06-20",
 });
 
+const SUPABASE_URL = (
+  process.env.SUPABASE_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  ""
+).replace(/\/+$/, "");
+
+const SUPABASE_SERVICE_ROLE_KEY =
+  process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+
 type IdRow = { id: string };
 type StripeEventRow = { event_id: string };
+
+function assertSupabaseServerConfig() {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error("Supabase server configuration missing");
+  }
+}
+
+function restHeaders(extra?: Record<string, string>) {
+  assertSupabaseServerConfig();
+  return {
+    apikey: SUPABASE_SERVICE_ROLE_KEY,
+    Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+    "content-type": "application/json",
+    ...extra,
+  };
+}
+
+async function restSelect<T>(
+  table: string,
+  params: URLSearchParams
+): Promise<T[]> {
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/${table}?${params.toString()}`,
+    {
+      method: "GET",
+      headers: restHeaders(),
+      cache: "no-store",
+    }
+  );
+
+  if (!res.ok) {
+    throw new Error(
+      `Supabase SELECT ${table} failed: ${res.status} ${await res.text()}`
+    );
+  }
+
+  const json = await res.json();
+  return Array.isArray(json) ? (json as T[]) : [];
+}
+
+async function restInsert(table: string, row: Record<string, any>) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+    method: "POST",
+    headers: restHeaders({ Prefer: "return=minimal" }),
+    body: JSON.stringify(row),
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    throw new Error(
+      `Supabase INSERT ${table} failed: ${res.status} ${await res.text()}`
+    );
+  }
+}
+
+async function restUpdate(
+  table: string,
+  params: URLSearchParams,
+  row: Record<string, any>
+) {
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/${table}?${params.toString()}`,
+    {
+      method: "PATCH",
+      headers: restHeaders({ Prefer: "return=minimal" }),
+      body: JSON.stringify(row),
+      cache: "no-store",
+    }
+  );
+
+  if (!res.ok) {
+    throw new Error(
+      `Supabase UPDATE ${table} failed: ${res.status} ${await res.text()}`
+    );
+  }
+}
+
+function selectOneParams(
+  filters: Record<string, string>,
+  select = "*"
+) {
+  const params = new URLSearchParams();
+  params.set("select", select);
+  params.set("limit", "1");
+  for (const [key, value] of Object.entries(filters)) {
+    params.set(key, `eq.${value}`);
+  }
+  return params;
+}
 
 function asId(value: string | { id: string } | null | undefined) {
   if (!value) return null;
@@ -27,7 +124,7 @@ function unixToIso(value: number | null | undefined) {
   return value ? new Date(value * 1000).toISOString() : null;
 }
 
-function subscriptionIsActive(status: Stripe.Subscription.Status) {
+function subscriptionIsActive(status: string | null | undefined) {
   return status === "active" || status === "trialing";
 }
 
@@ -39,15 +136,19 @@ async function createOrUpdateDesignEntitlement(args: {
   termsVersion: string;
   licenseVersion: string;
 }) {
-  const admin = getSupabaseAdmin();
+  const rows = await restSelect<IdRow>(
+    "entitlements",
+    selectOneParams(
+      {
+        user_id: args.userId,
+        kind: "design",
+        design_id: args.designId,
+      },
+      "id"
+    )
+  );
 
-  const { data: existing } = await admin
-    .from("entitlements")
-    .select("id")
-    .eq("user_id", args.userId)
-    .eq("kind", "design")
-    .eq("design_id", args.designId)
-    .maybeSingle();
+  const existing = rows[0] || null;
 
   const payload = {
     user_id: args.userId,
@@ -66,25 +167,18 @@ async function createOrUpdateDesignEntitlement(args: {
     updated_at: new Date().toISOString(),
   };
 
-  const existingRow = existing as unknown as IdRow | null;
-
-  if (existingRow?.id) {
-    const { error } = await admin
-      .from("entitlements")
-      .update(payload)
-      .eq("id", existingRow.id);
-    if (error) throw error;
-    return existingRow.id;
+  if (existing?.id) {
+    await restUpdate(
+      "entitlements",
+      selectOneParams({ id: existing.id }, "id"),
+      payload
+    );
+    return existing.id;
   }
 
-  const { data, error } = await admin
-    .from("entitlements")
-    .insert(payload)
-    .select("id")
-    .single();
-  if (error) throw error;
-  const inserted = data as unknown as IdRow;
-  return inserted.id;
+  const id = crypto.randomUUID();
+  await restInsert("entitlements", { id, ...payload });
+  return id;
 }
 
 async function createOrUpdateSubscriptionEntitlement(args: {
@@ -92,18 +186,21 @@ async function createOrUpdateSubscriptionEntitlement(args: {
   plan: Exclude<CommercePlan, "oneoff">;
   sessionId?: string | null;
   customerId: string | null;
-  subscription: Stripe.Subscription;
+  subscription: any;
   termsVersion: string;
   licenseVersion: string;
 }) {
-  const admin = getSupabaseAdmin();
-  const subscriptionId = args.subscription.id;
+  const subscriptionId = String(args.subscription?.id || "");
 
-  const { data: existing } = await admin
-    .from("entitlements")
-    .select("id")
-    .eq("stripe_subscription_id", subscriptionId)
-    .maybeSingle();
+  const rows = await restSelect<IdRow>(
+    "entitlements",
+    selectOneParams(
+      { stripe_subscription_id: subscriptionId },
+      "id"
+    )
+  );
+
+  const existing = rows[0] || null;
 
   const payload = {
     user_id: args.userId,
@@ -111,11 +208,11 @@ async function createOrUpdateSubscriptionEntitlement(args: {
     plan: args.plan,
     design_id: null,
     model_slug: null,
-    active: subscriptionIsActive(args.subscription.status),
+    active: subscriptionIsActive(args.subscription?.status),
     starts_at: new Date(
-      (args.subscription.start_date || Math.floor(Date.now() / 1000)) * 1000
+      (args.subscription?.start_date || Math.floor(Date.now() / 1000)) * 1000
     ).toISOString(),
-    expires_at: unixToIso(args.subscription.current_period_end),
+    expires_at: unixToIso(args.subscription?.current_period_end),
     stripe_customer_id: args.customerId,
     stripe_subscription_id: subscriptionId,
     stripe_checkout_session_id: args.sessionId || null,
@@ -124,73 +221,61 @@ async function createOrUpdateSubscriptionEntitlement(args: {
     updated_at: new Date().toISOString(),
   };
 
-  const existingRow = existing as unknown as IdRow | null;
-
-  if (existingRow?.id) {
-    const { error } = await admin
-      .from("entitlements")
-      .update(payload)
-      .eq("id", existingRow.id);
-    if (error) throw error;
-    return existingRow.id;
+  if (existing?.id) {
+    await restUpdate(
+      "entitlements",
+      selectOneParams({ id: existing.id }, "id"),
+      payload
+    );
+    return existing.id;
   }
 
-  const { data, error } = await admin
-    .from("entitlements")
-    .insert(payload)
-    .select("id")
-    .single();
-  if (error) throw error;
-  const inserted = data as unknown as IdRow;
-  return inserted.id;
+  const id = crypto.randomUUID();
+  await restInsert("entitlements", { id, ...payload });
+  return id;
 }
 
 async function recordOrder(session: Stripe.Checkout.Session) {
-  const admin = getSupabaseAdmin();
   const md = session.metadata || {};
   const userId = md.user_id || session.client_reference_id;
   const plan = md.plan as CommercePlan | undefined;
+
   if (!userId || !plan) {
     throw new Error("Checkout session is missing user_id or plan metadata");
   }
 
-  const { data: existing } = await admin
-    .from("orders")
-    .select("id")
-    .eq("stripe_checkout_session_id", session.id)
-    .maybeSingle();
+  const rows = await restSelect<IdRow>(
+    "orders",
+    selectOneParams(
+      { stripe_checkout_session_id: session.id },
+      "id"
+    )
+  );
 
-  const existingRow = existing as unknown as IdRow | null;
-  if (existingRow?.id) return existingRow.id;
+  const existing = rows[0] || null;
+  if (existing?.id) return existing.id;
 
-  const subscriptionId = asId(session.subscription as any);
-  const paymentIntentId = asId(session.payment_intent as any);
-  const customerId = asId(session.customer as any);
+  const id = crypto.randomUUID();
 
-  const { data, error } = await admin
-    .from("orders")
-    .insert({
-      user_id: userId,
-      stripe_checkout_session_id: session.id,
-      stripe_payment_intent_id: paymentIntentId,
-      stripe_customer_id: customerId,
-      stripe_subscription_id: subscriptionId,
-      mode: session.mode,
-      plan,
-      design_id: md.design_id || null,
-      product_slug: md.product_slug || null,
-      amount_total: session.amount_total ?? null,
-      currency: session.currency ?? null,
-      payment_status: session.payment_status ?? null,
-      terms_version: md.terms_version || TERMS_VERSION,
-      license_version: md.license_version || LICENSE_VERSION,
-    })
-    .select("id")
-    .single();
+  await restInsert("orders", {
+    id,
+    user_id: userId,
+    stripe_checkout_session_id: session.id,
+    stripe_payment_intent_id: asId(session.payment_intent as any),
+    stripe_customer_id: asId(session.customer as any),
+    stripe_subscription_id: asId(session.subscription as any),
+    mode: session.mode,
+    plan,
+    design_id: md.design_id || null,
+    product_slug: md.product_slug || null,
+    amount_total: session.amount_total ?? null,
+    currency: session.currency ?? null,
+    payment_status: session.payment_status ?? null,
+    terms_version: md.terms_version || TERMS_VERSION,
+    license_version: md.license_version || LICENSE_VERSION,
+  });
 
-  if (error) throw error;
-  const insertedOrder = data as unknown as IdRow;
-  return insertedOrder.id;
+  return id;
 }
 
 async function processCheckoutCompleted(session: Stripe.Checkout.Session) {
@@ -225,7 +310,8 @@ async function processCheckoutCompleted(session: Stripe.Checkout.Session) {
     throw new Error("Subscription checkout completed without subscription id");
   }
 
-  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  const subscription: any = await stripe.subscriptions.retrieve(subscriptionId);
+
   await createOrUpdateSubscriptionEntitlement({
     userId,
     plan,
@@ -237,8 +323,8 @@ async function processCheckoutCompleted(session: Stripe.Checkout.Session) {
   });
 }
 
-async function processSubscriptionChange(subscription: Stripe.Subscription) {
-  const md = subscription.metadata || {};
+async function processSubscriptionChange(subscription: any) {
+  const md = subscription?.metadata || {};
   const userId = md.user_id;
   const plan = md.plan as Exclude<CommercePlan, "oneoff"> | undefined;
 
@@ -249,7 +335,7 @@ async function processSubscriptionChange(subscription: Stripe.Subscription) {
   await createOrUpdateSubscriptionEntitlement({
     userId,
     plan,
-    customerId: asId(subscription.customer as any),
+    customerId: asId(subscription?.customer as any),
     subscription,
     termsVersion: md.terms_version || TERMS_VERSION,
     licenseVersion: md.license_version || LICENSE_VERSION,
@@ -274,20 +360,16 @@ export async function POST(req: Request) {
     return new NextResponse("Bad signature", { status: 400 });
   }
 
-  const admin = getSupabaseAdmin();
-  const { data: alreadyProcessed } = await admin
-    .from("stripe_events")
-    .select("event_id")
-    .eq("event_id", event.id)
-    .maybeSingle();
-
-  const processedRow = alreadyProcessed as unknown as StripeEventRow | null;
-
-  if (processedRow?.event_id) {
-    return NextResponse.json({ received: true, duplicate: true });
-  }
-
   try {
+    const rows = await restSelect<StripeEventRow>(
+      "stripe_events",
+      selectOneParams({ event_id: event.id }, "event_id")
+    );
+
+    if (rows[0]?.event_id) {
+      return NextResponse.json({ received: true, duplicate: true });
+    }
+
     switch (event.type) {
       case "checkout.session.completed":
         await processCheckoutCompleted(
@@ -297,20 +379,17 @@ export async function POST(req: Request) {
 
       case "customer.subscription.updated":
       case "customer.subscription.deleted":
-        await processSubscriptionChange(
-          event.data.object as Stripe.Subscription
-        );
+        await processSubscriptionChange(event.data.object as any);
         break;
 
       default:
         break;
     }
 
-    const { error: eventError } = await admin.from("stripe_events").insert({
+    await restInsert("stripe_events", {
       event_id: event.id,
       event_type: event.type,
     });
-    if (eventError) throw eventError;
 
     return NextResponse.json({ received: true });
   } catch (err: any) {
