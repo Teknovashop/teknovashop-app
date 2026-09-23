@@ -421,6 +421,38 @@ function normalizePayload(body: {
  * 2) Fallback a BACKEND /generate (Render)
  * En ambos casos, envía x-user-id (si lo tenemos) y maneja 402 Payment Required.
  */
+async function ensureForgeReady() {
+  let lastError = "";
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const r = await fetch("/api/forge/health", {
+        method: "GET",
+        cache: "no-store",
+      });
+
+      const data = await r.json().catch(() => ({}));
+      if (r.ok && data?.ok) return;
+
+      lastError =
+        data?.error ||
+        data?.backendBody?.detail ||
+        `HTTP ${r.status}`;
+    } catch (e: any) {
+      lastError = e?.message || String(e);
+    }
+
+    if (attempt === 0) {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+  }
+
+  throw new Error(
+    "El motor 3D no está disponible todavía. Espera unos segundos y vuelve a intentarlo." +
+      (lastError ? ` — ${lastError}` : "")
+  );
+}
+
 export async function forgeGenerate(body: {
   slug: string;
   params: any;
@@ -437,6 +469,8 @@ export async function forgeGenerate(body: {
   user_id?: string | null;
 }) {
   const payload = normalizePayload(body);
+
+  await ensureForgeReady();
 
   let userId: string | null = payload.user_id ?? null;
   if (!userId) {
