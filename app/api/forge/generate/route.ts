@@ -37,6 +37,10 @@ const n = (v: any): number | undefined => {
 };
 
 type Dict = Record<string, any>;
+type ExistingDesignRow = {
+  id: string;
+  user_id: string | null;
+};
 
 function clampFillet(p: Dict) {
   const candidates = [
@@ -101,13 +105,15 @@ async function registerDesign(args: {
     .eq("id", designId)
     .maybeSingle();
 
-  if (existing?.user_id && userId && existing.user_id !== userId) {
+  const existingRow = existing as unknown as ExistingDesignRow | null;
+
+  if (existingRow?.user_id && userId && existingRow.user_id !== userId) {
     return;
   }
 
   const row = {
     id: designId,
-    user_id: existing?.user_id || userId,
+    user_id: existingRow?.user_id || userId,
     product_slug: args.slug,
     product_name: String(args.data?.product_name || args.slug),
     product_version: String(args.data?.product_version || "unversioned"),
@@ -119,7 +125,7 @@ async function registerDesign(args: {
     generated_at: String(args.data?.generated_at || new Date().toISOString()),
   };
 
-  const { error } = existing?.id
+  const { error } = existingRow?.id
     ? await admin.from("designs").update(row).eq("id", designId)
     : await admin.from("designs").insert(row);
 
