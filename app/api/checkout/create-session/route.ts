@@ -52,24 +52,28 @@ export async function POST(req: Request) {
       return json({ ok: false, error: "STRIPE_SECRET_KEY not set" }, 500);
     }
 
+    const body = (await req.json()) as Body;
+    const plan = body?.price;
+
     const supabase = createRouteHandlerClient({ cookies });
     const {
       data: { user },
     } = await supabase.auth.getUser();
 
     if (!user) {
+      const next =
+        plan === "oneoff" && body?.design_id
+          ? `/forge?buy=${encodeURIComponent(String(body.design_id))}`
+          : "/#precios";
       return json(
         {
           ok: false,
           error: "AUTH_REQUIRED",
-          login_url: "/login?next=/forge",
+          login_url: `/login?next=${encodeURIComponent(next)}`,
         },
         401
       );
     }
-
-    const body = (await req.json()) as Body;
-    const plan = body?.price;
 
     if (!plan || !PRICE_ENV[plan]) {
       return json({ ok: false, error: "PRICE_NOT_CONFIGURED" }, 400);
