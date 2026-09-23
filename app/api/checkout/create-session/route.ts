@@ -83,20 +83,23 @@ export async function POST(req: Request) {
 
     const site = siteUrlFromReq(req);
 
+    const metadata = {
+      user_id: user.id,
+      plan: body.price,
+      model_kind: String(body.model_kind ?? ""),
+    };
+
     const session = await stripe.checkout.sessions.create({
       mode: body.price === "oneoff" ? "payment" : "subscription",
       payment_method_types: ["card"],
-      customer_email: body.email || undefined, // opcional; Stripe la pedirá si falta
+      customer_email: user.email || undefined,
+      client_reference_id: user.id,
       line_items: [{ price: priceId, quantity: 1 }],
       allow_promotion_codes: true,
       automatic_tax: { enabled: true },
-      success_url: `${site}/forge?status=success`,
+      success_url: `${site}/forge/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${site}/forge?status=cancel`,
-      metadata: {
-        model_kind: String(body.model_kind ?? ""),
-        params: JSON.stringify(body.params ?? {}),
-        object_key: String(body.object_key ?? ""),
-      },
+      metadata,
     });
 
     return NextResponse.json({ url: session.url }, { status: 200 });
