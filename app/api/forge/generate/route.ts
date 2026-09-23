@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
 
-import { getSupabaseAdmin } from "@/lib/server/supabaseAdmin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,6 +40,74 @@ type ExistingDesignRow = {
   id: string;
   user_id: string | null;
 };
+
+function serverRestHeaders(extra?: Record<string, string>) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error("Supabase server configuration missing");
+  }
+  return {
+    apikey: SUPABASE_SERVICE_ROLE_KEY,
+    Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+    "content-type": "application/json",
+    ...extra,
+  };
+}
+
+async function getExistingDesign(designId: string): Promise<ExistingDesignRow | null> {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return null;
+
+  const params = new URLSearchParams();
+  params.set("select", "id,user_id");
+  params.set("id", `eq.${designId}`);
+  params.set("limit", "1");
+
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/designs?${params.toString()}`,
+    {
+      method: "GET",
+      headers: serverRestHeaders(),
+      cache: "no-store",
+    }
+  );
+
+  if (!res.ok) {
+    throw new Error(
+      `Design lookup failed: ${res.status} ${await res.text()}`
+    );
+  }
+
+  const rows = await res.json();
+  return Array.isArray(rows) && rows.length
+    ? (rows[0] as ExistingDesignRow)
+    : null;
+}
+
+async function saveDesign(
+  designId: string,
+  row: Record<string, any>,
+  exists: boolean
+) {
+  const params = new URLSearchParams();
+  params.set("id", `eq.${designId}`);
+
+  const res = await fetch(
+    exists
+      ? `${SUPABASE_URL}/rest/v1/designs?${params.toString()}`
+      : `${SUPABASE_URL}/rest/v1/designs`,
+    {
+      method: exists ? "PATCH" : "POST",
+      headers: serverRestHeaders({ Prefer: "return=minimal" }),
+      body: JSON.stringify(row),
+      cache: "no-store",
+    }
+  );
+
+  if (!res.ok) {
+    throw new Error(
+      `Design save failed: ${res.status} ${await res.text()}`
+    );
+  }
+}
 
 function clampFillet(p: Dict) {
   const candidates = [
@@ -98,39 +165,39 @@ async function registerDesign(args: {
     userId = null;
   }
 
-  const admin = getSupabaseAdmin();
-  const { data: existing } = await admin
-    .from("designs")
-    .select("id,user_id")
-    .eq("id", designId)
-    .maybeSingle();
-
-  const existingRow = existing as unknown as ExistingDesignRow | null;
-
-  if (existingRow?.user_id && userId && existingRow.user_id !== userId) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    console.warn("design registration skipped: Supabase server config missing");
     return;
   }
 
-  const row = {
-    id: designId,
-    user_id: existingRow?.user_id || userId,
-    product_slug: args.slug,
-    product_name: String(args.data?.product_name || args.slug),
-    product_version: String(args.data?.product_version || "unversioned"),
-    product_stage: String(args.data?.product_stage || "unversioned"),
-    parameters: args.params || {},
-    stl_path: stlPath,
-    manifest_path: manifestPath,
-    sha256,
-    generated_at: String(args.data?.generated_at || new Date().toISOString()),
-  };
+  try {
+    const existingRow = await getExistingDesign(designId);
 
-  const { error } = existingRow?.id
-    ? await admin.from("designs").update(row).eq("id", designId)
-    : await admin.from("designs").insert(row);
+    if (existingRow?.user_id && userId && existingRow.user_id !== userId) {
+      return;
+    }
 
-  if (error) {
-    console.error("design registration failed", designId, error.message);
+    const row = {
+      id: designId,
+      user_id: existingRow?.user_id || userId,
+      product_slug: args.slug,
+      product_name: String(args.data?.product_name || args.slug),
+      product_version: String(args.data?.product_version || "unversioned"),
+      product_stage: String(args.data?.product_stage || "unversioned"),
+      parameters: args.params || {},
+      stl_path: stlPath,
+      manifest_path: manifestPath,
+      sha256,
+      generated_at: String(args.data?.generated_at || new Date().toISOString()),
+    };
+
+    await saveDesign(designId, row, !!existingRow?.id);
+  } catch (e: any) {
+    console.error(
+      "design registration failed",
+      designId,
+      e?.message || String(e)
+    );
   }
 }
 
