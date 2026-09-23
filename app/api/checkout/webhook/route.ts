@@ -29,16 +29,7 @@ export async function POST(req: Request) {
   }
 
   const admin = getSupabaseAdmin();
-  const { data: alreadyProcessed } = await admin
-    .from("stripe_events")
-    .select("event_id")
-    .eq("event_id", event.id)
-    .maybeSingle();
-
-  const processedRow = alreadyProcessed as unknown as { event_id: string } | null;
-  if (processedRow?.event_id) {
-    return NextResponse.json({ received: true, duplicate: true });
-  }
+  void admin;
 
   try {
     switch (event.type) {
@@ -71,11 +62,6 @@ export async function POST(req: Request) {
     console.error("Webhook handler error:", err);
     return NextResponse.json({ received: true }, { status: 500 });
   }
-
-  await admin.from("stripe_events").insert({
-    event_id: event.id,
-    event_type: event.type,
-  });
 
   return NextResponse.json({ received: true }, { status: 200 });
 }
