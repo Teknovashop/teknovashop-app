@@ -27,6 +27,7 @@ const PLANS = [
     desc: "Configura una pieza concreta y compra exactamente esa versión.",
     items: ["Licencia ligada al design ID", "Paquete STL trazable", "Manifiesto y SHA-256"],
     cta: "Configurar pieza",
+    featured: false,
   },
   {
     key: "maker",
@@ -46,6 +47,7 @@ const PLANS = [
     desc: "Pensado para talleres, estudios y pequeños negocios.",
     items: ["Derechos comerciales", "Descargas trazables", "Cuenta asociada a Stripe"],
     cta: "Suscribirme",
+    featured: false,
   },
 ] as const;
 
