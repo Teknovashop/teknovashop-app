@@ -15,6 +15,9 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2024-06-20",
 });
 
+type IdRow = { id: string };
+type StripeEventRow = { event_id: string };
+
 function asId(value: string | { id: string } | null | undefined) {
   if (!value) return null;
   return typeof value === "string" ? value : value.id;
@@ -63,13 +66,15 @@ async function createOrUpdateDesignEntitlement(args: {
     updated_at: new Date().toISOString(),
   };
 
-  if (existing?.id) {
+  const existingRow = existing as unknown as IdRow | null;
+
+  if (existingRow?.id) {
     const { error } = await admin
       .from("entitlements")
       .update(payload)
-      .eq("id", existing.id);
+      .eq("id", existingRow.id);
     if (error) throw error;
-    return existing.id as string;
+    return existingRow.id;
   }
 
   const { data, error } = await admin
@@ -78,7 +83,8 @@ async function createOrUpdateDesignEntitlement(args: {
     .select("id")
     .single();
   if (error) throw error;
-  return data.id as string;
+  const inserted = data as unknown as IdRow;
+  return inserted.id;
 }
 
 async function createOrUpdateSubscriptionEntitlement(args: {
@@ -118,13 +124,15 @@ async function createOrUpdateSubscriptionEntitlement(args: {
     updated_at: new Date().toISOString(),
   };
 
-  if (existing?.id) {
+  const existingRow = existing as unknown as IdRow | null;
+
+  if (existingRow?.id) {
     const { error } = await admin
       .from("entitlements")
       .update(payload)
-      .eq("id", existing.id);
+      .eq("id", existingRow.id);
     if (error) throw error;
-    return existing.id as string;
+    return existingRow.id;
   }
 
   const { data, error } = await admin
@@ -133,7 +141,8 @@ async function createOrUpdateSubscriptionEntitlement(args: {
     .select("id")
     .single();
   if (error) throw error;
-  return data.id as string;
+  const inserted = data as unknown as IdRow;
+  return inserted.id;
 }
 
 async function recordOrder(session: Stripe.Checkout.Session) {
@@ -151,7 +160,8 @@ async function recordOrder(session: Stripe.Checkout.Session) {
     .eq("stripe_checkout_session_id", session.id)
     .maybeSingle();
 
-  if (existing?.id) return existing.id as string;
+  const existingRow = existing as unknown as IdRow | null;
+  if (existingRow?.id) return existingRow.id;
 
   const subscriptionId = asId(session.subscription as any);
   const paymentIntentId = asId(session.payment_intent as any);
@@ -179,7 +189,8 @@ async function recordOrder(session: Stripe.Checkout.Session) {
     .single();
 
   if (error) throw error;
-  return data.id as string;
+  const insertedOrder = data as unknown as IdRow;
+  return insertedOrder.id;
 }
 
 async function processCheckoutCompleted(session: Stripe.Checkout.Session) {
@@ -270,7 +281,9 @@ export async function POST(req: Request) {
     .eq("event_id", event.id)
     .maybeSingle();
 
-  if (alreadyProcessed?.event_id) {
+  const processedRow = alreadyProcessed as unknown as StripeEventRow | null;
+
+  if (processedRow?.event_id) {
     return NextResponse.json({ received: true, duplicate: true });
   }
 
