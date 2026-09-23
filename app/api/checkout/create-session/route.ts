@@ -141,7 +141,7 @@ export async function POST(req: Request) {
     const mode: "payment" | "subscription" =
       plan === "oneoff" ? "payment" : "subscription";
 
-    const sessionParams: Stripe.Checkout.SessionCreateParams = {
+    const sessionParams: any = {
       mode,
       payment_method_types: ["card"],
       customer_email: user.email || undefined,
