@@ -94,14 +94,7 @@ export async function POST(req: Request) {
         );
       }
 
-      if (data.user_id && data.user_id !== user.id) {
-        return NextResponse.json(
-          { error: "DESIGN_NOT_OWNED" },
-          { status: 403 }
-        );
-      }
-
-      design = data;
+      design = { id: data.id };
     }
 
     if (!body?.price) {
