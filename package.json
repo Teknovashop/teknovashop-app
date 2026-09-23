@@ -2,7 +2,7 @@
   "name": "teknovashop-app",
   "version": "1.0.0",
   "private": true,
-  "engines": { "node": "20.x" },
+  "engines": { "node": "24.x" },
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",
