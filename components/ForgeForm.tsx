@@ -297,9 +297,9 @@ export default function ForgeForm({
   const [holes, setHoles] = useState<Hole[]>([]);
   const [bulk, setBulk] = useState("");
 
-  const [dimensionsOpen, setDimensionsOpen] = useState(false);
-  const [textOpen, setTextOpen] = useState(false);
-  const [holesOpen, setHolesOpen] = useState(false);
+  const [openPanel, setOpenPanel] = useState<
+    "dimensions" | "text" | "holes" | null
+  >(null);
 
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState<
@@ -333,7 +333,7 @@ export default function ForgeForm({
 
   function addHole() {
     setHoles((prev) => [...prev, { x: 0, y: 0, diameter_mm: 4 }]);
-    setHolesOpen(true);
+    setOpenPanel("holes");
   }
 
   function updateHole(i: number, key: keyof Hole, val: number) {
@@ -571,6 +571,7 @@ export default function ForgeForm({
               setLastDesign(null);
               setHoles([]);
               setBulk("");
+              setOpenPanel(null);
             }}
           >
             {catalog.map((m) => (
@@ -586,8 +587,12 @@ export default function ForgeForm({
         <PanelSection
           title="Dimensiones"
           subtitle="Geometría principal de la pieza"
-          open={dimensionsOpen}
-          onToggle={() => setDimensionsOpen((v) => !v)}
+          open={openPanel === "dimensions"}
+          onToggle={() =>
+            setOpenPanel((current) =>
+              current === "dimensions" ? null : "dimensions"
+            )
+          }
           action={
             <button
               type="button"
@@ -653,8 +658,10 @@ export default function ForgeForm({
         <PanelSection
           title="Texto"
           subtitle={text.trim() ? `“${text.trim()}” · ${textMode === "engrave" ? "grabado" : "relieve"}` : "Grabado o relieve opcional"}
-          open={textOpen}
-          onToggle={() => setTextOpen((v) => !v)}
+          open={openPanel === "text"}
+          onToggle={() =>
+            setOpenPanel((current) => (current === "text" ? null : "text"))
+          }
         >
           <label className="mb-1.5 block text-xs font-semibold text-neutral-700">
             Contenido
@@ -705,8 +712,10 @@ export default function ForgeForm({
               ? `${holes.length} ${holes.length === 1 ? "agujero definido" : "agujeros definidos"}`
               : "Sin perforaciones adicionales"
           }
-          open={holesOpen}
-          onToggle={() => setHolesOpen((v) => !v)}
+          open={openPanel === "holes"}
+          onToggle={() =>
+            setOpenPanel((current) => (current === "holes" ? null : "holes"))
+          }
           action={
             <button
               type="button"
