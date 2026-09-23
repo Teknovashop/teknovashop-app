@@ -197,7 +197,7 @@ export async function GET(
     entitlement_id: entitlement.id,
   });
 
-  return new NextResponse(zip, {
+  return new Response(new Uint8Array(zip), {
     status: 200,
     headers: {
       "content-type": "application/zip",
