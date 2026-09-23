@@ -86,11 +86,11 @@ export const MODELS: ForgeModel[] = [
   },
   {
     id: "raspi-case",
-    name: "Caja Raspberry Pi",
+    name: "Caja Raspberry Pi 4 Model B",
     slug: "raspi-case",
     thumbnail: "/images/models/raspi-case.jpg",
     stlPath: "raspi-case",
-    description: "Caja ventilada con anclajes.",
+    description: "Caja ventilada basada en la envolvente mecánica de Raspberry Pi 4 Model B.",
     tips: ["Revisa puertos del modelo", "Añade ventilador si OC"],
   },
   {
