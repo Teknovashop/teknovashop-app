@@ -37,7 +37,6 @@ type LastDesign = {
   productName?: string;
   version?: string;
   stage?: string;
-  manifestUrl?: string;
   sha256?: string;
 };
 
@@ -472,12 +471,12 @@ export default function ForgeForm({
       const model = finalSlug.replace(/-/g, "_");
       const payload = { slug: finalSlug, model, params, holes, text_ops };
       const data = await forgeGenerate(payload);
-      const link = data?.signed_url || data?.url || "";
+      const link = data?.preview_url || data?.url || "";
 
       if (!link) {
         setFeedback({
           type: "error",
-          message: "El backend ha respondido, pero no ha devuelto una URL de STL.",
+          message: "El backend ha respondido, pero no ha devuelto una vista previa segura.",
         });
         return;
       }
@@ -488,7 +487,6 @@ export default function ForgeForm({
         productName: data.product_name,
         version: data.product_version,
         stage: data.product_stage,
-        manifestUrl: data.manifest_signed_url,
         sha256: data.sha256,
       });
 
@@ -823,16 +821,6 @@ export default function ForgeForm({
                   </div>
                 )}
               </div>
-              {lastDesign.manifestUrl && (
-                <a
-                  href={lastDesign.manifestUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="shrink-0 rounded-lg border border-blue-200 bg-white px-2 py-1.5 text-[10px] font-semibold text-blue-700 hover:bg-blue-50"
-                >
-                  Ficha técnica
-                </a>
-              )}
             </div>
 
             <div className="mt-3 border-t border-blue-200/70 pt-3">
