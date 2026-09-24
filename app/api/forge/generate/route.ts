@@ -20,9 +20,6 @@ const SUPABASE_URL =
   "";
 const SUPABASE_SERVICE_ROLE_KEY =
   process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-const NEXT_PUBLIC_SUPABASE_ANON_KEY =
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-const BUCKET = process.env.NEXT_PUBLIC_SUPABASE_BUCKET || "forge-stl";
 
 function json(body: any, status = 200) {
   return NextResponse.json(body, { status });
@@ -136,7 +133,8 @@ function traceMeta(data: any) {
     product_stage: data?.product_stage,
     generated_at: data?.generated_at,
     manifest_path: data?.manifest_path,
-    manifest_signed_url: data?.manifest_signed_url,
+    preview_path: data?.preview_path,
+    preview_precision_mm: data?.preview_precision_mm,
     sha256: data?.sha256,
   };
 }
@@ -234,9 +232,19 @@ export async function POST(req: Request) {
   const holes = Array.isArray(body?.holes) ? body.holes : [];
   const text_ops = Array.isArray(body?.text_ops) ? body.text_ops : [];
   const model = slug.replace(/-/g, "_");
-  const userId =
-    req.headers.get("x-user-id") ||
-    (typeof body?.user_id === "string" ? body.user_id : "");
+
+  // Never trust x-user-id or user_id supplied by the browser. If a user is
+  // authenticated, derive identity from the signed Supabase session cookie.
+  let userId: string | null = null;
+  try {
+    const supabase = createRouteHandlerClient({ cookies });
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    userId = user?.id || null;
+  } catch {
+    userId = null;
+  }
 
   let r: Response;
   try {
@@ -307,96 +315,34 @@ export async function POST(req: Request) {
     data,
   });
 
-  if (data?.signed_url) {
+  if (data?.preview_url) {
     return json({
       ok: true,
-      url: data.signed_url,
+      url: data.preview_url,
+      preview_url: data.preview_url,
+      preview_path: data.preview_path,
+      preview_precision_mm: data.preview_precision_mm,
       path: data.path,
       slug: data.slug || slug,
-      source: "backend-signed",
+      source: "backend-degraded-preview",
       ...traceMeta(data),
     });
   }
 
-  if (data?.stl_url) {
-    return json({
-      ok: true,
-      url: data.stl_url,
-      path: data.path,
-      slug: data.slug || slug,
-      source: "backend-public",
-      ...traceMeta(data),
-    });
-  }
-
-  if (data?.stl_data_url) {
-    return json({
-      ok: true,
-      url: data.stl_data_url,
-      slug: data.slug || slug,
-      source: "data-url",
-      ...traceMeta(data),
-    });
-  }
-
-  const objectPath: string | undefined = data?.path || data?.object_key;
-  if (!objectPath) {
-    return json(
-      {
-        ok: false,
-        error: "Backend generated no downloadable STL URL or path",
-        backendResponse: data,
+  return json(
+    {
+      ok: false,
+      error: "SAFE_PREVIEW_MISSING",
+      detail:
+        "The Forge backend did not return a degraded preview. Final manufacturing artifacts are never signed for browser access.",
+      backendResponse: {
+        ok: data?.ok,
+        slug: data?.slug,
+        design_id: data?.design_id,
+        path: data?.path,
+        manifest_path: data?.manifest_path,
       },
-      502
-    );
-  }
-
-  const key = SUPABASE_SERVICE_ROLE_KEY || NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!SUPABASE_URL || !key) {
-    return json(
-      {
-        ok: false,
-        error:
-          "Backend returned only a storage path, but Supabase signing is not configured in Vercel",
-        objectPath,
-      },
-      500
-    );
-  }
-
-  try {
-    const { createClient } = await import("@supabase/supabase-js");
-    const supabase = createClient(SUPABASE_URL, key);
-    const signed = await supabase.storage
-      .from(BUCKET)
-      .createSignedUrl(objectPath, 60 * 5);
-
-    if (signed.error || !signed.data?.signedUrl) {
-      return json(
-        {
-          ok: false,
-          error: signed.error?.message || "Failed to sign STL URL",
-        },
-        500
-      );
-    }
-
-    return json({
-      ok: true,
-      url: signed.data.signedUrl,
-      object_key: objectPath,
-      slug: data.slug || slug,
-      source: "signed-in-vercel",
-      ...traceMeta(data),
-    });
-  } catch (e: any) {
-    return json(
-      {
-        ok: false,
-        error: "Supabase signing failed",
-        detail: e?.message || String(e),
-      },
-      500
-    );
-  }
+    },
+    502
+  );
 }
