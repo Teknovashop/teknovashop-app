@@ -6,10 +6,11 @@ type State = "checking" | "ready" | "waiting" | "error";
 
 export default function SuccessPage({ searchParams }: any) {
   const sessionId = searchParams?.session_id as string | undefined;
-  const designId = searchParams?.design_id as string | undefined;
+  const urlDesignId = searchParams?.design_id as string | undefined;
   const [state, setState] = useState<State>("checking");
-  const [message, setMessage] = useState("Confirmando el pago y activando la licencia…");
+  const [message, setMessage] = useState("Verificando el pago con Stripe…");
   const [plan, setPlan] = useState<string | undefined>();
+  const [designId, setDesignId] = useState<string | undefined>();
 
   useEffect(() => {
     if (!sessionId) {
@@ -20,11 +21,52 @@ export default function SuccessPage({ searchParams }: any) {
 
     let cancelled = false;
 
-    async function checkEntitlement() {
-      for (let attempt = 0; attempt < 15 && !cancelled; attempt++) {
-        try {
-          const qs = designId
-            ? "?design_id=" + encodeURIComponent(designId)
+    async function verifyAndWaitForEntitlement() {
+      try {
+        const verifyRes = await fetch(
+          "/api/checkout/session?session_id=" + encodeURIComponent(sessionId),
+          { cache: "no-store" }
+        );
+        const verified = await verifyRes.json().catch(() => ({}));
+
+        if (!verifyRes.ok || !verified?.verified) {
+          throw new Error(
+            verified?.error || "No se ha podido verificar la sesión de pago."
+          );
+        }
+
+        if (!verified?.complete) {
+          setState("waiting");
+          setMessage(
+            "La sesión existe, pero Stripe todavía no marca el pago como completado."
+          );
+          return;
+        }
+
+        const verifiedDesignId =
+          typeof verified.designId === "string" && verified.designId
+            ? verified.designId
+            : undefined;
+
+        if (
+          urlDesignId &&
+          verifiedDesignId &&
+          urlDesignId !== verifiedDesignId
+        ) {
+          throw new Error(
+            "El diseño de la URL no coincide con la compra verificada."
+          );
+        }
+
+        setDesignId(verifiedDesignId);
+        setPlan(
+          typeof verified.plan === "string" ? verified.plan : undefined
+        );
+        setMessage("Pago verificado. Activando tu licencia…");
+
+        for (let attempt = 0; attempt < 15 && !cancelled; attempt++) {
+          const qs = verifiedDesignId
+            ? "?design_id=" + encodeURIComponent(verifiedDesignId)
             : "";
           const res = await fetch("/api/entitlements" + qs, {
             cache: "no-store",
@@ -32,35 +74,38 @@ export default function SuccessPage({ searchParams }: any) {
           const data = await res.json().catch(() => ({}));
 
           if (data?.hasAccess) {
-            setPlan(data?.plan);
+            setPlan(data?.plan || verified.plan);
             setState("ready");
             setMessage(
-              designId
+              verifiedDesignId
                 ? "Pago confirmado. Tu diseño ya tiene licencia y está listo para descargar."
                 : "Pago confirmado. Tu suscripción ya está activa."
             );
             return;
           }
-        } catch {
-          // El webhook puede tardar unos segundos; seguimos reintentando.
+
+          await new Promise((resolve) => setTimeout(resolve, 1000));
         }
 
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-      }
-
-      if (!cancelled) {
-        setState("waiting");
-        setMessage(
-          "Stripe ha devuelto el pago correctamente, pero la licencia todavía se está sincronizando. Puedes volver al configurador y reintentar en unos segundos."
-        );
+        if (!cancelled) {
+          setState("waiting");
+          setMessage(
+            "El pago está verificado, pero la licencia todavía se está sincronizando. Puedes volver a intentarlo en unos segundos."
+          );
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          setState("error");
+          setMessage(err?.message || "No se ha podido verificar la compra.");
+        }
       }
     }
 
-    void checkEntitlement();
+    void verifyAndWaitForEntitlement();
     return () => {
       cancelled = true;
     };
-  }, [sessionId, designId]);
+  }, [sessionId, urlDesignId]);
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-16">
@@ -84,9 +129,7 @@ export default function SuccessPage({ searchParams }: any) {
         >
           {message}
           {plan && (
-            <div className="mt-1 text-xs font-semibold">
-              Licencia: {plan}
-            </div>
+            <div className="mt-1 text-xs font-semibold">Licencia: {plan}</div>
           )}
         </div>
 
@@ -99,6 +142,13 @@ export default function SuccessPage({ searchParams }: any) {
               Descargar paquete ZIP
             </a>
           )}
+
+          <a
+            className="rounded-xl border border-neutral-300 bg-white px-4 py-2.5 text-sm font-semibold text-neutral-700 hover:bg-neutral-50"
+            href="/account"
+          >
+            Mis compras
+          </a>
 
           <a
             className="rounded-xl border border-neutral-300 bg-white px-4 py-2.5 text-sm font-semibold text-neutral-700 hover:bg-neutral-50"
