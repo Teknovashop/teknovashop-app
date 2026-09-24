@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" role="img" aria-label="Soporte GoPro">
+<defs>
+ <radialGradient id="bg" cx="58%" cy="20%" r="82%"><stop offset="0" stop-color="#4aa6ff"/><stop offset=".32" stop-color="#123f70"/><stop offset="1" stop-color="#061728"/></radialGradient>
+ <linearGradient id="shade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c8efff" stop-opacity=".10"/><stop offset=".55" stop-color="#071321" stop-opacity=".02"/><stop offset="1" stop-color="#071321" stop-opacity=".32"/></linearGradient>
+ <pattern id="grid" width="64" height="64" patternUnits="userSpaceOnUse"><path d="M64 0H0V64" fill="none" stroke="#8be9ff" stroke-opacity=".12" stroke-width="1"/></pattern>
+ <filter id="grade" color-interpolation-filters="sRGB">
+   <feColorMatrix type="saturate" values=".18"/>
+   <feComponentTransfer><feFuncR type="linear" slope=".80" intercept=".02"/><feFuncG type="linear" slope=".92" intercept=".03"/><feFuncB type="linear" slope="1.18" intercept=".06"/></feComponentTransfer>
+ </filter>
+ <filter id="glow"><feGaussianBlur stdDeviation="18"/></filter>
+</defs>
+<rect width="1200" height="900" fill="url(#bg)"/>
+<rect width="1200" height="900" fill="url(#grid)"/>
+<ellipse cx="610" cy="715" rx="410" ry="85" fill="#69c7ff" opacity=".18" filter="url(#glow)"/>
+<image href="/images/models/go-pro-mount.jpg" x="55" y="55" width="1090" height="790" preserveAspectRatio="xMidYMid meet" filter="url(#grade)" opacity=".94"/>
+<rect width="1200" height="900" fill="url(#shade)"/>
+<g fill="none" stroke="#c6f2ff" stroke-opacity=".22" stroke-width="2">
+ <rect x="42" y="42" width="330" height="220" rx="18"/><path d="M78 96H332M78 144H300M82 212H344"/>
+ <rect x="850" y="70" width="305" height="235" rx="14"/><path d="M890 112H1118M890 162H1080M900 244H1120"/>
+ <path d="M70 740H1130M130 690H1060"/>
+</g>
+</svg>
