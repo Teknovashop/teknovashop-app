@@ -8,6 +8,7 @@ import {
   type CommercePlan,
 } from "@/lib/commerce";
 import { getSupabaseAdmin } from "@/lib/server/supabaseAdmin";
+import { LEGAL_READY } from "@/lib/legal";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -60,6 +61,16 @@ export async function POST(req: Request) {
   try {
     if (!STRIPE_SECRET) {
       return json({ ok: false, error: "STRIPE_SECRET_KEY not set" }, 500);
+    }
+    if (!LEGAL_READY) {
+      return json(
+        {
+          ok: false,
+          error: "LEGAL_CONFIG_REQUIRED",
+          detail: "La contratación está desactivada hasta completar los datos legales del titular.",
+        },
+        503
+      );
     }
 
     const body = (await req.json()) as Body;
@@ -180,6 +191,7 @@ export async function POST(req: Request) {
       line_items: [{ price: priceId, quantity: 1 }],
       allow_promotion_codes: true,
       automatic_tax: { enabled: true },
+      consent_collection: { terms_of_service: "required" },
       success_url:
         plan === "oneoff"
           ? `${site}/forge/success?session_id={CHECKOUT_SESSION_ID}&design_id=${encodeURIComponent(
