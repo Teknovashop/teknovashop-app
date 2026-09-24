@@ -898,27 +898,29 @@ function PanelSection({
 }) {
   return (
     <section>
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={open}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-neutral-50"
-      >
-        <span
-          className={`flex h-6 w-6 items-center justify-center rounded-md border border-neutral-200 bg-white text-xs text-neutral-500 transition-transform ${
-            open ? "rotate-90" : ""
-          }`}
+      <div className="flex w-full items-center gap-3 px-4 py-3 transition hover:bg-neutral-50">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={open}
+          className="flex min-w-0 flex-1 items-center gap-3 text-left"
         >
-          ›
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-sm font-semibold text-neutral-900">{title}</span>
-          <span className="mt-0.5 block truncate text-[11px] text-neutral-500">
-            {subtitle}
+          <span
+            className={`flex h-6 w-6 items-center justify-center rounded-md border border-neutral-200 bg-white text-xs text-neutral-500 transition-transform ${
+              open ? "rotate-90" : ""
+            }`}
+          >
+            ›
           </span>
-        </span>
-        {action && <span onClick={(e) => e.stopPropagation()}>{action}</span>}
-      </button>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-semibold text-neutral-900">{title}</span>
+            <span className="mt-0.5 block truncate text-[11px] text-neutral-500">
+              {subtitle}
+            </span>
+          </span>
+        </button>
+        {action && <span>{action}</span>}
+      </div>
 
       {open && <div className="px-4 pb-4">{children}</div>}
     </section>
