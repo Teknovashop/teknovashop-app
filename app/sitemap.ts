@@ -10,6 +10,11 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${BASE}/`, lastModified: now, changeFrequency: 'weekly', priority: 1 },
     { url: `${BASE}/forge`, lastModified: now, changeFrequency: 'weekly', priority: 0.9 },
     { url: `${BASE}/catalog`, lastModified: now, changeFrequency: 'weekly', priority: 0.85 },
+    { url: `${BASE}/legal`, lastModified: now, changeFrequency: 'yearly', priority: 0.2 },
+    { url: `${BASE}/legal/terms`, lastModified: now, changeFrequency: 'yearly', priority: 0.2 },
+    { url: `${BASE}/legal/privacy`, lastModified: now, changeFrequency: 'yearly', priority: 0.2 },
+    { url: `${BASE}/legal/refunds`, lastModified: now, changeFrequency: 'yearly', priority: 0.2 },
+    { url: `${BASE}/legal/license`, lastModified: now, changeFrequency: 'yearly', priority: 0.2 },
   ];
   for (const m of MODELS) {
     items.push({
