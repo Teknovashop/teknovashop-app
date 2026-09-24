@@ -315,7 +315,6 @@ async function setOneoffAccessByPaymentIntent(args: {
     filterParams({ id: order.id }),
     {
       payment_status: args.paymentStatus,
-      updated_at: new Date().toISOString(),
     }
   );
 
