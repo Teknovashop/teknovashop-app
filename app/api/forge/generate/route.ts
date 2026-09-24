@@ -150,7 +150,9 @@ async function registerDesign(args: {
   const manifestPath = String(args.data?.manifest_path || "").trim();
   const sha256 = String(args.data?.sha256 || "").trim();
 
-  if (!designId || !stlPath || !manifestPath || sha256.length !== 64) return;
+  if (!designId || !stlPath || !manifestPath || sha256.length !== 64) {
+    throw new Error("Backend response is missing traceability metadata");
+  }
 
   let userId: string | null = null;
   try {
@@ -164,39 +166,30 @@ async function registerDesign(args: {
   }
 
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    console.warn("design registration skipped: Supabase server config missing");
-    return;
+    throw new Error("Supabase server configuration missing");
   }
 
-  try {
-    const existingRow = await getExistingDesign(designId);
+  const existingRow = await getExistingDesign(designId);
 
-    if (existingRow?.user_id && userId && existingRow.user_id !== userId) {
-      return;
-    }
-
-    const row = {
-      id: designId,
-      user_id: existingRow?.user_id || userId,
-      product_slug: args.slug,
-      product_name: String(args.data?.product_name || args.slug),
-      product_version: String(args.data?.product_version || "unversioned"),
-      product_stage: String(args.data?.product_stage || "unversioned"),
-      parameters: args.params || {},
-      stl_path: stlPath,
-      manifest_path: manifestPath,
-      sha256,
-      generated_at: String(args.data?.generated_at || new Date().toISOString()),
-    };
-
-    await saveDesign(designId, row, !!existingRow?.id);
-  } catch (e: any) {
-    console.error(
-      "design registration failed",
-      designId,
-      e?.message || String(e)
-    );
+  if (existingRow?.user_id && userId && existingRow.user_id !== userId) {
+    throw new Error("Design identifier is already linked to another account");
   }
+
+  const row = {
+    id: designId,
+    user_id: existingRow?.user_id || userId,
+    product_slug: args.slug,
+    product_name: String(args.data?.product_name || args.slug),
+    product_version: String(args.data?.product_version || "unversioned"),
+    product_stage: String(args.data?.product_stage || "unversioned"),
+    parameters: args.params || {},
+    stl_path: stlPath,
+    manifest_path: manifestPath,
+    sha256,
+    generated_at: String(args.data?.generated_at || new Date().toISOString()),
+  };
+
+  await saveDesign(designId, row, !!existingRow?.id);
 }
 
 function messageFrom(x: any): string {
@@ -308,12 +301,25 @@ export async function POST(req: Request) {
     );
   }
 
-  await registerDesign({
-    req,
-    slug,
-    params,
-    data,
-  });
+  try {
+    await registerDesign({
+      req,
+      slug,
+      params,
+      data,
+    });
+  } catch (e: any) {
+    console.error("design registration failed", data?.design_id, e);
+    return json(
+      {
+        ok: false,
+        error: "DESIGN_REGISTRATION_FAILED",
+        detail:
+          "El diseño se ha generado, pero no se ha podido registrar de forma trazable. No se habilita la compra ni la vista previa.",
+      },
+      503
+    );
+  }
 
   if (data?.preview_url) {
     return json({
