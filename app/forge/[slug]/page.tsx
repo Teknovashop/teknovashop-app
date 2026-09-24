@@ -21,6 +21,6 @@ export default async function ProductPage({ params, searchParams }: {
     }
     redirect(`/forge/${slug}${query.size ? `?${query}` : ""}`);
   }
-  const initial = typeof resolvedSearchParams.params === "string" ? searchParams.params : undefined;
+  const initial = typeof resolvedSearchParams.params === "string" ? resolvedSearchParams.params : undefined;
   return <ForgeWorkspace key={`${slug}:${initial || ""}`} model={slug} params={initial} />;
 }
