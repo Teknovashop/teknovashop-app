@@ -20,15 +20,15 @@ function makeDimensionLabel(text: string, scale: number) {
   if (!ctx) return null;
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = "rgba(255,255,255,0.94)";
-  ctx.strokeStyle = "rgba(148,163,184,0.9)";
+  ctx.fillStyle = "rgba(7,19,33,0.94)";
+  ctx.strokeStyle = "rgba(139,233,255,0.55)";
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.roundRect(2, 2, canvas.width - 4, canvas.height - 4, 16);
   ctx.fill();
   ctx.stroke();
 
-  ctx.fillStyle = "#0f172a";
+  ctx.fillStyle = "#e8f7ff";
   ctx.font = "600 34px system-ui, -apple-system, sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -92,7 +92,7 @@ export default function STLViewerPro({ url, className }: Props) {
   const toolModeRef = useRef<ToolMode>("orbit");
   const measurePointsRef = useRef<Point3[]>([]);
 
-  const [bgLight, setBgLight] = useState(true);
+  const [bgLight, setBgLight] = useState(false);
   const [tone, setTone] = useState(0.5);
   const [showShadow, setShowShadow] = useState(true);
   const [size, setSize] = useState({ w: 0, h: 0 });
@@ -331,7 +331,7 @@ export default function STLViewerPro({ url, className }: Props) {
     if (!mount) return;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(bgLight ? 0xf7f7f8 : 0x0d0f12);
+    scene.background = new THREE.Color(bgLight ? 0xf7faff : 0x071321);
     sceneRef.current = scene;
 
     const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 5000);
@@ -355,16 +355,16 @@ export default function STLViewerPro({ url, className }: Props) {
     const pmrem = new THREE.PMREMGenerator(renderer);
     scene.environment = pmrem.fromScene(env).texture;
 
-    const grid = new THREE.GridHelper(600, 60, 0xcccccc, 0xeeeeee);
-    (grid.material as any).opacity = 0.6;
+    const grid = new THREE.GridHelper(600, 60, 0x326cff, 0x18314f);
+    (grid.material as any).opacity = 0.48;
     (grid.material as any).transparent = true;
     scene.add(grid);
     scene.add(new THREE.AxesHelper(60));
 
-    const hemi = new THREE.HemisphereLight(0xffffff, 0x222222, 0.8);
+    const hemi = new THREE.HemisphereLight(0xdbeafe, 0x020617, 1.15);
     scene.add(hemi);
 
-    const dir = new THREE.DirectionalLight(0xffffff, 1.0);
+    const dir = new THREE.DirectionalLight(0xffffff, 1.35);
     dir.position.set(300, 400, 200);
     dir.castShadow = true;
     dir.shadow.mapSize.set(2048, 2048);
@@ -374,7 +374,7 @@ export default function STLViewerPro({ url, className }: Props) {
     // Suelo receptor de sombras
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(3000, 3000),
-      new THREE.ShadowMaterial({ opacity: showShadow ? 0.18 : 0 })
+      new THREE.ShadowMaterial({ opacity: showShadow ? 0.25 : 0 })
     );
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.01;
@@ -489,7 +489,7 @@ export default function STLViewerPro({ url, className }: Props) {
     if (dirLightRef.current) dirLightRef.current.castShadow = showShadow;
     if (groundRef.current) {
       const gm = (groundRef.current.material as any);
-      gm.opacity = showShadow ? 0.18 : 0;
+      gm.opacity = showShadow ? 0.25 : 0;
       gm.needsUpdate = true;
     }
     groupRef.current?.traverse((o: any) => {
@@ -504,13 +504,13 @@ export default function STLViewerPro({ url, className }: Props) {
   useEffect(() => {
     const scene = sceneRef.current as any;
     if (!scene) return;
-    scene.background = new THREE.Color(bgLight ? 0xf7f7f8 : 0x0d0f12);
+    scene.background = new THREE.Color(bgLight ? 0xf7faff : 0x071321);
 
     const mesh = meshRef.current as any;
-    if (mesh?.material) (mesh.material as any).color.setHex(bgLight ? 0xdedede : 0xaaaaaa);
+    if (mesh?.material) (mesh.material as any).color.setHex(bgLight ? 0xd7e1ee : 0xbccbe0);
 
     const edges = edgesRef.current as any;
-    if (edges?.material) (edges.material as any).color.setHex(bgLight ? 0x262626 : 0xffffff);
+    if (edges?.material) (edges.material as any).color.setHex(bgLight ? 0x1e3a5f : 0x8be9ff);
   }, [bgLight]);
 
   function fitCameraToObject(obj: any) {
@@ -570,9 +570,9 @@ export default function STLViewerPro({ url, className }: Props) {
 
         // Malla principal
         const mat = new THREE.MeshStandardMaterial({
-          color: bgLight ? 0xdedede : 0xaaaaaa,
-          metalness: 0.12,
-          roughness: 0.86,
+          color: bgLight ? 0xd7e1ee : 0xbccbe0,
+          metalness: 0.28,
+          roughness: 0.54,
         });
         const mesh = new THREE.Mesh(geometry, mat);
         mesh.castShadow = showShadow;
@@ -582,7 +582,7 @@ export default function STLViewerPro({ url, className }: Props) {
 
         // Contorno para resaltar grabados
         const edgesGeom = new THREE.EdgesGeometry(geometry, 15);
-        const edgesMat = new THREE.LineBasicMaterial({ color: bgLight ? 0x262626 : 0xffffff });
+        const edgesMat = new THREE.LineBasicMaterial({ color: bgLight ? 0x1e3a5f : 0x8be9ff });
         const edges = new THREE.LineSegments(edgesGeom, edgesMat);
         group.add(edges);
         edgesRef.current = edges;
@@ -613,12 +613,12 @@ export default function STLViewerPro({ url, className }: Props) {
   return (
     <div
       ref={mountRef}
-      className={`relative w-full overflow-hidden rounded-2xl border border-neutral-200 shadow-sm ${
-        className ?? "h-[520px] bg-white"
+      className={`relative w-full overflow-hidden rounded-[1.35rem] border border-white/10 shadow-inner ${
+        className ?? "h-[560px] bg-[#071321]"
       }`}
     >
-      {/* Regla horizontal: escala real aproximada en el plano de la cámara */}
-      <div className="pointer-events-none absolute left-10 right-0 top-0 z-10 h-8 border-b border-neutral-200 bg-white/95">
+      {/* Reglas CAD */}
+      <div className="pointer-events-none absolute left-10 right-0 top-0 z-10 h-8 border-b border-white/10 bg-[#071321]/88 backdrop-blur">
         <svg width={Math.max(1, size.w - 40)} height={32} className="block">
           {Array.from({ length: 51 }).map((_, i) => {
             const usable = Math.max(1, size.w - 40);
@@ -631,11 +631,11 @@ export default function STLViewerPro({ url, className }: Props) {
                   y1={32}
                   x2={x}
                   y2={major ? 17 : 24}
-                  stroke={major ? "#64748b" : "#cbd5e1"}
+                  stroke={major ? "#8be9ff" : "#334155"}
                   strokeWidth="1"
                 />
                 {major && (
-                  <text x={x + 2} y={11} fontSize="9" fill="#475569">
+                  <text x={x + 2} y={11} fontSize="9" fill="#94a3b8">
                     {fmt(((i - 25) / 50) * ruler.spanX, unit)}
                   </text>
                 )}
@@ -645,8 +645,7 @@ export default function STLViewerPro({ url, className }: Props) {
         </svg>
       </div>
 
-      {/* Regla vertical */}
-      <div className="pointer-events-none absolute bottom-0 left-0 top-0 z-10 w-10 border-r border-neutral-200 bg-white/95">
+      <div className="pointer-events-none absolute bottom-0 left-0 top-0 z-10 w-10 border-r border-white/10 bg-[#071321]/88 backdrop-blur">
         <svg width={40} height={Math.max(1, size.h)} className="block">
           {Array.from({ length: 51 }).map((_, i) => {
             const y = (i / 50) * Math.max(1, size.h);
@@ -658,11 +657,11 @@ export default function STLViewerPro({ url, className }: Props) {
                   y1={y}
                   x2={major ? 24 : 32}
                   y2={y}
-                  stroke={major ? "#64748b" : "#cbd5e1"}
+                  stroke={major ? "#8be9ff" : "#334155"}
                   strokeWidth="1"
                 />
                 {major && i > 0 && (
-                  <text x={2} y={y - 3} fontSize="9" fill="#475569">
+                  <text x={2} y={y - 3} fontSize="9" fill="#94a3b8">
                     {fmt(((25 - i) / 50) * ruler.spanY, unit)}
                   </text>
                 )}
@@ -672,117 +671,152 @@ export default function STLViewerPro({ url, className }: Props) {
         </svg>
       </div>
 
-      <div className="absolute left-1 top-1 z-20 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[10px] font-semibold text-neutral-600">
+      <div className="absolute left-1 top-1 z-20 rounded-md border border-cyan-300/20 bg-[#071321]/95 px-1.5 py-1 text-[10px] font-bold text-cyan-200">
         {unit}
       </div>
 
-      {/* Toolbar */}
-      <div className="pointer-events-auto absolute right-3 top-11 z-20 flex flex-wrap items-center gap-1.5 rounded-xl border border-neutral-200/80 bg-white/95 px-2.5 py-2 shadow-md backdrop-blur">
-        <div className="flex overflow-hidden rounded-md border border-neutral-200">
-          <button onClick={() => setView("iso")} className="px-2 py-1 text-xs hover:bg-neutral-100">Iso</button>
-          <button onClick={() => setView("front")} className="border-l px-2 py-1 text-xs hover:bg-neutral-100">Frontal</button>
-          <button onClick={() => setView("top")} className="border-l px-2 py-1 text-xs hover:bg-neutral-100">Superior</button>
-          <button onClick={() => setView("right")} className="border-l px-2 py-1 text-xs hover:bg-neutral-100">Derecha</button>
-        </div>
+      {/* Toolbar premium */}
+      <div className="pointer-events-auto absolute right-3 top-11 z-20 max-w-[calc(100%-56px)] rounded-2xl border border-white/10 bg-[#071321]/88 p-2 shadow-2xl backdrop-blur-xl">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex overflow-hidden rounded-lg border border-white/10 bg-white/5">
+            {[
+              ["iso", "Iso"],
+              ["front", "Frontal"],
+              ["top", "Superior"],
+              ["right", "Derecha"],
+            ].map(([value, label], index) => (
+              <button
+                key={value}
+                onClick={() => setView(value as "iso" | "front" | "top" | "right")}
+                className={(index ? "border-l border-white/10 " : "") + "px-2.5 py-1.5 text-[11px] font-bold text-slate-200 transition hover:bg-white/10"}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
 
-        <button
-          type="button"
-          onClick={() => {
-            const next = toolMode === "measure" ? "orbit" : "measure";
-            setToolMode(next);
-            if (next === "measure") clearMeasurement();
-          }}
-          className={`rounded-md border px-2 py-1 text-xs font-medium ${
-            toolMode === "measure"
-              ? "border-orange-300 bg-orange-50 text-orange-700"
-              : "border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50"
-          }`}
-          title="Medir distancia entre dos puntos"
-        >
-          {toolMode === "measure" ? "Midiendo…" : "Medir"}
-        </button>
-
-        {measurePoints.length > 0 && (
           <button
             type="button"
-            onClick={clearMeasurement}
-            className="rounded-md border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-600 hover:bg-neutral-50"
+            onClick={() => {
+              const next = toolMode === "measure" ? "orbit" : "measure";
+              setToolMode(next);
+              if (next === "measure") clearMeasurement();
+            }}
+            className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-bold transition ${
+              toolMode === "measure"
+                ? "border-orange-300/40 bg-orange-400/15 text-orange-200"
+                : "border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"
+            }`}
+            title="Medir distancia entre dos puntos"
           >
-            Limpiar medida
+            {toolMode === "measure" ? "Midiendo…" : "Medir"}
           </button>
-        )}
 
-        <label className="flex items-center gap-1.5 text-xs">
-          <input
-            type="checkbox"
-            checked={showDimensions}
-            onChange={(e) => setShowDimensions(e.target.checked)}
-          />
-          Cotas
-        </label>
+          {measurePoints.length > 0 && (
+            <button
+              type="button"
+              onClick={clearMeasurement}
+              className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-[11px] font-bold text-slate-300 hover:bg-white/10"
+            >
+              Limpiar
+            </button>
+          )}
 
-        <select
-          value={unit}
-          onChange={(e) => setUnit(e.target.value as Unit)}
-          className="rounded-md border border-neutral-200 bg-white px-2 py-1 text-xs"
-        >
-          <option value="mm">mm</option>
-          <option value="cm">cm</option>
-        </select>
+          <label className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-[11px] font-bold text-slate-300">
+            <input
+              type="checkbox"
+              checked={showDimensions}
+              onChange={(e) => setShowDimensions(e.target.checked)}
+              className="accent-cyan-300"
+            />
+            Cotas
+          </label>
 
-        <label className="flex items-center gap-1.5 text-xs">
-          <input type="checkbox" checked={bgLight} onChange={(e) => setBgLight(e.target.checked)} />
-          Claro
-        </label>
+          <select
+            value={unit}
+            onChange={(e) => setUnit(e.target.value as Unit)}
+            className="rounded-lg border border-white/10 bg-[#0d2035] px-2 py-1.5 text-[11px] font-bold text-slate-200"
+          >
+            <option value="mm">mm</option>
+            <option value="cm">cm</option>
+          </select>
 
-        <label className="flex items-center gap-1.5 text-xs">
-          <input type="checkbox" checked={showShadow} onChange={(e) => setShowShadow(e.target.checked)} />
-          Sombras
-        </label>
+          <button
+            type="button"
+            onClick={() => setBgLight((value) => !value)}
+            className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-[11px] font-bold text-slate-300 hover:bg-white/10"
+          >
+            {bgLight ? "Tema oscuro" : "Tema claro"}
+          </button>
 
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs text-neutral-600">Luz</span>
-          <input
-            className="w-20"
-            type="range"
-            min={0}
-            max={1}
-            step={0.01}
-            value={tone}
-            onChange={(e) => setTone(parseFloat(e.currentTarget.value))}
-          />
+          <label className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-[11px] font-bold text-slate-300">
+            <input
+              type="checkbox"
+              checked={showShadow}
+              onChange={(e) => setShowShadow(e.target.checked)}
+              className="accent-cyan-300"
+            />
+            Sombras
+          </label>
+
+          <label className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-[11px] font-bold text-slate-300">
+            Luz
+            <input
+              className="w-16 accent-cyan-300"
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={tone}
+              onChange={(e) => setTone(parseFloat(e.currentTarget.value))}
+            />
+          </label>
         </div>
-
-        <span
-          className="rounded-md border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-[11px] font-medium text-neutral-500"
-          title="La descarga oficial se realiza desde el paquete autorizado del diseño"
-        >
-          Vista previa
-        </span>
       </div>
 
-      {modelInfo && (
-        <div className="pointer-events-none absolute bottom-3 left-12 z-20 rounded-lg border border-neutral-200 bg-white/95 px-3 py-2 shadow-sm">
-          <div className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
-            Dimensiones reales
-          </div>
-          <div className="mt-0.5 font-mono text-xs font-semibold text-neutral-800">
-            X {fmtDim(modelInfo.x, unit)} · Y {fmtDim(modelInfo.y, unit)} · Z {fmtDim(modelInfo.z, unit)}
-          </div>
-          <div className="mt-0.5 text-[10px] text-neutral-500">
-            {modelInfo.triangles.toLocaleString("es-ES")} triángulos · paso recomendado {fmt(ruler.step, unit)} {unit}
+      {!url && (
+        <div className="pointer-events-none absolute inset-0 z-[5] grid place-items-center px-8 pt-8">
+          <div className="max-w-md text-center">
+            <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl border border-cyan-200/15 bg-cyan-300/5 text-cyan-200 shadow-[0_20px_60px_rgba(37,99,235,.18)]">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-8 w-8">
+                <path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z" />
+                <path d="m4.4 7.7 7.6 4.2 7.6-4.2M12 12v9" />
+              </svg>
+            </div>
+            <div className="mt-4 text-sm font-black text-white">Tu pieza aparecerá aquí</div>
+            <div className="mt-2 text-xs leading-5 text-slate-400">
+              Ajusta los parámetros y genera una vista previa protegida para revisar escala, cotas y orientación.
+            </div>
           </div>
         </div>
       )}
 
-      <div className="pointer-events-none absolute bottom-3 right-3 z-20 rounded-md bg-neutral-900/75 px-2.5 py-1.5 text-[10px] text-white">
+      {modelInfo && (
+        <div className="pointer-events-none absolute bottom-3 left-12 z-20 rounded-xl border border-white/10 bg-[#071321]/88 px-3 py-2.5 shadow-xl backdrop-blur">
+          <div className="text-[9px] font-black uppercase tracking-[0.14em] text-cyan-300">
+            Dimensiones reales
+          </div>
+          <div className="mt-1 font-mono text-[11px] font-bold text-slate-100">
+            X {fmtDim(modelInfo.x, unit)} · Y {fmtDim(modelInfo.y, unit)} · Z {fmtDim(modelInfo.z, unit)}
+          </div>
+          <div className="mt-1 text-[9px] text-slate-400">
+            {modelInfo.triangles.toLocaleString("es-ES")} triángulos · paso {fmt(ruler.step, unit)} {unit}
+          </div>
+        </div>
+      )}
+
+      <div className="pointer-events-none absolute bottom-3 right-3 z-20 max-w-[52%] rounded-lg border border-white/10 bg-[#071321]/80 px-2.5 py-1.5 text-right text-[9px] font-medium text-slate-300 backdrop-blur">
         {toolMode === "measure"
           ? measurePoints.length === 0
-            ? "Medir: selecciona el primer punto"
+            ? "Selecciona el primer punto"
             : measurePoints.length === 1
-              ? "Medir: selecciona el segundo punto"
-              : "Medición completada · pulsa Medir para salir"
-          : "Arrastrar: rotar · Rueda: zoom · Botón derecho: desplazar"}
+              ? "Selecciona el segundo punto"
+              : "Medición completada"
+          : "Arrastrar · rotar · rueda · zoom · botón derecho · desplazar"}
+      </div>
+
+      <div className="pointer-events-none absolute bottom-3 left-1/2 z-20 -translate-x-1/2 rounded-full border border-emerald-300/15 bg-emerald-400/10 px-3 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-emerald-200">
+        Preview · STL final protegido
       </div>
     </div>
   );
