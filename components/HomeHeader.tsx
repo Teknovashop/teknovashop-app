@@ -36,6 +36,7 @@ const NAV = [
   ["Tecnología", "#quality"],
   ["Precios", "#pricing"],
   ["FAQ", "#faq"],
+  ["Mis compras", "/account"],
 ];
 
 export default function HomeHeader() {

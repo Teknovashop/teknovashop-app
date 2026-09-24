@@ -125,14 +125,30 @@ export async function POST(req: Request) {
       }
 
       if (!row.user_id) {
-        const { error: claimError } = await admin
+        const { data: claimed, error: claimError } = await admin
           .from("designs")
           .update({ user_id: user.id })
           .eq("id", designId)
-          .is("user_id", null);
+          .is("user_id", null)
+          .select("id,user_id")
+          .maybeSingle();
 
         if (claimError) {
           return json({ ok: false, error: "DESIGN_CLAIM_FAILED" }, 500);
+        }
+
+        // Atomic claim: if another authenticated user claimed this design
+        // between our SELECT and UPDATE, no row is returned. Never create a
+        // Stripe Checkout Session for a design the current user no longer owns.
+        if (!claimed || claimed.user_id !== user.id) {
+          return json(
+            {
+              ok: false,
+              error: "DESIGN_CLAIM_CONFLICT",
+              detail: "This generated design is already linked to another account.",
+            },
+            409
+          );
         }
 
         row.user_id = user.id;

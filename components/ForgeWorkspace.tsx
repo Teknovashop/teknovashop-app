@@ -21,7 +21,10 @@ export default function ForgeWorkspace({ model, params }: { model: string; param
       <header className="border-b border-slate-200 bg-white">
         <nav aria-label="Navegación del configurador" className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-4">
           <Link href="/" className="font-black tracking-tight">Teknovashop <span className="text-blue-600">Forge</span></Link>
-          <Link href="/catalog" className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold hover:bg-slate-50">← Ver catálogo</Link>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/account" className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold hover:bg-slate-50">Mis compras</Link>
+            <Link href="/catalog" className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold hover:bg-slate-50">← Ver catálogo</Link>
+          </div>
         </nav>
       </header>
       <div className="mx-auto grid max-w-7xl grid-cols-1 gap-6 p-4 lg:grid-cols-12 lg:py-8">
