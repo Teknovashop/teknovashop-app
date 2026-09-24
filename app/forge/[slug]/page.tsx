@@ -5,20 +5,22 @@ import { canonicalModelSlug } from "@/lib/model-routing";
 
 export const dynamic = "force-dynamic";
 
-export default function ProductPage({ params, searchParams }: {
-  params: { slug: string };
-  searchParams?: Record<string, string | string[] | undefined>;
+export default async function ProductPage({ params, searchParams }: {
+  params: Promise<{ slug: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const slug = canonicalModelSlug(params.slug);
+  const resolvedParams = await params;
+  const resolvedSearchParams = (await searchParams) || {};
+  const slug = canonicalModelSlug(resolvedParams.slug);
   if (!MODELS.some((model) => model.slug === slug)) notFound();
-  if (slug !== params.slug) {
+  if (slug !== resolvedParams.slug) {
     const query = new URLSearchParams();
-    for (const [key, value] of Object.entries(searchParams || {})) {
+    for (const [key, value] of Object.entries(resolvedSearchParams)) {
       if (typeof value === "string") query.set(key, value);
       else if (Array.isArray(value)) value.forEach((item) => query.append(key, item));
     }
     redirect(`/forge/${slug}${query.size ? `?${query}` : ""}`);
   }
-  const initial = typeof searchParams?.params === "string" ? searchParams.params : undefined;
+  const initial = typeof resolvedSearchParams.params === "string" ? searchParams.params : undefined;
   return <ForgeWorkspace key={`${slug}:${initial || ""}`} model={slug} params={initial} />;
 }
