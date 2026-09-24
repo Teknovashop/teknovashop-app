@@ -1,7 +1,8 @@
 // app/forge/[slug]/layout.tsx
 import type { Metadata } from 'next';
 import { SITE } from '@/lib/site';
-import { MODELS } from '@/data/models'; // <- corregido
+import { MODELS } from '@/data/models';
+import { canonicalModelSlug } from '@/lib/model-routing';
 import type { ReactNode } from 'react';
 
 type Props = {
@@ -10,12 +11,11 @@ type Props = {
 };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const slug = params.slug;
-  // MODELS puede tener estructura propia; forzamos any para no romper tu tipado
-  const m = (MODELS as any[]).find((x) => x.slug === slug);
+  const slug = canonicalModelSlug(params.slug);
+  const m = MODELS.find((x) => x.slug === slug);
 
   const titleBase = m?.name || 'Configurador';
-  const title = `${titleBase} – ${SITE.name}`;
+  const title = titleBase;
 
   const description =
     m?.description ||
@@ -23,13 +23,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   const canonical = `${SITE.url}/forge/${slug}`;
   const ogImage =
-    m?.thumbnail || m?.image || `${SITE.url}/og-default.png`;
+    m?.thumbnail || `${SITE.url}/hero/hero.jpg`;
 
   return {
     title,
     description,
     alternates: { canonical },
-    robots: { index: true, follow: true },
+    robots: { index: !!m, follow: true },
     openGraph: {
       type: 'website',
       locale: SITE.locale as any,

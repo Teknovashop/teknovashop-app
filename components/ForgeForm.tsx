@@ -1,8 +1,10 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { forgeGenerate, DEFAULT_PARAMS, FIELDS } from "@/lib/forge-config";
+import { canonicalModelSlug as canonicalize } from "@/lib/model-routing";
+import { MODELS } from "@/data/models";
 import type { ForgeModelSlug } from "@/lib/forge-spec";
 
 type TextMode = "engrave" | "emboss";
@@ -13,6 +15,7 @@ type ForgeFormProps = {
   initialModel?: string;
   initialParams?: any;
   onGenerated?: (url: string) => void;
+  onModelChange?: () => void;
 };
 
 type CatalogItem = { slug: string; label: string };
@@ -44,14 +47,6 @@ type AccessState = {
   hasAccess: boolean;
   plan?: string;
 };
-
-const CANONICAL: Record<string, string> = {
-  "tablet-stand": "laptop-stand",
-  "phone-dock": "phone-stand",
-  "monitor-stand": "cable-tray",
-};
-
-const HIDE_SLUGS = new Set<string>(Object.keys(CANONICAL));
 
 const NICE: Record<string, string> = {
   "vesa-adapter": "Adaptador VESA (2 patrones)",
@@ -87,15 +82,6 @@ function n(v: any, fb: number) {
   return Number.isFinite(x) ? x : fb;
 }
 
-function kebab(s?: string) {
-  return (s || "").trim().toLowerCase().replace(/_/g, "-");
-}
-
-function canonicalize(s?: string) {
-  const k = kebab(s);
-  return CANONICAL[k] || k;
-}
-
 function humanizeParameter(key: string) {
   const explicit: Record<string, string> = {
     margin: "Margen",
@@ -122,39 +108,16 @@ function fallbackField(key: string, value: any) {
   };
 }
 
-const FALLBACK_MODELS: CatalogItem[] = [
-  "vesa-adapter",
-  "router-mount",
-  "cable-tray",
-  "laptop-stand",
-  "phone-stand",
-  "ssd-holder",
-  "raspi-case",
-  "go-pro-mount",
-  "mic-arm-clip",
-  "camera-plate",
-  "wall-hook",
-  "wall-bracket",
-  "cable-clip",
-  "hub-holder",
-  "headset-stand",
-  "vesa-shelf",
-  "enclosure-ip65",
-  "qr-plate",
-].map((slug) => ({
-  slug,
-  label:
-    NICE[slug] ||
-    slug
-      .split("-")
-      .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
-      .join(" "),
+const FALLBACK_MODELS: CatalogItem[] = MODELS.map((model) => ({
+  slug: model.slug,
+  label: model.name,
 }));
 
 export default function ForgeForm({
   initialModel,
   initialParams,
   onGenerated,
+  onModelChange,
 }: ForgeFormProps) {
   const searchParams = useSearchParams();
   const pendingBuyDesignId = searchParams.get("buy");
@@ -224,11 +187,7 @@ export default function ForgeForm({
         setCatalog(mapped);
         setSlug((prev) => {
           const slugs = new Set(products.map((p) => p.slug));
-          const prefer =
-            normalizedInitial && slugs.has(normalizedInitial)
-              ? normalizedInitial
-              : prev;
-          return slugs.has(prefer) ? prefer : mapped[0].slug;
+          return slugs.has(prev) ? prev : mapped[0].slug;
         });
       } catch {
         // Mantener catálogo local como fallback.
@@ -274,7 +233,10 @@ export default function ForgeForm({
     productMeta[slug]?.capabilities?.free_holes ??
     ["qr-plate", "vesa-adapter"].includes(slug);
 
+  const initializedSlug = useRef<string | null>(null);
   useEffect(() => {
+    const previousSlug = initializedSlug.current;
+    initializedSlug.current = slug;
     const defaults = {
       ...(((DEFAULT_PARAMS as any)[slug]) || {}),
       ...(productMeta[slug]?.defaults || {}),
@@ -282,8 +244,17 @@ export default function ForgeForm({
     const schemaDefaults = Object.fromEntries(
       Object.entries(modelSchema).map(([key, cfg]: [string, any]) => [key, cfg.defaultValue])
     );
-    setModelParams({ ...schemaDefaults, ...defaults });
-  }, [slug, modelSchema, productMeta]);
+    setModelParams((previous) => {
+      const seed = previousSlug === slug ? previous :
+        previousSlug === null && slug === normalizedInitial ? initialParams : {};
+      const overrides = Object.fromEntries(
+        Object.entries(seed || {}).filter(([key, value]) =>
+          key in modelSchema && typeof value === "number" && Number.isFinite(value)
+        )
+      );
+      return { ...schemaDefaults, ...defaults, ...overrides };
+    });
+  }, [slug, modelSchema, productMeta, normalizedInitial, initialParams]);
 
   const [text, setText] = useState<string>(initialParams?.text ?? "");
   const [textMode, setTextMode] = useState<TextMode>(
@@ -568,6 +539,7 @@ export default function ForgeForm({
             value={slug}
             onChange={(e) => {
               setSlug(e.target.value);
+              onModelChange?.();
               setFeedback(null);
               setLastDesign(null);
               setHoles([]);
