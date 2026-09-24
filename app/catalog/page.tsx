@@ -38,7 +38,8 @@ function CatalogImage({ model, priority }: { model: ForgeModel; priority?: boole
           src={model.thumbnail}
           alt={model.name}
           fill
-          priority={priority}
+          loading={priority ? "eager" : "lazy"}
+          fetchPriority={priority ? "high" : "auto"}
           sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
           onError={() => setFailed(true)}
           className={
