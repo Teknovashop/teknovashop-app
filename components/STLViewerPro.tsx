@@ -92,6 +92,8 @@ export default function STLViewerPro({ url, className }: Props) {
   const toolModeRef = useRef<ToolMode>("orbit");
   const measurePointsRef = useRef<Point3[]>([]);
 
+  const [viewerError, setViewerError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [bgLight, setBgLight] = useState(false);
   const [tone, setTone] = useState(0.5);
   const [showShadow, setShowShadow] = useState(true);
@@ -338,10 +340,18 @@ export default function STLViewerPro({ url, className }: Props) {
     camera.position.set(220, 180, 220);
     cameraRef.current = camera;
 
-    const renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      powerPreference: "high-performance",
-    });
+    let renderer: any;
+    try {
+      renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        powerPreference: "high-performance",
+      });
+    } catch {
+      sceneRef.current = null;
+      cameraRef.current = null;
+      setViewerError("Este navegador no puede mostrar la vista 3D. Activa la aceleración gráfica o utiliza otro navegador. El formulario sigue disponible.");
+      return;
+    }
     (renderer as any).outputColorSpace = (THREE as any).SRGBColorSpace ?? "srgb";
     (renderer as any).toneMapping = (THREE as any).ACESFilmicToneMapping ?? 0;
     (renderer as any).toneMappingExposure = 0.8 + tone * 0.7;
@@ -353,7 +363,9 @@ export default function STLViewerPro({ url, className }: Props) {
 
     const env = new RoomEnvironment();
     const pmrem = new THREE.PMREMGenerator(renderer);
-    scene.environment = pmrem.fromScene(env).texture;
+    const environmentTarget = pmrem.fromScene(env);
+    scene.environment = environmentTarget.texture;
+    env.dispose();
 
     const grid = new THREE.GridHelper(600, 60, 0x326cff, 0x18314f);
     (grid.material as any).opacity = 0.48;
@@ -459,7 +471,9 @@ export default function STLViewerPro({ url, className }: Props) {
       (controls as any).removeEventListener("change", updateRuler);
       controls.dispose();
       renderer.dispose();
+      environmentTarget.dispose();
       pmrem.dispose();
+      disposeObject(scene);
       scene.clear();
       if (renderer.domElement && renderer.domElement.parentElement) {
         renderer.domElement.parentElement.removeChild(renderer.domElement);
@@ -562,10 +576,16 @@ export default function STLViewerPro({ url, className }: Props) {
 
     if (!url) return;
 
+    setLoadError(null);
+    let cancelled = false;
     const loader = new STLLoader();
     loader.load(
       url,
       (geometry) => {
+        if (cancelled) {
+          geometry.dispose();
+          return;
+        }
         geometry.computeVertexNormals();
 
         // Malla principal
@@ -605,10 +625,28 @@ export default function STLViewerPro({ url, className }: Props) {
         fitCameraToObject(group);
       },
       undefined,
-      () => {}
+      () => {
+        if (!cancelled) {
+          setLoadError("No se ha podido cargar la vista 3D. Vuelve a generar la pieza para renovar la vista previa.");
+        }
+      }
     );
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url]);
+
+  if (viewerError) {
+    return (
+      <div role="status" className={`flex items-center justify-center rounded-2xl border border-slate-200 bg-white p-8 text-center ${className || "h-[560px]"}`}>
+        <div>
+          <h2 className="text-lg font-bold text-slate-950">Vista 3D no disponible</h2>
+          <p className="mt-3 max-w-md text-sm leading-6 text-slate-600">{viewerError}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -617,6 +655,11 @@ export default function STLViewerPro({ url, className }: Props) {
         className ?? "h-[560px] bg-[#071321]"
       }`}
     >
+      {loadError && (
+        <p role="alert" className="absolute left-4 right-4 top-12 z-30 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">
+          {loadError}
+        </p>
+      )}
       {/* Reglas CAD */}
       <div className="pointer-events-none absolute left-10 right-0 top-0 z-10 h-8 border-b border-white/10 bg-[#071321]/88 backdrop-blur">
         <svg width={Math.max(1, size.w - 40)} height={32} className="block">

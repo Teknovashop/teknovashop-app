@@ -1,17 +1,11 @@
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-
-function safeNext(value: string | null) {
-  if (!value || !value.startsWith("/") || value.startsWith("//")) {
-    return "/forge";
-  }
-  return value;
-}
+import { safeReturnPath } from "@/lib/commerce-policy";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const code = url.searchParams.get("code");
-  const next = safeNext(url.searchParams.get("next"));
+  const next = safeReturnPath(url.searchParams.get("next"));
 
   if (code) {
     const supabase = await createSupabaseServerClient();

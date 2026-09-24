@@ -1,5 +1,8 @@
+import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { selectEntitlement } from "@/lib/commerce-policy";
+import { claimDesign } from "@/lib/server/designs";
 
 import type { CommercePlan } from "@/lib/commerce";
 import { buildLicenseText } from "@/lib/server/license";
@@ -23,12 +26,6 @@ type DownloadDesignRow = {
   sha256: string;
   generated_at: string;
 };
-
-function isCurrent(row: any) {
-  if (!row?.active) return false;
-  if (!row?.expires_at) return true;
-  return new Date(row.expires_at).getTime() > Date.now();
-}
 
 function safeFilePart(value: string) {
   return value
@@ -92,22 +89,19 @@ export async function GET(
   const { data: rows, error: entitlementError } = await admin
     .from("entitlements")
     .select(
-      "id,kind,plan,design_id,active,expires_at,terms_version,license_version"
+      "id,kind,plan,design_id,active,starts_at,expires_at,terms_version,license_version"
     )
     .eq("user_id", user.id)
     .eq("active", true);
 
   if (entitlementError) {
     return NextResponse.json(
-      { ok: false, error: entitlementError.message },
+      { ok: false, error: "LICENSE_CHECK_UNAVAILABLE" },
       { status: 500 }
     );
   }
 
-  const current = (rows || []).filter(isCurrent);
-  const entitlement =
-    current.find((x: any) => x.kind === "design" && x.design_id === designId) ||
-    current.find((x: any) => x.kind === "subscription");
+  const entitlement = selectEntitlement(rows || [], designId);
 
   if (!entitlement) {
     return NextResponse.json(
@@ -117,16 +111,10 @@ export async function GET(
   }
 
   if (!designRow.user_id) {
-    const { error: claimError } = await admin
-      .from("designs")
-      .update({ user_id: user.id })
-      .eq("id", designId)
-      .is("user_id", null);
-
-    if (claimError) {
+    if (!(await claimDesign(admin, designId, user.id))) {
       return NextResponse.json(
-        { ok: false, error: "DESIGN_CLAIM_FAILED" },
-        { status: 500 }
+        { ok: false, error: "DESIGN_NOT_OWNED" },
+        { status: 403 }
       );
     }
   }
@@ -151,6 +139,25 @@ export async function GET(
 
   const stl = Buffer.from(await stlDownload.data.arrayBuffer());
   const manifest = Buffer.from(await manifestDownload.data.arrayBuffer());
+  if (createHash("sha256").update(stl).digest("hex") !== designRow.sha256) {
+    return NextResponse.json(
+      { ok: false, error: "ARTIFACT_INTEGRITY_ERROR" },
+      { status: 502 }
+    );
+  }
+
+  let manifestData;
+  try {
+    manifestData = JSON.parse(manifest.toString("utf8"));
+  } catch {
+    manifestData = null;
+  }
+  if (manifestData?.design_id !== designId || manifestData?.artifact?.sha256 !== designRow.sha256) {
+    return NextResponse.json(
+      { ok: false, error: "MANIFEST_INTEGRITY_ERROR" },
+      { status: 502 }
+    );
+  }
   const plan = entitlement.plan as CommercePlan;
 
   const license = buildLicenseText({

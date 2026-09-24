@@ -28,18 +28,18 @@ export default function CheckoutSuccess({
     async function verifyAndWaitForEntitlement() {
       try {
         const verifyRes = await fetch(
-          "/api/checkout/session?session_id=" + encodeURIComponent(sessionId),
+          "/api/checkout/status?session_id=" + encodeURIComponent(sessionId),
           { cache: "no-store" }
         );
         const verified = await verifyRes.json().catch(() => ({}));
 
-        if (!verifyRes.ok || !verified?.verified) {
+        if (!verifyRes.ok || !verified?.ok) {
           throw new Error(
             verified?.error || "No se ha podido verificar la sesión de pago."
           );
         }
 
-        if (!verified?.complete) {
+        if (!verified?.paid) {
           setState("waiting");
           setMessage(
             "La sesión existe, pero Stripe todavía no marca el pago como completado."
@@ -61,6 +61,16 @@ export default function CheckoutSuccess({
         setDesignId(verifiedDesignId);
         setPlan(typeof verified.plan === "string" ? verified.plan : undefined);
         setMessage("Pago verificado. Activando tu licencia…");
+
+        if (verified?.ready) {
+          setState("ready");
+          setMessage(
+            verifiedDesignId
+              ? "Pago confirmado. Tu diseño ya tiene licencia y está listo para descargar."
+              : "Pago confirmado. Tu suscripción ya está activa."
+          );
+          return;
+        }
 
         for (let attempt = 0; attempt < 15 && !cancelled; attempt++) {
           const qs = verifiedDesignId

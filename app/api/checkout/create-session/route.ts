@@ -1,6 +1,8 @@
-import Stripe from "stripe";
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { isCommercePlan, selectEntitlement } from "@/lib/commerce-policy";
+import { claimDesign } from "@/lib/server/designs";
+import { getStripe } from "@/lib/server/stripe";
 
 import {
   LICENSE_VERSION,
@@ -14,7 +16,6 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY || "";
-const stripe = new Stripe(STRIPE_SECRET, { apiVersion: "2024-06-20" });
 
 type DesignRow = {
   id: string;
@@ -42,15 +43,7 @@ function siteUrlFromReq(req: Request): string {
   const envSite = process.env.NEXT_PUBLIC_SITE_URL;
   if (envSite) return envSite.replace(/\/+$/, "");
 
-  const origin = req.headers.get("origin");
-  if (origin) return origin.replace(/\/+$/, "");
-
-  const proto = req.headers.get("x-forwarded-proto") || "https";
-  const host =
-    req.headers.get("x-forwarded-host") ||
-    req.headers.get("host") ||
-    "teknovashop-app.vercel.app";
-  return `${proto}://${host}`.replace(/\/+$/, "");
+  return new URL(req.url).origin;
 }
 
 function json(body: any, status = 200) {
@@ -60,7 +53,7 @@ function json(body: any, status = 200) {
 export async function POST(req: Request) {
   try {
     if (!STRIPE_SECRET) {
-      return json({ ok: false, error: "STRIPE_SECRET_KEY not set" }, 500);
+      return json({ ok: false, error: "PAYMENTS_NOT_CONFIGURED" }, 503);
     }
     if (!LEGAL_READY) {
       return json(
@@ -73,8 +66,16 @@ export async function POST(req: Request) {
       );
     }
 
-    const body = (await req.json()) as Body;
+    const origin = req.headers.get("origin");
+    if (origin && origin !== new URL(siteUrlFromReq(req)).origin) {
+      return json({ ok: false, error: "INVALID_ORIGIN" }, 403);
+    }
+
+    const body = (await req.json().catch(() => null)) as Body;
     const plan = body?.price;
+    if (!isCommercePlan(plan)) {
+      return json({ ok: false, error: "INVALID_PLAN" }, 400);
+    }
 
     const supabase = await createSupabaseServerClient();
     const {
@@ -85,7 +86,7 @@ export async function POST(req: Request) {
       const next =
         plan === "oneoff" && body?.design_id
           ? `/forge?buy=${encodeURIComponent(String(body.design_id))}`
-          : "/#precios";
+          : "/#pricing";
       return json(
         {
           ok: false,
@@ -96,7 +97,7 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!plan || !PRICE_ENV[plan]) {
+    if (!PRICE_ENV[plan]) {
       return json({ ok: false, error: "PRICE_NOT_CONFIGURED" }, 400);
     }
 
@@ -135,29 +136,14 @@ export async function POST(req: Request) {
       }
 
       if (!row.user_id) {
-        const { data: claimed, error: claimError } = await admin
-          .from("designs")
-          .update({ user_id: user.id })
-          .eq("id", designId)
-          .is("user_id", null)
-          .select("id,user_id")
-          .maybeSingle();
-
-        if (claimError) {
-          return json({ ok: false, error: "DESIGN_CLAIM_FAILED" }, 500);
-        }
-
-        // Atomic claim: if another authenticated user claimed this design
-        // between our SELECT and UPDATE, no row is returned. Never create a
-        // Stripe Checkout Session for a design the current user no longer owns.
-        if (!claimed || claimed.user_id !== user.id) {
+        if (!(await claimDesign(admin, designId, user.id))) {
           return json(
             {
               ok: false,
               error: "DESIGN_CLAIM_CONFLICT",
               detail: "This generated design is already linked to another account.",
             },
-            409
+            403
           );
         }
 
@@ -167,8 +153,26 @@ export async function POST(req: Request) {
       design = row;
     }
 
+    const entitlementRows = await admin.from("entitlements").select("*").eq("user_id", user.id);
+    if (entitlementRows.error) {
+      return json({ ok: false, error: "LICENSE_CHECK_UNAVAILABLE" }, 503);
+    }
+    const existingAccess = selectEntitlement(entitlementRows.data || [], design?.id);
+    if (existingAccess) {
+      return json({ ok: true, url: plan === "oneoff" ? "/account" : "/account?subscription=active" });
+    }
+
     const priceId = PRICE_ENV[plan]!;
+    const stripe = getStripe();
     const site = siteUrlFromReq(req);
+    const selectedPrice = await stripe.prices.retrieve(priceId);
+    if (!selectedPrice.active || (plan === "oneoff" ? !!selectedPrice.recurring : !selectedPrice.recurring)) {
+      return json({ ok: false, error: "PRICE_NOT_CONFIGURED" }, 503);
+    }
+    const orderCheck = await admin.from("orders").select("id").limit(1);
+    if (orderCheck.error) {
+      return json({ ok: false, error: "CHECKOUT_UNAVAILABLE" }, 503);
+    }
 
     const metadata: Record<string, string> = {
       user_id: user.id,
@@ -201,7 +205,7 @@ export async function POST(req: Request) {
       cancel_url:
         plan === "oneoff" && design
           ? `${site}/forge?status=cancel&design_id=${encodeURIComponent(design.id)}`
-          : `${site}/#precios`,
+          : `${site}/#pricing`,
       metadata,
     };
 
@@ -217,7 +221,7 @@ export async function POST(req: Request) {
   } catch (err: any) {
     console.error("checkout:create-session error", err);
     return json(
-      { ok: false, error: err?.message ?? "INTERNAL_ERROR" },
+      { ok: false, error: "CHECKOUT_UNAVAILABLE" },
       500
     );
   }

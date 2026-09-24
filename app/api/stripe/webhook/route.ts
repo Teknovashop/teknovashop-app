@@ -1,22 +1,4 @@
-import { NextResponse } from "next/server";
-
+// Keep existing Stripe dashboard URLs working through the same verified handler.
+export { POST } from "@/app/api/checkout/webhook/route";
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-function disabled() {
-  return NextResponse.json(
-    {
-      ok: false,
-      error: "LEGACY_ENDPOINT_DISABLED",
-      detail: "Use /api/checkout/webhook as the only Stripe webhook endpoint.",
-    },
-    { status: 410 }
-  );
-}
-
-export async function GET() {
-  return disabled();
-}
-
-export async function POST() {
-  return disabled();
-}
