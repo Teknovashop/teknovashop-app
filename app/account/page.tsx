@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { getSupabase } from "@/lib/supabaseClient";
+import { createClient } from "@/lib/supabase/client";
 
 type Order = {
   id: string;
@@ -100,8 +100,8 @@ export default function AccountPage() {
   );
 
   async function signOut() {
-    const supabase = getSupabase();
-    await supabase?.auth.signOut();
+    const supabase = createClient();
+    await supabase.auth.signOut();
     window.location.href = "/";
   }
 
