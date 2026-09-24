@@ -345,12 +345,6 @@ export const FIELDS: Partial<Record<ForgeModelSlug, Fields>> = {
  *  Cliente del servicio de FORGE
  * =============================== */
 
-export const FORGE_BASE =
-  (process.env.NEXT_PUBLIC_FORGE_API_URL ||
-    process.env.NEXT_PUBLIC_BACKEND_URL ||
-    "https://teknovashop-forge.onrender.com")
-    .replace(/\/+$/, "");
-
 /** Utilidades internas */
 function num(x: any) {
   const n = Number(x);
