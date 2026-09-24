@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import { cookies } from "next/headers";
+import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 
 import type { CommercePlan } from "@/lib/commerce";
 import { buildLicenseText } from "@/lib/server/license";
@@ -41,9 +40,9 @@ function safeFilePart(value: string) {
 
 export async function GET(
   _req: Request,
-  { params }: { params: { designId: string } }
+  { params }: { params: Promise<{ designId: string }> }
 ) {
-  const supabase = createRouteHandlerClient({ cookies });
+  const supabase = await createSupabaseServerClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -55,7 +54,8 @@ export async function GET(
     );
   }
 
-  const designId = String(params.designId || "").trim();
+  const { designId: rawDesignId } = await params;
+  const designId = String(rawDesignId || "").trim();
   if (!designId) {
     return NextResponse.json(
       { ok: false, error: "DESIGN_REQUIRED" },
