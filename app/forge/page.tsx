@@ -9,11 +9,12 @@ export const metadata: Metadata = {
   alternates: { canonical: "/forge" },
 };
 
-export default function ForgePage({ searchParams }: {
-  searchParams?: Record<string, string | string[] | undefined>;
+export default async function ForgePage({ searchParams }: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const requested = canonicalModelSlug(typeof searchParams?.model === "string" ? searchParams.model : "");
+  const resolvedSearchParams = (await searchParams) || {};
+  const requested = canonicalModelSlug(typeof resolvedSearchParams.model === "string" ? resolvedSearchParams.model : "");
   const model = MODELS.find((item) => item.slug === requested)?.slug || "vesa-adapter";
-  const params = typeof searchParams?.params === "string" ? searchParams.params : undefined;
+  const params = typeof resolvedSearchParams.params === "string" ? resolvedSearchParams.params : undefined;
   return <ForgeWorkspace key={`${model}:${params || ""}`} model={model} params={params} />;
 }
