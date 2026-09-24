@@ -357,19 +357,6 @@ function num(x: any) {
   return Number.isFinite(n) ? n : undefined;
 }
 
-// Intento opcional de obtener user_id desde Supabase Auth si está instalado.
-// Si no usas Supabase en el front, esto devuelve null y no rompe.
-async function tryGetUserId(): Promise<string | null> {
-  try {
-    const { createClientComponentClient } = await import("@supabase/auth-helpers-nextjs");
-    const supabase = createClientComponentClient();
-    const { data } = await supabase.auth.getUser();
-    return data?.user?.id ?? null;
-  } catch {
-    return null;
-  }
-}
-
 type HoleIn =
   | { x: number; y: number; diameter_mm?: number; diam_mm?: number; d?: number; diameter?: number };
 
@@ -412,14 +399,12 @@ function normalizePayload(body: {
     }
   });
 
-  return { slug, params, holes, text_ops: body.text_ops, user_id: body.user_id ?? null };
+  return { slug, params, holes, text_ops: body.text_ops };
 }
 
 /**
- * Llama al endpoint de generación:
- * 1) Intenta /api/forge/generate (Next server)
- * 2) Fallback a BACKEND /generate (Render)
- * En ambos casos, envía x-user-id (si lo tenemos) y maneja 402 Payment Required.
+ * Llama al proxy Next /api/forge/generate.
+ * La identidad del usuario se resuelve en servidor desde la sesión Supabase.
  */
 async function ensureForgeReady() {
   let lastError = "";
@@ -472,18 +457,12 @@ export async function forgeGenerate(body: {
 
   await ensureForgeReady();
 
-  let userId: string | null = payload.user_id ?? null;
-  if (!userId) {
-    userId = await tryGetUserId();
-  }
-
   const r = await fetch("/api/forge/generate", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...(userId ? { "x-user-id": String(userId) } : {}),
     },
-    body: JSON.stringify({ ...payload, user_id: userId }),
+    body: JSON.stringify(payload),
   });
 
   const data = await r.json().catch(() => ({}));
