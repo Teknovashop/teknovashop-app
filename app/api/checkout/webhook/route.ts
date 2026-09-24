@@ -25,6 +25,12 @@ const SUPABASE_SERVICE_ROLE_KEY =
 
 type IdRow = { id: string };
 type StripeEventRow = { event_id: string };
+type OneoffOrderRow = {
+  id: string;
+  user_id: string;
+  design_id: string | null;
+  plan: string;
+};
 
 function assertSupabaseServerConfig() {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -109,6 +115,14 @@ function selectOneParams(
   const params = new URLSearchParams();
   params.set("select", select);
   params.set("limit", "1");
+  for (const [key, value] of Object.entries(filters)) {
+    params.set(key, `eq.${value}`);
+  }
+  return params;
+}
+
+function filterParams(filters: Record<string, string>) {
+  const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) {
     params.set(key, `eq.${value}`);
   }
@@ -278,6 +292,101 @@ async function recordOrder(session: Stripe.Checkout.Session) {
   return id;
 }
 
+async function setOneoffAccessByPaymentIntent(args: {
+  paymentIntentId: string;
+  active: boolean;
+  paymentStatus: string;
+}) {
+  const rows = await restSelect<OneoffOrderRow>(
+    "orders",
+    selectOneParams(
+      { stripe_payment_intent_id: args.paymentIntentId },
+      "id,user_id,design_id,plan"
+    )
+  );
+
+  const order = rows[0] || null;
+  if (!order || order.plan !== "oneoff" || !order.design_id) {
+    return;
+  }
+
+  await restUpdate(
+    "orders",
+    filterParams({ id: order.id }),
+    {
+      payment_status: args.paymentStatus,
+      updated_at: new Date().toISOString(),
+    }
+  );
+
+  await restUpdate(
+    "entitlements",
+    filterParams({
+      user_id: order.user_id,
+      kind: "design",
+      design_id: order.design_id,
+    }),
+    {
+      active: args.active,
+      updated_at: new Date().toISOString(),
+    }
+  );
+}
+
+async function paymentIntentFromDispute(dispute: any) {
+  const direct = asId(dispute?.payment_intent as any);
+  if (direct) return direct;
+
+  const chargeId = asId(dispute?.charge as any);
+  if (!chargeId) return null;
+
+  const charge: any = await stripe.charges.retrieve(chargeId);
+  return asId(charge?.payment_intent as any);
+}
+
+async function processFullRefund(charge: any) {
+  if (!charge?.refunded) return;
+
+  const paymentIntentId = asId(charge?.payment_intent as any);
+  if (!paymentIntentId) return;
+
+  await setOneoffAccessByPaymentIntent({
+    paymentIntentId,
+    active: false,
+    paymentStatus: "refunded",
+  });
+}
+
+async function processDisputeCreated(dispute: any) {
+  const paymentIntentId = await paymentIntentFromDispute(dispute);
+  if (!paymentIntentId) return;
+
+  await setOneoffAccessByPaymentIntent({
+    paymentIntentId,
+    active: false,
+    paymentStatus: "disputed",
+  });
+}
+
+async function processDisputeClosed(dispute: any) {
+  const paymentIntentId = await paymentIntentFromDispute(dispute);
+  if (!paymentIntentId) return;
+
+  const chargeId = asId(dispute?.charge as any);
+  let fullyRefunded = false;
+  if (chargeId) {
+    const charge: any = await stripe.charges.retrieve(chargeId);
+    fullyRefunded = !!charge?.refunded;
+  }
+
+  const restore = dispute?.status === "won" && !fullyRefunded;
+  await setOneoffAccessByPaymentIntent({
+    paymentIntentId,
+    active: restore,
+    paymentStatus: restore ? "paid" : "disputed",
+  });
+}
+
 async function processCheckoutCompleted(session: Stripe.Checkout.Session) {
   const md = session.metadata || {};
   const userId = md.user_id || session.client_reference_id;
@@ -288,6 +397,17 @@ async function processCheckoutCompleted(session: Stripe.Checkout.Session) {
   }
 
   await recordOrder(session);
+
+  const paymentAccepted =
+    session.payment_status === "paid" ||
+    session.payment_status === "no_payment_required";
+
+  if (!paymentAccepted) {
+    // Never grant an entitlement merely because Checkout reached "completed".
+    // If asynchronous methods are enabled later, async_payment_succeeded will
+    // re-enter this handler with an accepted payment status.
+    return;
+  }
 
   if (plan === "oneoff") {
     if (!md.design_id) {
@@ -372,9 +492,26 @@ export async function POST(req: Request) {
 
     switch (event.type) {
       case "checkout.session.completed":
+      case "checkout.session.async_payment_succeeded":
         await processCheckoutCompleted(
           event.data.object as Stripe.Checkout.Session
         );
+        break;
+
+      case "checkout.session.async_payment_failed":
+        await recordOrder(event.data.object as Stripe.Checkout.Session);
+        break;
+
+      case "charge.refunded":
+        await processFullRefund(event.data.object as Stripe.Charge);
+        break;
+
+      case "charge.dispute.created":
+        await processDisputeCreated(event.data.object as Stripe.Dispute);
+        break;
+
+      case "charge.dispute.closed":
+        await processDisputeClosed(event.data.object as Stripe.Dispute);
         break;
 
       case "customer.subscription.updated":
@@ -402,5 +539,8 @@ export async function POST(req: Request) {
 }
 
 export async function GET() {
-  return NextResponse.json({ ok: true });
+  return new NextResponse("Method not allowed", {
+    status: 405,
+    headers: { Allow: "POST" },
+  });
 }
