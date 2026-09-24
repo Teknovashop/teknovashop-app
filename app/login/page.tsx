@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { getSupabase } from "@/lib/supabaseClient";
+import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
   const [next, setNext] = useState("/forge");
@@ -16,12 +16,7 @@ export default function LoginPage() {
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    const supabase = getSupabase();
-    if (!supabase) {
-      setStatus("error");
-      setMessage("Supabase no está configurado en el navegador.");
-      return;
-    }
+    const supabase = createClient();
 
     setStatus("sending");
     setMessage("");

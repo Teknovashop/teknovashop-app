@@ -1,18 +1,32 @@
-// app/api/forge/selftest/route.ts
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const BACKEND = (
+  process.env.FORGE_API_URL ||
   process.env.NEXT_PUBLIC_FORGE_API_URL ||
   process.env.NEXT_PUBLIC_BACKEND_URL ||
   "https://teknovashop-forge.onrender.com"
 ).replace(/\/+$/, "");
 
-export async function GET() {
-  const started = Date.now();
+function authorized(req: Request) {
+  const expected = process.env.FORGE_DIAGNOSTICS_TOKEN || "";
+  if (!expected) return false;
+  return req.headers.get("x-diagnostics-token") === expected;
+}
 
+export async function GET(req: Request) {
+  // Disabled by default in production. Enable only by configuring a private
+  // diagnostics token and sending it in x-diagnostics-token.
+  if (!process.env.FORGE_DIAGNOSTICS_TOKEN) {
+    return new NextResponse("Not found", { status: 404 });
+  }
+  if (!authorized(req)) {
+    return new NextResponse("Unauthorized", { status: 401 });
+  }
+
+  const started = Date.now();
   const payload = {
     slug: "vesa-adapter",
     model: "vesa_adapter",
@@ -42,39 +56,37 @@ export async function GET() {
       body = raw ? JSON.parse(raw) : {};
     } catch {}
 
-    const hasDownload =
-      !!body?.signed_url ||
-      !!body?.stl_url ||
-      !!body?.stl_data_url ||
-      !!body?.path ||
-      !!body?.object_key;
-
+    const hasPreview = !!body?.preview_url;
     return NextResponse.json(
       {
-        ok: r.ok && hasDownload,
+        ok: r.ok && hasPreview,
         stage: r.ok
-          ? hasDownload
-            ? "generation-and-storage-ok"
-            : "generation-ok-but-no-download-reference"
+          ? hasPreview
+            ? "generation-storage-and-preview-ok"
+            : "generation-ok-but-safe-preview-missing"
           : "backend-generation-error",
-        backendUrl: BACKEND,
         backendStatus: r.status,
         latencyMs: Date.now() - started,
         testModel: "vesa-adapter",
-        backendBody: body,
+        designId: body?.design_id || null,
+        previewPrecisionMm: body?.preview_precision_mm || null,
       },
-      { status: r.ok && hasDownload ? 200 : 502 }
+      {
+        status: r.ok && hasPreview ? 200 : 502,
+        headers: { "cache-control": "no-store" },
+      }
     );
-  } catch (e: any) {
+  } catch {
     return NextResponse.json(
       {
         ok: false,
         stage: "backend-unreachable-during-generation",
-        backendUrl: BACKEND,
         latencyMs: Date.now() - started,
-        error: e?.message || String(e),
       },
-      { status: 502 }
+      {
+        status: 502,
+        headers: { "cache-control": "no-store" },
+      }
     );
   }
 }
