@@ -28,12 +28,89 @@ function CubeMark() {
   );
 }
 
+function EnclosureProductArt() {
+  return (
+    <div className="absolute inset-0 overflow-hidden bg-[radial-gradient(circle_at_55%_20%,#5fb6ff_0%,#205486_36%,#0a1d31_72%,#071321_100%)]">
+      <div className="absolute inset-0 opacity-20 [background-image:linear-gradient(rgba(139,233,255,.22)_1px,transparent_1px),linear-gradient(90deg,rgba(139,233,255,.22)_1px,transparent_1px)] [background-size:34px_34px]" />
+      <div className="absolute -left-10 top-8 h-28 w-28 rounded-full bg-cyan-300/20 blur-3xl" />
+      <svg viewBox="0 0 480 360" className="absolute inset-0 h-full w-full" aria-hidden>
+        <defs>
+          <linearGradient id="encTop" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#dbe7f2" />
+            <stop offset="55%" stopColor="#9fb2c6" />
+            <stop offset="100%" stopColor="#657b92" />
+          </linearGradient>
+          <linearGradient id="encFront" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#8fa3b7" />
+            <stop offset="100%" stopColor="#3f5369" />
+          </linearGradient>
+          <linearGradient id="encSide" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#667c92" />
+            <stop offset="100%" stopColor="#2a3c50" />
+          </linearGradient>
+          <filter id="encShadow" x="-30%" y="-30%" width="160%" height="160%">
+            <feDropShadow dx="0" dy="18" stdDeviation="16" floodColor="#020817" floodOpacity=".65" />
+          </filter>
+        </defs>
+
+        <ellipse cx="255" cy="292" rx="150" ry="28" fill="#8be9ff" opacity=".12" />
+        <g filter="url(#encShadow)">
+          <path d="M122 150 220 103 357 137 260 184Z" fill="url(#encTop)" />
+          <path d="M122 150 260 184 260 281 122 245Z" fill="url(#encFront)" />
+          <path d="M260 184 357 137 357 233 260 281Z" fill="url(#encSide)" />
+
+          <path d="M139 158 224 119 339 147 257 186Z" fill="none" stroke="#e8f7ff" strokeOpacity=".65" strokeWidth="3" />
+          <path d="M151 166 228 132 326 155 253 189Z" fill="none" stroke="#1e3a5f" strokeOpacity=".65" strokeWidth="2" />
+
+          {[
+            [146,169],
+            [236,128],
+            [328,154],
+            [252,187],
+          ].map(([cx, cy], index) => (
+            <g key={index}>
+              <circle cx={cx} cy={cy} r="5.2" fill="#0b1d31" stroke="#8be9ff" strokeWidth="2" />
+              <circle cx={cx} cy={cy} r="1.6" fill="#dff7ff" />
+            </g>
+          ))}
+
+          <path d="M151 203h82" stroke="#b9c9d9" strokeOpacity=".45" strokeWidth="2" />
+          <path d="M151 220h64" stroke="#b9c9d9" strokeOpacity=".3" strokeWidth="2" />
+        </g>
+      </svg>
+
+      <div className="absolute bottom-4 left-4 rounded-full border border-cyan-200/20 bg-[#071321]/70 px-3 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-cyan-100 backdrop-blur">
+        Caja técnica configurable
+      </div>
+    </div>
+  );
+}
+
 function CatalogImage({ model, priority }: { model: ForgeModel; priority?: boolean }) {
   const [failed, setFailed] = useState(false);
+  const isLegacyRender = model.thumbnail.startsWith("/images/models/");
+  const isEnclosure = model.slug === "enclosure-ip65";
 
   return (
-    <div className="catalog-media relative aspect-[4/3] overflow-hidden bg-[#091827]">
-      {!failed ? (
+    <div
+      className={
+        "catalog-media relative aspect-[4/3] overflow-hidden " +
+        (isLegacyRender
+          ? "bg-[radial-gradient(circle_at_58%_18%,#72c6ff_0%,#2a6da7_38%,#0b243e_72%,#071321_100%)]"
+          : "bg-[#091827]")
+      }
+    >
+      {isLegacyRender && (
+        <>
+          <div className="absolute inset-0 opacity-20 [background-image:linear-gradient(rgba(139,233,255,.18)_1px,transparent_1px),linear-gradient(90deg,rgba(139,233,255,.18)_1px,transparent_1px)] [background-size:34px_34px]" />
+          <div className="absolute -right-12 top-2 h-36 w-36 rounded-full bg-cyan-200/25 blur-3xl" />
+          <div className="absolute bottom-[-18%] left-[12%] h-24 w-[76%] rounded-full bg-cyan-100/15 blur-2xl" />
+        </>
+      )}
+
+      {isEnclosure ? (
+        <EnclosureProductArt />
+      ) : !failed ? (
         <Image
           src={model.thumbnail}
           alt={model.name}
@@ -44,6 +121,9 @@ function CatalogImage({ model, priority }: { model: ForgeModel; priority?: boole
           onError={() => setFailed(true)}
           className={
             "object-cover transition duration-700 group-hover:scale-[1.045] " +
+            (isLegacyRender
+              ? "mix-blend-multiply grayscale contrast-[1.28] brightness-[1.08] opacity-95 "
+              : "") +
             (LEGACY_IMAGE_TUNING[model.slug] || "")
           }
         />
@@ -61,6 +141,9 @@ function CatalogImage({ model, priority }: { model: ForgeModel; priority?: boole
         </div>
       )}
 
+      {isLegacyRender && (
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,.08),transparent_35%,rgba(7,19,33,.35))]" />
+      )}
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#071321]/40 via-transparent to-white/5" />
       <span className="absolute left-3 top-3 rounded-full border border-white/65 bg-white/90 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-700 shadow-sm backdrop-blur">
         Paramétrico
