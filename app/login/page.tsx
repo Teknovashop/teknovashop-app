@@ -2,13 +2,14 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { safeReturnPath } from "@/lib/commerce-policy";
 
 export default function LoginPage() {
   const [next, setNext] = useState("/forge");
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    setNext(params.get("next") || "/forge");
+    setNext(safeReturnPath(params.get("next")));
   }, []);
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
