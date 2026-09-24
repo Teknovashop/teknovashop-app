@@ -332,6 +332,10 @@ export default function Page() {
             <a href="#pricing">Precios</a>
             <a href="#faq">FAQ</a>
             <Link href="/login?next=/forge">Iniciar sesión</Link>
+            <Link href="/legal">Aviso legal</Link>
+            <Link href="/legal/terms">Condiciones</Link>
+            <Link href="/legal/privacy">Privacidad</Link>
+            <Link href="/legal/refunds">Reembolsos</Link>
           </div>
         </div>
       </footer>
