@@ -7,11 +7,12 @@ import type { ReactNode } from 'react';
 
 type Props = {
   children: ReactNode;
-  params: { slug: string };
+  params: Promise<{ slug: string }>;
 };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const slug = canonicalModelSlug(params.slug);
+  const resolvedParams = await params;
+  const slug = canonicalModelSlug(resolvedParams.slug);
   const m = MODELS.find((x) => x.slug === slug);
 
   const titleBase = m?.name || 'Configurador';
