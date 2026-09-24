@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const BACKEND = (
+  process.env.FORGE_API_URL ||
   process.env.NEXT_PUBLIC_FORGE_API_URL ||
   process.env.NEXT_PUBLIC_BACKEND_URL ||
   "https://teknovashop-forge.onrender.com"
