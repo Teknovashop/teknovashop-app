@@ -1,4 +1,3 @@
-// app/api/forge/health/route.ts
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -7,6 +6,7 @@ export const revalidate = 0;
 export const maxDuration = 45;
 
 const BACKEND = (
+  process.env.FORGE_API_URL ||
   process.env.NEXT_PUBLIC_FORGE_API_URL ||
   process.env.NEXT_PUBLIC_BACKEND_URL ||
   "https://teknovashop-forge.onrender.com"
@@ -21,35 +21,31 @@ export async function GET() {
       signal: AbortSignal.timeout(35000),
     });
 
-    const raw = await r.text();
-    let backendBody: any = raw;
-    try {
-      backendBody = raw ? JSON.parse(raw) : null;
-    } catch {}
-
     return NextResponse.json(
       {
         ok: r.ok,
         frontend: "ok",
         backend: r.ok ? "ok" : "error",
-        backendUrl: BACKEND,
         backendStatus: r.status,
         latencyMs: Date.now() - started,
-        backendBody,
       },
-      { status: r.ok ? 200 : 502 }
+      {
+        status: r.ok ? 200 : 502,
+        headers: { "cache-control": "no-store" },
+      }
     );
-  } catch (e: any) {
+  } catch {
     return NextResponse.json(
       {
         ok: false,
         frontend: "ok",
         backend: "unreachable",
-        backendUrl: BACKEND,
         latencyMs: Date.now() - started,
-        error: e?.message || String(e),
       },
-      { status: 502 }
+      {
+        status: 502,
+        headers: { "cache-control": "no-store" },
+      }
     );
   }
 }

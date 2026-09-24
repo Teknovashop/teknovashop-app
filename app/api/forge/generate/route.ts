@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const BACKEND = (
+  process.env.FORGE_API_URL ||
   process.env.NEXT_PUBLIC_FORGE_API_URL ||
   process.env.NEXT_PUBLIC_BACKEND_URL ||
   "https://teknovashop-forge.onrender.com"
@@ -19,9 +20,6 @@ const SUPABASE_URL =
   "";
 const SUPABASE_SERVICE_ROLE_KEY =
   process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-const NEXT_PUBLIC_SUPABASE_ANON_KEY =
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-const BUCKET = process.env.NEXT_PUBLIC_SUPABASE_BUCKET || "forge-stl";
 
 function json(body: any, status = 200) {
   return NextResponse.json(body, { status });
@@ -135,7 +133,8 @@ function traceMeta(data: any) {
     product_stage: data?.product_stage,
     generated_at: data?.generated_at,
     manifest_path: data?.manifest_path,
-    manifest_signed_url: data?.manifest_signed_url,
+    preview_path: data?.preview_path,
+    preview_precision_mm: data?.preview_precision_mm,
     sha256: data?.sha256,
   };
 }
@@ -151,7 +150,9 @@ async function registerDesign(args: {
   const manifestPath = String(args.data?.manifest_path || "").trim();
   const sha256 = String(args.data?.sha256 || "").trim();
 
-  if (!designId || !stlPath || !manifestPath || sha256.length !== 64) return;
+  if (!designId || !stlPath || !manifestPath || sha256.length !== 64) {
+    throw new Error("Backend response is missing traceability metadata");
+  }
 
   let userId: string | null = null;
   try {
@@ -165,39 +166,30 @@ async function registerDesign(args: {
   }
 
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    console.warn("design registration skipped: Supabase server config missing");
-    return;
+    throw new Error("Supabase server configuration missing");
   }
 
-  try {
-    const existingRow = await getExistingDesign(designId);
+  const existingRow = await getExistingDesign(designId);
 
-    if (existingRow?.user_id && userId && existingRow.user_id !== userId) {
-      return;
-    }
-
-    const row = {
-      id: designId,
-      user_id: existingRow?.user_id || userId,
-      product_slug: args.slug,
-      product_name: String(args.data?.product_name || args.slug),
-      product_version: String(args.data?.product_version || "unversioned"),
-      product_stage: String(args.data?.product_stage || "unversioned"),
-      parameters: args.params || {},
-      stl_path: stlPath,
-      manifest_path: manifestPath,
-      sha256,
-      generated_at: String(args.data?.generated_at || new Date().toISOString()),
-    };
-
-    await saveDesign(designId, row, !!existingRow?.id);
-  } catch (e: any) {
-    console.error(
-      "design registration failed",
-      designId,
-      e?.message || String(e)
-    );
+  if (existingRow?.user_id && userId && existingRow.user_id !== userId) {
+    throw new Error("Design identifier is already linked to another account");
   }
+
+  const row = {
+    id: designId,
+    user_id: existingRow?.user_id || userId,
+    product_slug: args.slug,
+    product_name: String(args.data?.product_name || args.slug),
+    product_version: String(args.data?.product_version || "unversioned"),
+    product_stage: String(args.data?.product_stage || "unversioned"),
+    parameters: args.params || {},
+    stl_path: stlPath,
+    manifest_path: manifestPath,
+    sha256,
+    generated_at: String(args.data?.generated_at || new Date().toISOString()),
+  };
+
+  await saveDesign(designId, row, !!existingRow?.id);
 }
 
 function messageFrom(x: any): string {
@@ -234,6 +226,8 @@ export async function POST(req: Request) {
   const text_ops = Array.isArray(body?.text_ops) ? body.text_ops : [];
   const model = slug.replace(/-/g, "_");
 
+  // Never trust x-user-id or user_id supplied by the browser. If a user is
+  // authenticated, derive identity from the signed Supabase session cookie.
   let userId: string | null = null;
   try {
     const supabase = await createSupabaseServerClient();
@@ -307,103 +301,54 @@ export async function POST(req: Request) {
     );
   }
 
-  await registerDesign({
-    req,
-    slug,
-    params,
-    data,
-  });
-
-  if (data?.signed_url) {
-    return json({
-      ok: true,
-      url: data.signed_url,
-      path: data.path,
-      slug: data.slug || slug,
-      source: "backend-signed",
-      ...traceMeta(data),
-    });
-  }
-
-  if (data?.stl_url) {
-    return json({
-      ok: true,
-      url: data.stl_url,
-      path: data.path,
-      slug: data.slug || slug,
-      source: "backend-public",
-      ...traceMeta(data),
-    });
-  }
-
-  if (data?.stl_data_url) {
-    return json({
-      ok: true,
-      url: data.stl_data_url,
-      slug: data.slug || slug,
-      source: "data-url",
-      ...traceMeta(data),
-    });
-  }
-
-  const objectPath: string | undefined = data?.path || data?.object_key;
-  if (!objectPath) {
-    return json(
-      {
-        ok: false,
-        error: "Backend generated no downloadable STL URL or path",
-        backendResponse: data,
-      },
-      502
-    );
-  }
-
-  const key = SUPABASE_SERVICE_ROLE_KEY || NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!SUPABASE_URL || !key) {
-    return json(
-      {
-        ok: false,
-        error:
-          "Backend returned only a storage path, but Supabase signing is not configured in Vercel",
-        objectPath,
-      },
-      500
-    );
-  }
-
   try {
-    const { createClient } = await import("@supabase/supabase-js");
-    const supabase = createClient(SUPABASE_URL, key);
-    const signed = await supabase.storage
-      .from(BUCKET)
-      .createSignedUrl(objectPath, 60 * 5);
-
-    if (signed.error || !signed.data?.signedUrl) {
-      return json(
-        {
-          ok: false,
-          error: signed.error?.message || "Failed to sign STL URL",
-        },
-        500
-      );
-    }
-
-    return json({
-      ok: true,
-      url: signed.data.signedUrl,
-      object_key: objectPath,
-      slug: data.slug || slug,
-      source: "signed-in-vercel",
-      ...traceMeta(data),
+    await registerDesign({
+      req,
+      slug,
+      params,
+      data,
     });
   } catch (e: any) {
+    console.error("design registration failed", data?.design_id, e);
     return json(
       {
         ok: false,
-        error: "Supabase signing failed",
-        detail: e?.message || String(e),
+        error: "DESIGN_REGISTRATION_FAILED",
+        detail:
+          "El diseño se ha generado, pero no se ha podido registrar de forma trazable. No se habilita la compra ni la vista previa.",
       },
-      500
+      503
     );
   }
+
+  if (data?.preview_url) {
+    return json({
+      ok: true,
+      url: data.preview_url,
+      preview_url: data.preview_url,
+      preview_path: data.preview_path,
+      preview_precision_mm: data.preview_precision_mm,
+      path: data.path,
+      slug: data.slug || slug,
+      source: "backend-degraded-preview",
+      ...traceMeta(data),
+    });
+  }
+
+  return json(
+    {
+      ok: false,
+      error: "SAFE_PREVIEW_MISSING",
+      detail:
+        "The Forge backend did not return a degraded preview. Final manufacturing artifacts are never signed for browser access.",
+      backendResponse: {
+        ok: data?.ok,
+        slug: data?.slug,
+        design_id: data?.design_id,
+        path: data?.path,
+        manifest_path: data?.manifest_path,
+      },
+    },
+    502
+  );
 }

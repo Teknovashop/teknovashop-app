@@ -53,10 +53,10 @@ export default function ForgeWorkspace({ model, params }: { model: string; param
           </div>
           <div className="flex flex-wrap gap-2 text-[11px] font-bold">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-emerald-700">
-              <ShieldIcon /> Vista previa 3D
+              <ShieldIcon /> Preview protegido
             </span>
             <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-slate-600">Unidades reales · mm</span>
-            <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-blue-700">Descarga con licencia</span>
+            <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-blue-700">STL final privado</span>
           </div>
         </div>
       </section>
@@ -95,7 +95,7 @@ export default function ForgeWorkspace({ model, params }: { model: string; param
               {[
                 ["1", "Ajusta parámetros", "Solo controles con efecto geométrico real."],
                 ["2", "Valida en 3D", "Cotas, vistas y medición antes de comprar."],
-                ["3", "Descarga autorizada", "El paquete final se entrega con la licencia correspondiente."],
+                ["3", "Descarga autorizada", "El STL final se entrega solo con licencia."],
               ].map(([n, title, copy]) => (
                 <div key={n} className="bg-[#071321] px-4 py-4">
                   <div className="text-[10px] font-black text-cyan-300">0{n}</div>

@@ -345,12 +345,6 @@ export const FIELDS: Partial<Record<ForgeModelSlug, Fields>> = {
  *  Cliente del servicio de FORGE
  * =============================== */
 
-export const FORGE_BASE =
-  (process.env.NEXT_PUBLIC_FORGE_API_URL ||
-    process.env.NEXT_PUBLIC_BACKEND_URL ||
-    "https://teknovashop-forge.onrender.com")
-    .replace(/\/+$/, "");
-
 /** Utilidades internas */
 function num(x: any) {
   const n = Number(x);
@@ -403,8 +397,9 @@ function normalizePayload(body: {
 }
 
 /**
- * Llama al proxy Next /api/forge/generate.
- * La identidad del usuario se resuelve en servidor desde la sesión Supabase.
+ * Llama exclusivamente al proxy Next /api/forge/generate.
+ * La identidad del usuario se resuelve en servidor desde la sesión; el navegador
+ * nunca envía un user_id confiable al motor de generación.
  */
 async function ensureForgeReady() {
   let lastError = "";
@@ -479,7 +474,9 @@ export async function forgeGenerate(body: {
     slug?: string;
     path?: string;
     url?: string;
-    signed_url?: string;
+    preview_url?: string;
+    preview_path?: string;
+    preview_precision_mm?: number;
     source?: string;
     design_id?: string;
     product_name?: string;
@@ -487,7 +484,6 @@ export async function forgeGenerate(body: {
     product_stage?: string;
     generated_at?: string;
     manifest_path?: string;
-    manifest_signed_url?: string;
     sha256?: string;
   };
 }
