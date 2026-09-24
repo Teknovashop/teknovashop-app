@@ -1,7 +1,6 @@
 // app/api/forge/generate/route.ts
 import { NextResponse } from "next/server";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import { cookies } from "next/headers";
+import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 
 
 export const runtime = "nodejs";
@@ -157,7 +156,7 @@ async function registerDesign(args: {
 
   let userId: string | null = null;
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = await createSupabaseServerClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -231,7 +230,7 @@ export async function POST(req: Request) {
   // authenticated, derive identity from the signed Supabase session cookie.
   let userId: string | null = null;
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = await createSupabaseServerClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
