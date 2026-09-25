@@ -1,22 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" role="img" aria-label="Colgador de Pared">
-<defs>
- <radialGradient id="bg" cx="58%" cy="20%" r="82%"><stop offset="0" stop-color="#4aa6ff"/><stop offset=".32" stop-color="#123f70"/><stop offset="1" stop-color="#061728"/></radialGradient>
- <linearGradient id="shade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c8efff" stop-opacity=".10"/><stop offset=".55" stop-color="#071321" stop-opacity=".02"/><stop offset="1" stop-color="#071321" stop-opacity=".32"/></linearGradient>
- <pattern id="grid" width="64" height="64" patternUnits="userSpaceOnUse"><path d="M64 0H0V64" fill="none" stroke="#8be9ff" stroke-opacity=".12" stroke-width="1"/></pattern>
- <filter id="grade" color-interpolation-filters="sRGB">
-   <feColorMatrix type="saturate" values=".18"/>
-   <feComponentTransfer><feFuncR type="linear" slope=".80" intercept=".02"/><feFuncG type="linear" slope=".92" intercept=".03"/><feFuncB type="linear" slope="1.18" intercept=".06"/></feComponentTransfer>
- </filter>
- <filter id="glow"><feGaussianBlur stdDeviation="18"/></filter>
-</defs>
-<rect width="1200" height="900" fill="url(#bg)"/>
-<rect width="1200" height="900" fill="url(#grid)"/>
-<ellipse cx="610" cy="715" rx="410" ry="85" fill="#69c7ff" opacity=".18" filter="url(#glow)"/>
-<image href="/images/models/wall-hook.jpg" x="55" y="55" width="1090" height="790" preserveAspectRatio="xMidYMid meet" filter="url(#grade)" opacity=".94"/>
-<rect width="1200" height="900" fill="url(#shade)"/>
-<g fill="none" stroke="#c6f2ff" stroke-opacity=".22" stroke-width="2">
- <rect x="42" y="42" width="330" height="220" rx="18"/><path d="M78 96H332M78 144H300M82 212H344"/>
- <rect x="850" y="70" width="305" height="235" rx="14"/><path d="M890 112H1118M890 162H1080M900 244H1120"/>
- <path d="M70 740H1130M130 690H1060"/>
-</g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" role="img" aria-label="Colgador de pared con placa y gancho reforzado">
+  <defs>
+    <radialGradient id="bg" cx="58%" cy="18%" r="82%"><stop offset="0" stop-color="#69c9ff"/><stop offset=".43" stop-color="#205f91"/><stop offset="1" stop-color="#071321"/></radialGradient>
+    <linearGradient id="body" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#dceaf5"/><stop offset=".52" stop-color="#849bae"/><stop offset="1" stop-color="#26394e"/></linearGradient>
+    <filter id="shadow"><feDropShadow dx="0" dy="24" stdDeviation="20" flood-color="#020817" flood-opacity=".6"/></filter>
+    <pattern id="grid" width="62" height="62" patternUnits="userSpaceOnUse"><path d="M62 0H0v62" fill="none" stroke="#8be9ff" stroke-opacity=".13"/></pattern>
+  </defs>
+  <rect width="1200" height="900" fill="url(#bg)"/><rect width="1200" height="900" fill="url(#grid)"/>
+  <ellipse cx="606" cy="708" rx="330" ry="62" fill="#8be9ff" opacity=".13"/>
+  <g filter="url(#shadow)">
+    <path d="M368 230h260c30 0 54 24 54 54v306c0 30-24 54-54 54H368c-30 0-54-24-54-54V284c0-30 24-54 54-54Z" fill="url(#body)"/>
+    <g fill="#071321" stroke="#bdf3ff" stroke-width="5">
+      <circle cx="386" cy="306" r="17"/><circle cx="610" cy="306" r="17"/><circle cx="386" cy="568" r="17"/><circle cx="610" cy="568" r="17"/>
+    </g>
+    <path d="M626 390h230c74 0 134 60 134 134 0 93-75 168-168 168H684v-108h132c33 0 60-27 60-60s-27-60-60-60H626Z" fill="#2d4157"/>
+    <path d="M684 454h126c37 0 67 30 67 67s-30 67-67 67H684" fill="none" stroke="#9fb4c8" stroke-opacity=".58" stroke-width="18" stroke-linecap="round"/>
+  </g>
+  <text x="72" y="810" fill="#d6f7ff" font-family="Inter,Arial,sans-serif" font-size="24" font-weight="800" letter-spacing="4">COLGADOR DE PARED</text>
 </svg>

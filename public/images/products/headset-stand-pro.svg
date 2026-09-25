@@ -1,22 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" role="img" aria-label="Soporte Auriculares">
-<defs>
- <radialGradient id="bg" cx="58%" cy="20%" r="82%"><stop offset="0" stop-color="#4aa6ff"/><stop offset=".32" stop-color="#123f70"/><stop offset="1" stop-color="#061728"/></radialGradient>
- <linearGradient id="shade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c8efff" stop-opacity=".10"/><stop offset=".55" stop-color="#071321" stop-opacity=".02"/><stop offset="1" stop-color="#071321" stop-opacity=".32"/></linearGradient>
- <pattern id="grid" width="64" height="64" patternUnits="userSpaceOnUse"><path d="M64 0H0V64" fill="none" stroke="#8be9ff" stroke-opacity=".12" stroke-width="1"/></pattern>
- <filter id="grade" color-interpolation-filters="sRGB">
-   <feColorMatrix type="saturate" values=".18"/>
-   <feComponentTransfer><feFuncR type="linear" slope=".80" intercept=".02"/><feFuncG type="linear" slope=".92" intercept=".03"/><feFuncB type="linear" slope="1.18" intercept=".06"/></feComponentTransfer>
- </filter>
- <filter id="glow"><feGaussianBlur stdDeviation="18"/></filter>
-</defs>
-<rect width="1200" height="900" fill="url(#bg)"/>
-<rect width="1200" height="900" fill="url(#grid)"/>
-<ellipse cx="610" cy="715" rx="410" ry="85" fill="#69c7ff" opacity=".18" filter="url(#glow)"/>
-<image href="/images/models/headset-stand.jpg" x="55" y="55" width="1090" height="790" preserveAspectRatio="xMidYMid meet" filter="url(#grade)" opacity=".94"/>
-<rect width="1200" height="900" fill="url(#shade)"/>
-<g fill="none" stroke="#c6f2ff" stroke-opacity=".22" stroke-width="2">
- <rect x="42" y="42" width="330" height="220" rx="18"/><path d="M78 96H332M78 144H300M82 212H344"/>
- <rect x="850" y="70" width="305" height="235" rx="14"/><path d="M890 112H1118M890 162H1080M900 244H1120"/>
- <path d="M70 740H1130M130 690H1060"/>
-</g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" role="img" aria-label="Soporte para auriculares estable y configurable">
+  <defs>
+    <radialGradient id="bg" cx="58%" cy="18%" r="82%"><stop offset="0" stop-color="#69c9ff"/><stop offset=".43" stop-color="#205f91"/><stop offset="1" stop-color="#071321"/></radialGradient>
+    <linearGradient id="body" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#dceaf5"/><stop offset=".52" stop-color="#849bae"/><stop offset="1" stop-color="#26394e"/></linearGradient>
+    <filter id="shadow"><feDropShadow dx="0" dy="24" stdDeviation="20" flood-color="#020817" flood-opacity=".6"/></filter>
+    <pattern id="grid" width="62" height="62" patternUnits="userSpaceOnUse"><path d="M62 0H0v62" fill="none" stroke="#8be9ff" stroke-opacity=".13"/></pattern>
+  </defs>
+  <rect width="1200" height="900" fill="url(#bg)"/><rect width="1200" height="900" fill="url(#grid)"/>
+  <ellipse cx="604" cy="708" rx="360" ry="66" fill="#8be9ff" opacity=".13"/>
+  <g filter="url(#shadow)">
+    <path d="M357 610 645 532l268 77c27 8 45 33 42 61l-3 26H315l-3-26c-3-28 16-53 45-60Z" fill="#2c4056"/>
+    <path d="M561 214h152c52 0 94 42 94 94v42H467v-42c0-52 42-94 94-94Z" fill="url(#body)"/>
+    <path d="M528 340h218v247H528Z" fill="#465c71"/>
+    <path d="M420 330h432c42 0 76 34 76 76v34H344v-34c0-42 34-76 76-76Z" fill="#26394e"/>
+    <path d="M468 395h340" stroke="#dff8ff" stroke-opacity=".34" stroke-width="14" stroke-linecap="round"/>
+  </g>
+  <text x="72" y="810" fill="#d6f7ff" font-family="Inter,Arial,sans-serif" font-size="24" font-weight="800" letter-spacing="4">SOPORTE AURICULARES</text>
 </svg>
