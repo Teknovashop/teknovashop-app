@@ -1,18 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" role="img" aria-label="Clips de cable configurables">
   <defs>
-    <radialGradient id="bg" cx="58%" cy="18%" r="82%"><stop offset="0" stop-color="#69c9ff"/><stop offset=".43" stop-color="#205f91"/><stop offset="1" stop-color="#071321"/></radialGradient>
-    <linearGradient id="body" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#dceaf5"/><stop offset=".52" stop-color="#849bae"/><stop offset="1" stop-color="#26394e"/></linearGradient>
-    <filter id="shadow"><feDropShadow dx="0" dy="24" stdDeviation="20" flood-color="#020817" flood-opacity=".6"/></filter>
-    <pattern id="grid" width="62" height="62" patternUnits="userSpaceOnUse"><path d="M62 0H0v62" fill="none" stroke="#8be9ff" stroke-opacity=".13"/></pattern>
+    <radialGradient id="bg" cx="58%" cy="18%" r="82%"><stop offset="0" stop-color="#ffffff"/><stop offset=".43" stop-color="#d9ecff"/><stop offset="1" stop-color="#9fc8ee"/></radialGradient>
+    <linearGradient id="body" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#384556"/><stop offset=".52" stop-color="#1f2b3a"/><stop offset="1" stop-color="#0b1220"/></linearGradient>
+    <filter id="shadow"><feDropShadow dx="0" dy="24" stdDeviation="20" flood-color="#0b2545" flood-opacity=".26"/></filter>
+    <pattern id="grid" width="62" height="62" patternUnits="userSpaceOnUse"><path d="M62 0H0v62" fill="none" stroke="#3b82f6" stroke-opacity=".10"/></pattern>
   </defs>
   <rect width="1200" height="900" fill="url(#bg)"/><rect width="1200" height="900" fill="url(#grid)"/>
-  <ellipse cx="600" cy="708" rx="380" ry="70" fill="#8be9ff" opacity=".13"/>
+  <ellipse cx="600" cy="708" rx="380" ry="70" fill="#3b82f6" opacity=".13"/>
   <g filter="url(#shadow)">
     <path d="M258 516V346c0-64 52-116 116-116h32v102h-28c-9 0-16 7-16 16v166c0 9 7 16 16 16h28v102h-32c-64 0-116-52-116-116Z" fill="url(#body)"/>
-    <rect x="352" y="506" width="176" height="116" rx="30" fill="#2c4056"/>
+    <rect x="352" y="506" width="176" height="116" rx="30" fill="#101827"/>
     <path d="M524 522V330c0-64 52-116 116-116h54v108h-46c-10 0-18 8-18 18v172c0 10 8 18 18 18h46v108h-54c-64 0-116-52-116-116Z" fill="url(#body)"/>
-    <rect x="638" y="508" width="210" height="120" rx="32" fill="#2c4056"/>
+    <rect x="638" y="508" width="210" height="120" rx="32" fill="#101827"/>
     <path d="M824 488V338c0-55 45-100 100-100h30v92h-25c-8 0-15 7-15 15v136c0 8 7 15 15 15h25v92h-30c-55 0-100-45-100-100Z" fill="url(#body)"/>
   </g>
-  <text x="72" y="810" fill="#d6f7ff" font-family="Inter,Arial,sans-serif" font-size="24" font-weight="800" letter-spacing="4">CLIPS DE CABLE</text>
+  <text x="72" y="810" fill="#cbd5e1" font-family="Inter,Arial,sans-serif" font-size="24" font-weight="800" letter-spacing="4">CLIPS DE CABLE</text>
 </svg>
