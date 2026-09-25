@@ -1,61 +1,61 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="960" height="720" viewBox="0 0 960 720" role="img" aria-label="Caja técnica con tapa configurable">
   <defs>
     <radialGradient id="bgGlow" cx="56%" cy="20%" r="80%">
-      <stop offset="0%" stop-color="#7bd4ff"/>
-      <stop offset="36%" stop-color="#2f78b5"/>
-      <stop offset="72%" stop-color="#0b243e"/>
-      <stop offset="100%" stop-color="#071321"/>
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="36%" stop-color="#d9ecff"/>
+      <stop offset="72%" stop-color="#9fc8ee"/>
+      <stop offset="100%" stop-color="#9fc8ee"/>
     </radialGradient>
     <linearGradient id="top" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#e7eef6"/>
-      <stop offset="50%" stop-color="#a9bbce"/>
-      <stop offset="100%" stop-color="#647a91"/>
+      <stop offset="0%" stop-color="#384556"/>
+      <stop offset="50%" stop-color="#1f2b3a"/>
+      <stop offset="100%" stop-color="#0b1220"/>
     </linearGradient>
     <linearGradient id="front" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#92a7bc"/>
-      <stop offset="100%" stop-color="#3d5268"/>
+      <stop offset="0%" stop-color="#263445"/>
+      <stop offset="100%" stop-color="#101827"/>
     </linearGradient>
     <linearGradient id="side" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#6b8298"/>
+      <stop offset="0%" stop-color="#334155"/>
       <stop offset="100%" stop-color="#293c50"/>
     </linearGradient>
     <filter id="shadow" x="-25%" y="-25%" width="150%" height="160%">
-      <feDropShadow dx="0" dy="34" stdDeviation="26" flood-color="#020817" flood-opacity=".58"/>
+      <feDropShadow dx="0" dy="34" stdDeviation="26" flood-color="#0b2545" flood-opacity=".58"/>
     </filter>
     <pattern id="grid" width="64" height="64" patternUnits="userSpaceOnUse">
-      <path d="M64 0H0v64" fill="none" stroke="#8be9ff" stroke-opacity=".16" stroke-width="1"/>
+      <path d="M64 0H0v64" fill="none" stroke="#3b82f6" stroke-opacity=".16" stroke-width="1"/>
     </pattern>
   </defs>
 
   <rect width="960" height="720" fill="url(#bgGlow)"/>
   <rect width="960" height="720" fill="url(#grid)" opacity=".85"/>
-  <circle cx="700" cy="110" r="180" fill="#9be7ff" opacity=".14"/>
-  <circle cx="164" cy="230" r="150" fill="#49b8ff" opacity=".16"/>
+  <circle cx="700" cy="110" r="180" fill="#60a5fa" opacity=".14"/>
+  <circle cx="164" cy="230" r="150" fill="#3b82f6" opacity=".16"/>
 
-  <g fill="none" stroke="#b9efff" stroke-opacity=".22" stroke-width="2">
+  <g fill="none" stroke="#93c5fd" stroke-opacity=".22" stroke-width="2">
     <path d="M95 132h116v82H95z"/>
     <path d="M785 120h96v118h-96z"/>
     <path d="M89 568h148"/>
     <path d="M730 560h136"/>
   </g>
 
-  <ellipse cx="510" cy="602" rx="290" ry="56" fill="#7bd4ff" opacity=".14"/>
+  <ellipse cx="510" cy="602" rx="290" ry="56" fill="#ffffff" opacity=".14"/>
 
   <g filter="url(#shadow)">
     <path d="M215 296 432 186l315 72-218 110Z" fill="url(#top)"/>
     <path d="M215 296 529 368v187L215 472Z" fill="url(#front)"/>
     <path d="M529 368 747 258v187L529 555Z" fill="url(#side)"/>
 
-    <path d="M252 305 441 213l267 59-184 92Z" fill="none" stroke="#f0fbff" stroke-opacity=".7" stroke-width="6"/>
-    <path d="M280 317 447 239l222 48-162 79Z" fill="none" stroke="#17375d" stroke-opacity=".62" stroke-width="4"/>
+    <path d="M252 305 441 213l267 59-184 92Z" fill="none" stroke="#cbd5e1" stroke-opacity=".7" stroke-width="6"/>
+    <path d="M280 317 447 239l222 48-162 79Z" fill="none" stroke="#071321" stroke-opacity=".62" stroke-width="4"/>
 
-    <g fill="#0b1d31" stroke="#8be9ff" stroke-width="5">
+    <g fill="#071321" stroke="#3b82f6" stroke-width="5">
       <circle cx="266" cy="316" r="13"/>
       <circle cx="468" cy="226" r="13"/>
       <circle cx="673" cy="287" r="13"/>
       <circle cx="508" cy="365" r="13"/>
     </g>
-    <g fill="#e7fbff">
+    <g fill="#cbd5e1">
       <circle cx="266" cy="316" r="4"/>
       <circle cx="468" cy="226" r="4"/>
       <circle cx="673" cy="287" r="4"/>
@@ -64,13 +64,13 @@
 
     <path d="M271 402h170" stroke="#c9d7e5" stroke-opacity=".48" stroke-width="5" stroke-linecap="round"/>
     <path d="M271 438h130" stroke="#c9d7e5" stroke-opacity=".32" stroke-width="5" stroke-linecap="round"/>
-    <path d="M585 410 702 351" stroke="#1d3348" stroke-opacity=".28" stroke-width="7" stroke-linecap="round"/>
+    <path d="M585 410 702 351" stroke="#071321" stroke-opacity=".28" stroke-width="7" stroke-linecap="round"/>
   </g>
 
-  <g fill="#071321" opacity=".86">
+  <g fill="#9fc8ee" opacity=".86">
     <rect x="73" y="613" width="360" height="34" rx="17"/>
   </g>
-  <text x="96" y="636" fill="#c5f3ff" font-family="Inter, Arial, sans-serif" font-size="17" font-weight="800" letter-spacing="2.8">
+  <text x="96" y="636" fill="#93c5fd" font-family="Inter, Arial, sans-serif" font-size="17" font-weight="800" letter-spacing="2.8">
     CAJA TECNICA CONFIGURABLE
   </text>
 </svg>
