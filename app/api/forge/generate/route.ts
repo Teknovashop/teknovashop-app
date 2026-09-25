@@ -310,6 +310,28 @@ export async function POST(req: Request) {
     });
   } catch (e: any) {
     console.error("design registration failed", data?.design_id, e);
+
+    // Local development must still be able to validate the generated geometry
+    // without copying production Supabase secrets to the developer machine.
+    // Production remains fail-closed: an unregistered design can never be
+    // previewed, purchased or downloaded there.
+    if (process.env.NODE_ENV !== "production" && data?.preview_url) {
+      return json({
+        ok: true,
+        url: data.preview_url,
+        preview_url: data.preview_url,
+        preview_path: data.preview_path,
+        preview_precision_mm: data.preview_precision_mm,
+        path: data.path,
+        slug: data.slug || slug,
+        source: "backend-local-unregistered-preview",
+        registration_warning: "DESIGN_REGISTRATION_FAILED",
+        registration_detail:
+          "Vista previa habilitada solo en desarrollo local. La compra y la descarga final siguen requiriendo registro trazable.",
+        ...traceMeta(data),
+      });
+    }
+
     return json(
       {
         ok: false,
