@@ -1,22 +1,22 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" role="img" aria-label="Placa para camara con ranura de ajuste y tornillo 1/4">
   <defs>
-    <radialGradient id="bg" cx="58%" cy="18%" r="82%"><stop offset="0" stop-color="#69c9ff"/><stop offset=".43" stop-color="#205f91"/><stop offset="1" stop-color="#071321"/></radialGradient>
-    <linearGradient id="plate" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#dceaf5"/><stop offset=".52" stop-color="#849bae"/><stop offset="1" stop-color="#26394e"/></linearGradient>
-    <filter id="shadow"><feDropShadow dx="0" dy="24" stdDeviation="20" flood-color="#020817" flood-opacity=".6"/></filter>
-    <pattern id="grid" width="62" height="62" patternUnits="userSpaceOnUse"><path d="M62 0H0v62" fill="none" stroke="#8be9ff" stroke-opacity=".13"/></pattern>
+    <radialGradient id="bg" cx="58%" cy="18%" r="82%"><stop offset="0" stop-color="#ffffff"/><stop offset=".43" stop-color="#d9ecff"/><stop offset="1" stop-color="#9fc8ee"/></radialGradient>
+    <linearGradient id="plate" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#384556"/><stop offset=".52" stop-color="#1f2b3a"/><stop offset="1" stop-color="#0b1220"/></linearGradient>
+    <filter id="shadow"><feDropShadow dx="0" dy="24" stdDeviation="20" flood-color="#0b2545" flood-opacity=".26"/></filter>
+    <pattern id="grid" width="62" height="62" patternUnits="userSpaceOnUse"><path d="M62 0H0v62" fill="none" stroke="#3b82f6" stroke-opacity=".10"/></pattern>
   </defs>
   <rect width="1200" height="900" fill="url(#bg)"/><rect width="1200" height="900" fill="url(#grid)"/>
-  <ellipse cx="604" cy="706" rx="370" ry="68" fill="#8be9ff" opacity=".13"/>
+  <ellipse cx="604" cy="706" rx="370" ry="68" fill="#3b82f6" opacity=".13"/>
   <g filter="url(#shadow)">
     <path d="M263 330 842 250 966 349 387 446Z" fill="url(#plate)"/>
-    <path d="M387 446 966 349v90l-579 104Z" fill="#2c4056"/>
-    <path d="M263 330 387 446v97L263 431Z" fill="#52677c"/>
-    <path d="M434 391c-20 3-38-11-42-31s11-39 31-42l276-40c20-3 39 11 42 31s-11 39-31 42Z" fill="#071321" opacity=".72"/>
-    <circle cx="565" cy="354" r="48" fill="#10243a" stroke="#bdf3ff" stroke-width="8"/>
-    <circle cx="565" cy="354" r="18" fill="#dff8ff"/>
-    <g fill="#071321" stroke="#bdf3ff" stroke-width="5">
+    <path d="M387 446 966 349v90l-579 104Z" fill="#101827"/>
+    <path d="M263 330 387 446v97L263 431Z" fill="#334155"/>
+    <path d="M434 391c-20 3-38-11-42-31s11-39 31-42l276-40c20-3 39 11 42 31s-11 39-31 42Z" fill="#9fc8ee" opacity=".72"/>
+    <circle cx="565" cy="354" r="48" fill="#071321" stroke="#93c5fd" stroke-width="8"/>
+    <circle cx="565" cy="354" r="18" fill="#cbd5e1"/>
+    <g fill="#9fc8ee" stroke="#93c5fd" stroke-width="5">
       <circle cx="350" cy="345" r="14"/><circle cx="878" cy="340" r="14"/><circle cx="421" cy="493" r="13"/><circle cx="900" cy="408" r="13"/>
     </g>
   </g>
-  <text x="72" y="810" fill="#d6f7ff" font-family="Inter,Arial,sans-serif" font-size="24" font-weight="800" letter-spacing="4">PLACA PARA CAMARA</text>
+  <text x="72" y="810" fill="#cbd5e1" font-family="Inter,Arial,sans-serif" font-size="24" font-weight="800" letter-spacing="4">PLACA PARA CAMARA</text>
 </svg>
