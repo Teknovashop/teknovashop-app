@@ -1,23 +1,23 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" role="img" aria-label="Soporte abierto para hub USB configurable">
   <defs>
-    <radialGradient id="bg" cx="58%" cy="18%" r="82%"><stop offset="0" stop-color="#69c9ff"/><stop offset=".43" stop-color="#205f91"/><stop offset="1" stop-color="#071321"/></radialGradient>
-    <linearGradient id="body" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#dceaf5"/><stop offset=".52" stop-color="#849bae"/><stop offset="1" stop-color="#26394e"/></linearGradient>
-    <filter id="shadow"><feDropShadow dx="0" dy="24" stdDeviation="20" flood-color="#020817" flood-opacity=".6"/></filter>
-    <pattern id="grid" width="62" height="62" patternUnits="userSpaceOnUse"><path d="M62 0H0v62" fill="none" stroke="#8be9ff" stroke-opacity=".13"/></pattern>
+    <radialGradient id="bg" cx="58%" cy="18%" r="82%"><stop offset="0" stop-color="#ffffff"/><stop offset=".43" stop-color="#d9ecff"/><stop offset="1" stop-color="#9fc8ee"/></radialGradient>
+    <linearGradient id="body" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#384556"/><stop offset=".52" stop-color="#1f2b3a"/><stop offset="1" stop-color="#0b1220"/></linearGradient>
+    <filter id="shadow"><feDropShadow dx="0" dy="24" stdDeviation="20" flood-color="#0b2545" flood-opacity=".26"/></filter>
+    <pattern id="grid" width="62" height="62" patternUnits="userSpaceOnUse"><path d="M62 0H0v62" fill="none" stroke="#3b82f6" stroke-opacity=".10"/></pattern>
   </defs>
   <rect width="1200" height="900" fill="url(#bg)"/><rect width="1200" height="900" fill="url(#grid)"/>
-  <ellipse cx="604" cy="708" rx="390" ry="70" fill="#8be9ff" opacity=".13"/>
+  <ellipse cx="604" cy="708" rx="390" ry="70" fill="#3b82f6" opacity=".13"/>
   <g filter="url(#shadow)">
     <path d="M258 435 830 330 974 421 397 542Z" fill="url(#body)"/>
-    <path d="M397 542 974 421v98L397 648Z" fill="#2c4056"/>
-    <path d="M258 435 397 542v106L258 536Z" fill="#52677c"/>
-    <path d="M326 420 478 391v119l-152 31Z" fill="#26394e"/>
-    <path d="M818 333 943 411v107l-125 27Z" fill="#26394e"/>
-    <path d="M499 405h252" stroke="#effbff" stroke-opacity=".4" stroke-width="10" stroke-linecap="round"/>
-    <path d="M516 461h182" stroke="#effbff" stroke-opacity=".25" stroke-width="8" stroke-linecap="round"/>
-    <g fill="#071321" stroke="#bdf3ff" stroke-width="5">
+    <path d="M397 542 974 421v98L397 648Z" fill="#101827"/>
+    <path d="M258 435 397 542v106L258 536Z" fill="#334155"/>
+    <path d="M326 420 478 391v119l-152 31Z" fill="#0b1220"/>
+    <path d="M818 333 943 411v107l-125 27Z" fill="#0b1220"/>
+    <path d="M499 405h252" stroke="#cbd5e1" stroke-opacity=".4" stroke-width="10" stroke-linecap="round"/>
+    <path d="M516 461h182" stroke="#cbd5e1" stroke-opacity=".25" stroke-width="8" stroke-linecap="round"/>
+    <g fill="#9fc8ee" stroke="#93c5fd" stroke-width="5">
       <circle cx="369" cy="454" r="13"/><circle cx="885" cy="418" r="13"/><circle cx="433" cy="590" r="12"/><circle cx="890" cy="491" r="12"/>
     </g>
   </g>
-  <text x="72" y="810" fill="#d6f7ff" font-family="Inter,Arial,sans-serif" font-size="24" font-weight="800" letter-spacing="4">SOPORTE HUB USB</text>
+  <text x="72" y="810" fill="#cbd5e1" font-family="Inter,Arial,sans-serif" font-size="24" font-weight="800" letter-spacing="4">SOPORTE HUB USB</text>
 </svg>
