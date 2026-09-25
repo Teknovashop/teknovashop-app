@@ -16,12 +16,12 @@ const HERO_VIDEO_POSTER =
   process.env.NEXT_PUBLIC_HERO_POSTER_URL || "/hero/hero.jpg";
 
 const TEMPLATES = [
-  ["cable-tray", "Bandeja de Cables", "Canaliza hubs, fuentes y cableado bajo mesa con una bandeja configurable.", "Escritorio", "/images/products/unified/cable-tray.webp"],
-  ["phone-stand", "Soporte / Dock Móvil (USB-C)", "Configura un soporte inclinado con paso para cable USB-C.", "Dock", "/images/products/unified/phone-stand.webp"],
+  ["cable-tray", "Bandeja de Cables", "Canaliza hubs, fuentes y cableado bajo mesa con una bandeja configurable.", "Escritorio", "/images/products/professional/cable-tray.webp"],
+  ["phone-stand", "Soporte / Dock Móvil (USB-C)", "Configura un soporte inclinado con paso para cable USB-C.", "Dock", "/images/products/professional/phone-stand.webp"],
   ["ssd-holder", "Caddy SSD 2.5 a 3.5", "Adaptador paramétrico para montar un SSD de 2.5 pulgadas en bahía de 3.5.", "Hardware", "/images/products/unified/ssd-holder.webp"],
-  ["hub-holder", "Soporte Hub USB", "Alojamiento abierto configurable para hubs USB.", "Escritorio", "/images/products/unified/hub-holder.webp"],
-  ["camera-plate", "Placa para Cámara", "Placa configurable con tornillo 1/4 y ranura de ajuste.", "Cámara", "/images/products/unified/camera-plate.webp"],
-  ["laptop-stand", "Soporte Laptop / Tablet", "Ajusta apoyo, ángulo y dimensiones para tu equipo.", "Ergonomía", "/images/products/unified/laptop-stand.webp"],
+  ["hub-holder", "Soporte Hub USB", "Alojamiento abierto configurable para hubs USB.", "Escritorio", "/images/products/professional/hub-holder.webp"],
+  ["camera-plate", "Placa para Cámara", "Placa configurable con tornillo 1/4 y ranura de ajuste.", "Cámara", "/images/products/professional/camera-plate.webp"],
+  ["laptop-stand", "Soporte Laptop / Tablet", "Ajusta apoyo, ángulo y dimensiones para tu equipo.", "Ergonomía", "/images/products/professional/laptop-stand.webp"],
 ];
 
 const BENEFITS = [
