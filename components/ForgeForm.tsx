@@ -113,6 +113,7 @@ const FALLBACK_MODELS: CatalogItem[] = MODELS.map((model) => ({
 }));
 
 const LOCAL_FREE_HOLE_MODELS = new Set([
+  "cable-tray",
   "cable-clip",
   "qr-plate",
   "vesa-adapter",
