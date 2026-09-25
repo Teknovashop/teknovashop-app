@@ -1,20 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" role="img" aria-label="Placa de identificación">
 <defs>
- <radialGradient id="bg" cx="55%" cy="18%" r="82%"><stop offset="0" stop-color="#58b5ff"/><stop offset=".34" stop-color="#164b80"/><stop offset="1" stop-color="#061728"/></radialGradient>
- <linearGradient id="metal" x1="0" y1="0" x2="1" y2=".25"><stop offset="0" stop-color="#eaf1f7"/><stop offset=".3" stop-color="#aab6c4"/><stop offset=".55" stop-color="#f4f8fb"/><stop offset="1" stop-color="#7b8999"/></linearGradient>
- <linearGradient id="frame" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#101923"/><stop offset="1" stop-color="#2c3a4a"/></linearGradient>
- <pattern id="grid" width="64" height="64" patternUnits="userSpaceOnUse"><path d="M64 0H0V64" fill="none" stroke="#8be9ff" stroke-opacity=".13"/></pattern>
- <filter id="shadow"><feDropShadow dx="0" dy="28" stdDeviation="24" flood-color="#000" flood-opacity=".45"/></filter>
+ <radialGradient id="bg" cx="55%" cy="18%" r="82%"><stop offset="0" stop-color="#ffffff"/><stop offset=".34" stop-color="#d9ecff"/><stop offset="1" stop-color="#9fc8ee"/></radialGradient>
+ <linearGradient id="metal" x1="0" y1="0" x2="1" y2=".25"><stop offset="0" stop-color="#384556"/><stop offset=".3" stop-color="#1f2b3a"/><stop offset=".55" stop-color="#f4f8fb"/><stop offset="1" stop-color="#0b1220"/></linearGradient>
+ <linearGradient id="frame" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#101827"/><stop offset="1" stop-color="#101827"/></linearGradient>
+ <pattern id="grid" width="64" height="64" patternUnits="userSpaceOnUse"><path d="M64 0H0V64" fill="none" stroke="#3b82f6" stroke-opacity=".10"/></pattern>
+ <filter id="shadow"><feDropShadow dx="0" dy="28" stdDeviation="24" flood-color="#000" flood-opacity=".24"/></filter>
 </defs>
 <rect width="1200" height="900" fill="url(#bg)"/><rect width="1200" height="900" fill="url(#grid)"/>
-<g opacity=".22" stroke="#d5f6ff" fill="none" stroke-width="2"><rect x="70" y="68" width="330" height="230" rx="18"/><path d="M105 120H355M105 170H320M865 105h260v210H865zM900 155h190M900 210h160"/></g>
+<g opacity=".22" stroke="#cbd5e1" fill="none" stroke-width="2"><rect x="70" y="68" width="330" height="230" rx="18"/><path d="M105 120H355M105 170H320M865 105h260v210H865zM900 155h190M900 210h160"/></g>
 <g filter="url(#shadow)" transform="translate(120 285)">
  <rect x="0" y="0" width="960" height="330" rx="34" fill="url(#frame)"/>
  <rect x="82" y="58" width="796" height="214" rx="24" fill="url(#metal)" stroke="#d6e4ef" stroke-width="5"/>
- <g fill="#071321">
+ <g fill="#9fc8ee">
    <circle cx="58" cy="58" r="25"/><circle cx="902" cy="58" r="25"/><circle cx="58" cy="272" r="25"/><circle cx="902" cy="272" r="25"/>
  </g>
- <g fill="#a8dfff"><circle cx="58" cy="58" r="11"/><circle cx="902" cy="58" r="11"/><circle cx="58" cy="272" r="11"/><circle cx="902" cy="272" r="11"/></g>
- <path d="M170 132H790M170 192H790" stroke="#657688" stroke-width="3" opacity=".75"/>
+ <g fill="#60a5fa"><circle cx="58" cy="58" r="11"/><circle cx="902" cy="58" r="11"/><circle cx="58" cy="272" r="11"/><circle cx="902" cy="272" r="11"/></g>
+ <path d="M170 132H790M170 192H790" stroke="#334155" stroke-width="3" opacity=".75"/>
 </g>
 </svg>
