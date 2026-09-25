@@ -16,12 +16,11 @@ const HERO_VIDEO_POSTER =
   process.env.NEXT_PUBLIC_HERO_POSTER_URL || "/hero/hero.jpg";
 
 const TEMPLATES = [
-  ["vesa-adapter", "Adaptador VESA (2 patrones)", "Adapta dos patrones VESA con medidas reales y perforaciones verificadas.", "Montaje", "/images/products/geometry/vesa-adapter.png"],
-  ["cable-tray", "Bandeja de Cables", "Canaliza hubs, fuentes y cableado bajo mesa con una bandeja configurable.", "Escritorio", "/images/products/geometry/cable-tray.png"],
-  ["laptop-stand", "Soporte Laptop / Tablet", "Ajusta apoyo, ángulo y dimensiones para tu equipo.", "Ergonomía", "/images/products/geometry/laptop-stand.png"],
-  ["phone-stand", "Soporte / Dock Móvil (USB-C)", "Configura un soporte inclinado con paso para cable USB-C.", "Dock", "/images/products/geometry/phone-stand.png"],
-  ["router-mount", "Soporte de Router", "Base y respaldo configurables para alojar el router con holgura.", "Red", "/images/products/geometry/router-mount.png"],
-  ["enclosure-ip65", "Caja técnica con tapa", "Caja técnica configurable para electrónica y proyectos protegidos.", "Electrónica", "/images/products/geometry/enclosure-ip65.png"],
+  ["phone-stand", "Soporte / Dock Móvil (USB-C)", "Ajusta apoyo, inclinación y paso de cable sobre una geometría real del configurador.", "Dock", "/images/products/professional/phone-stand.svg"],
+  ["ssd-holder", "Caddy SSD 2.5 a 3.5", "Adapta un SSD de 2.5 pulgadas a una bahía de 3.5 con holguras configurables.", "Almacenamiento", "/images/products/professional/ssd-holder.svg"],
+  ["hub-holder", "Soporte Hub USB", "Alojamiento abierto para hubs USB con medidas y tolerancia configurables.", "Conectividad", "/images/products/professional/hub-holder.svg"],
+  ["camera-plate", "Placa para Cámara", "Placa paramétrica con tornillo de 1/4 y ranura de ajuste longitudinal.", "Fotografía", "/images/products/professional/camera-plate.svg"],
+  ["laptop-stand", "Soporte Laptop / Tablet", "Ajusta ancho, fondo y ángulo sobre la misma pieza que verás en Forge.", "Ergonomía", "/images/products/professional/laptop-stand.svg"],
 ];
 
 const BENEFITS = [
@@ -167,14 +166,14 @@ export default function Page() {
           </Reveal>
 
           <Reveal delay={90}>
-            <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
             {TEMPLATES.map((template) => (
               <Link
                 key={template[0]}
-                href={"/forge?model=" + encodeURIComponent(template[0])}
+                href={"/forge/" + encodeURIComponent(template[0])}
                 className="home-product-card group"
               >
-                <div className="relative aspect-[4/3] overflow-hidden bg-slate-100">
+                <div className="relative aspect-[5/4] overflow-hidden bg-[#eaf3ff]">
                   <Image
                     src={template[4]}
                     alt={template[1]}
