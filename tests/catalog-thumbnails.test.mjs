@@ -6,38 +6,36 @@ import { fileURLToPath } from "node:url";
 import { MODELS } from "../data/models.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const forbiddenAssets = [
   "/images/products/ip65-box.webp",
   "/images/products/qr-plate.webp",
   "/images/products/vesa-tray.webp",
 ];
 
-test("catalog thumbnails use generated default-geometry product renders", () => {
+test("catalog thumbnails use one professional canonical render per product", () => {
   const seen = new Set();
 
   for (const model of MODELS) {
     assert.match(
       model.thumbnail,
-      /^\/images\/products\/geometry\/[a-z0-9-]+\.png$/,
-      `${model.slug} must use a generated geometry thumbnail`
+      /^\/images\/products\/professional\/[a-z0-9-]+\.svg$/,
+      `${model.slug} must use a professional canonical render`
     );
-    assert.equal(model.thumbnail, `/images/products/geometry/${model.slug}.png`);
+    assert.equal(
+      model.thumbnail,
+      `/images/products/professional/${model.slug}.svg`,
+      `${model.slug} render must match its canonical slug`
+    );
     assert.equal(seen.has(model.thumbnail), false, `${model.slug} duplicates thumbnail ${model.thumbnail}`);
     seen.add(model.thumbnail);
 
     const assetPath = path.join(root, "public", model.thumbnail);
     assert.equal(existsSync(assetPath), true, `${model.slug} thumbnail is missing: ${model.thumbnail}`);
+    assert.equal(forbiddenAssets.includes(model.thumbnail), false, `${model.slug} uses a known obsolete thumbnail`);
 
-    assert.equal(
-      forbiddenAssets.includes(model.thumbnail),
-      false,
-      `${model.slug} uses a known broken or obsolete thumbnail`
-    );
-
-    const bytes = readFileSync(assetPath);
-    assert.equal(bytes.subarray(0, pngSignature.length).equals(pngSignature), true, `${model.slug} thumbnail must be a valid PNG`);
-    assert.ok(bytes.length > 32_000, `${model.slug} thumbnail is unexpectedly small`);
+    const source = readFileSync(assetPath, "utf8");
+    assert.match(source, /<svg[\s>]/, `${model.slug} thumbnail must be valid SVG markup`);
+    assert.ok(source.length > 1_000, `${model.slug} professional render is unexpectedly small`);
   }
 
   assert.equal(seen.size, MODELS.length);
@@ -49,4 +47,10 @@ test("featured homepage templates do not reference obsolete catalog art", () => 
   for (const asset of forbiddenAssets) {
     assert.equal(pageSource.includes(asset), false, `homepage still references obsolete asset ${asset}`);
   }
+
+  assert.equal(
+    pageSource.includes("/images/products/geometry/"),
+    false,
+    "homepage still references legacy geometry thumbnails"
+  );
 });
