@@ -71,6 +71,28 @@ function fmtDim(valueMm: number, unit: Unit) {
     : `${valueMm.toFixed(valueMm < 10 ? 1 : 0)} mm`;
 }
 
+function applyViewerFraming(camera: any, mount: HTMLDivElement | null) {
+  if (!mount || !camera?.setViewOffset) return;
+
+  const width = Math.max(1, mount.clientWidth);
+  const height = Math.max(1, mount.clientHeight);
+  const rulerLeft = 40;
+  const rulerTop = 32;
+  const usableWidth = Math.max(1, width - rulerLeft);
+  const usableHeight = Math.max(1, height - rulerTop);
+  const shiftX = Math.round(rulerLeft / 2);
+  const shiftY = Math.round(rulerTop / 2);
+
+  camera.setViewOffset(
+    width,
+    height,
+    -shiftX,
+    -shiftY,
+    usableWidth + rulerLeft,
+    usableHeight + rulerTop
+  );
+}
+
 export default function STLViewerPro({ url, className }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
 
@@ -446,6 +468,7 @@ export default function STLViewerPro({ url, className }: Props) {
     const onResize = () => {
       const { clientWidth, clientHeight } = mount;
       camera.aspect = Math.max(1e-6, clientWidth / Math.max(1, clientHeight));
+      applyViewerFraming(camera, mount);
       camera.updateProjectionMatrix();
       renderer.setSize(clientWidth, clientHeight, false);
       setSize({ w: clientWidth, h: clientHeight });

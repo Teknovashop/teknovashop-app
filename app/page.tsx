@@ -16,12 +16,12 @@ const HERO_VIDEO_POSTER =
   process.env.NEXT_PUBLIC_HERO_POSTER_URL || "/hero/hero.jpg";
 
 const TEMPLATES = [
-  ["vesa-adapter", "Adaptador VESA (2 patrones)", "Adapta dos patrones VESA con medidas reales y perforaciones verificadas.", "Montaje", "/images/products/geometry/vesa-adapter.png"],
-  ["cable-tray", "Bandeja de Cables", "Canaliza hubs, fuentes y cableado bajo mesa con una bandeja configurable.", "Escritorio", "/images/products/geometry/cable-tray.png"],
-  ["laptop-stand", "Soporte Laptop / Tablet", "Ajusta apoyo, ángulo y dimensiones para tu equipo.", "Ergonomía", "/images/products/geometry/laptop-stand.png"],
-  ["phone-stand", "Soporte / Dock Móvil (USB-C)", "Configura un soporte inclinado con paso para cable USB-C.", "Dock", "/images/products/geometry/phone-stand.png"],
-  ["router-mount", "Soporte de Router", "Base y respaldo configurables para alojar el router con holgura.", "Red", "/images/products/geometry/router-mount.png"],
-  ["enclosure-ip65", "Caja técnica con tapa", "Caja técnica configurable para electrónica y proyectos protegidos.", "Electrónica", "/images/products/geometry/enclosure-ip65.png"],
+  ["cable-tray", "Bandeja de Cables", "Canaliza hubs, fuentes y cableado bajo mesa con una bandeja configurable.", "Escritorio", "/images/products/portfolio/cable-tray.webp"],
+  ["phone-stand", "Soporte / Dock Móvil (USB-C)", "Configura un soporte inclinado con paso para cable USB-C.", "Dock", "/images/products/portfolio/phone-stand.webp"],
+  ["ssd-holder", "Caddy SSD 2.5 a 3.5", "Adaptador paramétrico para montar un SSD de 2.5 pulgadas en bahía de 3.5.", "Hardware", "/images/products/geometry/ssd-holder.png"],
+  ["hub-holder", "Soporte Hub USB", "Alojamiento abierto configurable para hubs USB.", "Escritorio", "/images/products/portfolio/hub-holder.webp"],
+  ["camera-plate", "Placa para Cámara", "Placa configurable con tornillo 1/4 y ranura de ajuste.", "Cámara", "/images/products/portfolio/camera-plate.webp"],
+  ["laptop-stand", "Soporte Laptop / Tablet", "Ajusta apoyo, ángulo y dimensiones para tu equipo.", "Ergonomía", "/images/products/portfolio/laptop-stand.webp"],
 ];
 
 const BENEFITS = [
