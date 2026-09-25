@@ -16,11 +16,11 @@ const HERO_VIDEO_POSTER =
   process.env.NEXT_PUBLIC_HERO_POSTER_URL || "/hero/hero.jpg";
 
 const TEMPLATES = [
-  ["phone-stand", "Soporte / Dock Móvil (USB-C)", "Ajusta apoyo, inclinación y paso de cable sobre una geometría real del configurador.", "Dock", "/images/products/professional/phone-stand.svg"],
-  ["ssd-holder", "Caddy SSD 2.5 a 3.5", "Adapta un SSD de 2.5 pulgadas a una bahía de 3.5 con holguras configurables.", "Almacenamiento", "/images/products/professional/ssd-holder.svg"],
-  ["hub-holder", "Soporte Hub USB", "Alojamiento abierto para hubs USB con medidas y tolerancia configurables.", "Conectividad", "/images/products/professional/hub-holder.svg"],
-  ["camera-plate", "Placa para Cámara", "Placa paramétrica con tornillo de 1/4 y ranura de ajuste longitudinal.", "Fotografía", "/images/products/professional/camera-plate.svg"],
-  ["laptop-stand", "Soporte Laptop / Tablet", "Ajusta ancho, fondo y ángulo sobre la misma pieza que verás en Forge.", "Ergonomía", "/images/products/professional/laptop-stand.svg"],
+  ["phone-stand", "Soporte / Dock Móvil (USB-C)", "Ajusta apoyo, inclinación y paso de cable sobre la misma geometría que verás en Forge.", "Dock", "/images/products/phone-stand.webp"],
+  ["ssd-holder", "Caddy SSD 2.5 a 3.5", "Adapta un SSD de 2.5 pulgadas a una bahía de 3.5 con holguras configurables.", "Almacenamiento", "/images/products/ssd-holder-pro.svg"],
+  ["hub-holder", "Soporte Hub USB", "Alojamiento abierto para hubs USB con medidas y tolerancia configurables.", "Conectividad", "/images/products/hub-holder-pro.svg"],
+  ["camera-plate", "Placa para Cámara", "Placa paramétrica con tornillo de 1/4 y ranura de ajuste longitudinal.", "Fotografía", "/images/products/camera-plate-pro.svg"],
+  ["laptop-stand", "Soporte Laptop / Tablet", "Ajusta ancho, fondo y ángulo sobre la misma pieza que verás en Forge.", "Ergonomía", "/images/products/laptop-stand.webp"],
 ];
 
 const BENEFITS = [
