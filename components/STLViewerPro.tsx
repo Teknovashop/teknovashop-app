@@ -72,25 +72,8 @@ function fmtDim(valueMm: number, unit: Unit) {
 }
 
 function applyViewerFraming(camera: any, mount: HTMLDivElement | null) {
-  if (!mount || !camera?.setViewOffset) return;
-
-  const width = Math.max(1, mount.clientWidth);
-  const height = Math.max(1, mount.clientHeight);
-  const rulerLeft = 40;
-  const rulerTop = 32;
-  const usableWidth = Math.max(1, width - rulerLeft);
-  const usableHeight = Math.max(1, height - rulerTop);
-  const shiftX = Math.round(rulerLeft / 2);
-  const shiftY = Math.round(rulerTop / 2);
-
-  camera.setViewOffset(
-    width,
-    height,
-    -shiftX,
-    -shiftY,
-    usableWidth + rulerLeft,
-    usableHeight + rulerTop
-  );
+  if (!mount || !camera?.clearViewOffset) return;
+  camera.clearViewOffset();
 }
 
 export default function STLViewerPro({ url, className }: Props) {
