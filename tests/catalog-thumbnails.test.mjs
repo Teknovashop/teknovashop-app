@@ -6,18 +6,6 @@ import { fileURLToPath } from "node:url";
 import { MODELS } from "../data/models.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-const portfolioSlugs = new Set([
-  "cable-tray",
-  "camera-plate",
-  "go-pro-mount",
-  "hub-holder",
-  "laptop-stand",
-  "mic-arm-clip",
-  "phone-stand",
-  "router-mount",
-  "vesa-shelf",
-]);
 const forbiddenAssets = [
   "/images/products/ip65-box.webp",
   "/images/products/qr-plate.webp",
@@ -29,13 +17,11 @@ function assertWebp(bytes, message) {
   assert.equal(bytes.subarray(8, 12).toString("ascii"), "WEBP", message);
 }
 
-test("catalog thumbnails use verified portfolio art or generated geometry renders", () => {
+test("catalog thumbnails use one unified visual system based on product geometry", () => {
   const seen = new Set();
 
   for (const model of MODELS) {
-    const expected = portfolioSlugs.has(model.slug)
-      ? `/images/products/portfolio/${model.slug}.webp`
-      : `/images/products/geometry/${model.slug}.png`;
+    const expected = `/images/products/unified/${model.slug}.webp`;
 
     assert.equal(model.thumbnail, expected, `${model.slug} points at the wrong product thumbnail`);
     assert.equal(seen.has(model.thumbnail), false, `${model.slug} duplicates thumbnail ${model.thumbnail}`);
@@ -51,11 +37,7 @@ test("catalog thumbnails use verified portfolio art or generated geometry render
     );
 
     const bytes = readFileSync(assetPath);
-    if (portfolioSlugs.has(model.slug)) {
-      assertWebp(bytes, `${model.slug} portfolio thumbnail must be a valid WebP`);
-    } else {
-      assert.equal(bytes.subarray(0, pngSignature.length).equals(pngSignature), true, `${model.slug} thumbnail must be a valid PNG`);
-    }
+    assertWebp(bytes, `${model.slug} unified thumbnail must be a valid WebP`);
     assert.ok(bytes.length > 32_000, `${model.slug} thumbnail is unexpectedly small`);
   }
 
