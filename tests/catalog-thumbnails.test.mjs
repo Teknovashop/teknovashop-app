@@ -6,15 +6,25 @@ import { fileURLToPath } from "node:url";
 import { MODELS } from "../data/models.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const forbiddenAssets = [
   "/images/products/ip65-box.webp",
   "/images/products/qr-plate.webp",
   "/images/products/vesa-tray.webp",
 ];
 
-test("catalog thumbnails use production product assets that exist", () => {
+test("catalog thumbnails use generated default-geometry product renders", () => {
+  const seen = new Set();
+
   for (const model of MODELS) {
-    assert.match(model.thumbnail, /^\/images\/products\//, `${model.slug} must use a product thumbnail`);
+    assert.match(
+      model.thumbnail,
+      /^\/images\/products\/geometry\/[a-z0-9-]+\.png$/,
+      `${model.slug} must use a generated geometry thumbnail`
+    );
+    assert.equal(model.thumbnail, `/images/products/geometry/${model.slug}.png`);
+    assert.equal(seen.has(model.thumbnail), false, `${model.slug} duplicates thumbnail ${model.thumbnail}`);
+    seen.add(model.thumbnail);
 
     const assetPath = path.join(root, "public", model.thumbnail);
     assert.equal(existsSync(assetPath), true, `${model.slug} thumbnail is missing: ${model.thumbnail}`);
@@ -25,13 +35,12 @@ test("catalog thumbnails use production product assets that exist", () => {
       `${model.slug} uses a known broken or obsolete thumbnail`
     );
 
-    if (model.thumbnail.endsWith(".svg")) {
-      const source = readFileSync(assetPath, "utf8");
-      assert.match(source, /<svg\b/, `${model.slug} SVG thumbnail must be valid SVG markup`);
-      assert.match(source, /role="img"|aria-label=/, `${model.slug} SVG thumbnail must expose accessible image metadata`);
-      assert.doesNotMatch(source, /href="\/images\/models\//, `${model.slug} SVG thumbnail must not embed legacy model renders`);
-    }
+    const bytes = readFileSync(assetPath);
+    assert.equal(bytes.subarray(0, pngSignature.length).equals(pngSignature), true, `${model.slug} thumbnail must be a valid PNG`);
+    assert.ok(bytes.length > 32_000, `${model.slug} thumbnail is unexpectedly small`);
   }
+
+  assert.equal(seen.size, MODELS.length);
 });
 
 test("featured homepage templates do not reference obsolete catalog art", () => {
