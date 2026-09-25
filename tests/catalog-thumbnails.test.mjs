@@ -11,30 +11,16 @@ const forbiddenAssets = [
   "/images/products/qr-plate.webp",
   "/images/products/vesa-tray.webp",
 ];
-const professionalSlugs = new Set([
-  "cable-tray",
-  "camera-plate",
-  "go-pro-mount",
-  "hub-holder",
-  "laptop-stand",
-  "mic-arm-clip",
-  "phone-stand",
-  "router-mount",
-  "vesa-adapter",
-  "vesa-shelf",
-]);
-
 function assertWebp(bytes, message) {
   assert.equal(bytes.subarray(0, 4).toString("ascii"), "RIFF", message);
   assert.equal(bytes.subarray(8, 12).toString("ascii"), "WEBP", message);
 }
 
-test("catalog thumbnails use professional art when available and fallback art for pending pieces", () => {
+test("catalog thumbnails use professional product art for every piece", () => {
   const seen = new Set();
 
   for (const model of MODELS) {
-    const family = professionalSlugs.has(model.slug) ? "professional" : "unified";
-    const expected = `/images/products/${family}/${model.slug}.webp`;
+    const expected = `/images/products/professional/${model.slug}.webp`;
 
     assert.equal(model.thumbnail, expected, `${model.slug} points at the wrong product thumbnail`);
     assert.equal(seen.has(model.thumbnail), false, `${model.slug} duplicates thumbnail ${model.thumbnail}`);
@@ -50,7 +36,7 @@ test("catalog thumbnails use professional art when available and fallback art fo
     );
 
     const bytes = readFileSync(assetPath);
-    assertWebp(bytes, `${model.slug} unified thumbnail must be a valid WebP`);
+    assertWebp(bytes, `${model.slug} professional thumbnail must be a valid WebP`);
     assert.ok(bytes.length > 32_000, `${model.slug} thumbnail is unexpectedly small`);
   }
 
