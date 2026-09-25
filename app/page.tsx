@@ -173,7 +173,7 @@ export default function Page() {
                 href={"/forge/" + encodeURIComponent(template[0])}
                 className="home-product-card group"
               >
-                <div className="relative aspect-[5/4] overflow-hidden bg-[#eaf3ff]">
+                <div className="relative aspect-[16/9] overflow-hidden bg-[#edf5ff]">
                   <Image
                     src={template[4]}
                     alt={template[1]}
@@ -185,9 +185,9 @@ export default function Page() {
                     {template[3]}
                   </span>
                 </div>
-                <div className="p-4">
-                  <h3 className="text-sm font-extrabold">{template[1]}</h3>
-                  <p className="mt-1.5 text-xs leading-5 text-slate-500">{template[2]}</p>
+                <div className="flex min-h-[106px] flex-col p-3.5">
+                  <h3 className="text-[13px] font-extrabold leading-5">{template[1]}</h3>
+                  <div className="mt-1 flex items-end justify-between gap-3"><p className="line-clamp-2 text-[11px] leading-4 text-slate-500">{template[2]}</p><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-blue-50 text-blue-600 transition group-hover:bg-blue-600 group-hover:text-white"><Arrow /></span></div>
                 </div>
               </Link>
             ))}
