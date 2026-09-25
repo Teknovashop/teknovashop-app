@@ -1,24 +1,24 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" role="img" aria-label="Caddy SSD 2.5 a 3.5">
   <defs>
-    <radialGradient id="bg" cx="58%" cy="18%" r="82%"><stop offset="0" stop-color="#67c6ff"/><stop offset=".42" stop-color="#1f5f93"/><stop offset="1" stop-color="#071321"/></radialGradient>
-    <linearGradient id="plate" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#d8e7f4"/><stop offset=".48" stop-color="#7e95aa"/><stop offset="1" stop-color="#23364a"/></linearGradient>
-    <linearGradient id="side" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8399ae"/><stop offset="1" stop-color="#2b3d50"/></linearGradient>
-    <filter id="shadow"><feDropShadow dx="0" dy="24" stdDeviation="20" flood-color="#020817" flood-opacity=".6"/></filter>
-    <pattern id="grid" width="62" height="62" patternUnits="userSpaceOnUse"><path d="M62 0H0v62" fill="none" stroke="#8be9ff" stroke-opacity=".13"/></pattern>
+    <radialGradient id="bg" cx="58%" cy="18%" r="82%"><stop offset="0" stop-color="#ffffff"/><stop offset=".42" stop-color="#d9ecff"/><stop offset="1" stop-color="#9fc8ee"/></radialGradient>
+    <linearGradient id="plate" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#384556"/><stop offset=".48" stop-color="#1f2b3a"/><stop offset="1" stop-color="#0b1220"/></linearGradient>
+    <linearGradient id="side" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#263445"/><stop offset="1" stop-color="#101827"/></linearGradient>
+    <filter id="shadow"><feDropShadow dx="0" dy="24" stdDeviation="20" flood-color="#0b2545" flood-opacity=".26"/></filter>
+    <pattern id="grid" width="62" height="62" patternUnits="userSpaceOnUse"><path d="M62 0H0v62" fill="none" stroke="#3b82f6" stroke-opacity=".10"/></pattern>
   </defs>
   <rect width="1200" height="900" fill="url(#bg)"/><rect width="1200" height="900" fill="url(#grid)"/>
-  <ellipse cx="602" cy="708" rx="390" ry="70" fill="#8be9ff" opacity=".13"/>
+  <ellipse cx="602" cy="708" rx="390" ry="70" fill="#3b82f6" opacity=".13"/>
   <g filter="url(#shadow)">
     <path d="M253 288 852 204 966 288 365 383Z" fill="url(#plate)"/>
     <path d="M365 383 966 288v86l-601 103Z" fill="url(#side)"/>
-    <path d="M253 288 365 383v94l-112-94Z" fill="#40566b"/>
-    <path d="M330 330 816 260 895 318 408 394Z" fill="none" stroke="#10243a" stroke-opacity=".56" stroke-width="8"/>
-    <g fill="#071321" stroke="#bdf3ff" stroke-width="5">
+    <path d="M253 288 365 383v94l-112-94Z" fill="#334155"/>
+    <path d="M330 330 816 260 895 318 408 394Z" fill="none" stroke="#071321" stroke-opacity=".56" stroke-width="8"/>
+    <g fill="#9fc8ee" stroke="#93c5fd" stroke-width="5">
       <circle cx="340" cy="315" r="15"/><circle cx="507" cy="289" r="15"/><circle cx="759" cy="253" r="15"/><circle cx="908" cy="302" r="15"/>
       <circle cx="417" cy="423" r="13"/><circle cx="876" cy="345" r="13"/>
     </g>
     <path d="M446 344h282" stroke="#ecfbff" stroke-opacity=".42" stroke-width="7" stroke-linecap="round"/>
     <path d="M475 374h194" stroke="#ecfbff" stroke-opacity=".26" stroke-width="6" stroke-linecap="round"/>
   </g>
-  <text x="72" y="810" fill="#d6f7ff" font-family="Inter,Arial,sans-serif" font-size="24" font-weight="800" letter-spacing="4">CADDY SSD 2.5 A 3.5</text>
+  <text x="72" y="810" fill="#cbd5e1" font-family="Inter,Arial,sans-serif" font-size="24" font-weight="800" letter-spacing="4">CADDY SSD 2.5 A 3.5</text>
 </svg>
