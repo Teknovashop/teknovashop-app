@@ -21,7 +21,7 @@ function CatalogImage({ model, priority }: { model: ForgeModel; priority?: boole
 
   return (
     <div
-      className="catalog-media relative aspect-[4/3] overflow-hidden bg-[#091827]"
+      className="catalog-media relative aspect-[16/10] overflow-hidden bg-[#edf5ff]"
     >
       {!failed ? (
         <Image
@@ -154,7 +154,7 @@ export default function CatalogPage() {
         </div>
 
         {filtered.length > 0 ? (
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {filtered.map((m, index) => (
               <Link
                 key={m.id}
