@@ -16,12 +16,12 @@ const HERO_VIDEO_POSTER =
   process.env.NEXT_PUBLIC_HERO_POSTER_URL || "/hero/hero.jpg";
 
 const TEMPLATES = [
-  ["vesa-adapter", "Adaptador VESA (2 patrones)", "Adapta dos patrones VESA con medidas reales y perforaciones verificadas.", "Montaje", "/images/products/vesa-adapter.webp"],
-  ["cable-tray", "Bandeja de Cables", "Canaliza hubs, fuentes y cableado bajo mesa con una bandeja configurable.", "Escritorio", "/images/products/cable-tray.webp"],
-  ["laptop-stand", "Soporte Laptop / Tablet", "Ajusta apoyo, ángulo y dimensiones para tu equipo.", "Ergonomía", "/images/products/laptop-stand.webp"],
-  ["phone-stand", "Soporte / Dock Móvil (USB-C)", "Configura un soporte inclinado con paso para cable USB-C.", "Dock", "/images/products/phone-stand.webp"],
-  ["router-mount", "Soporte de Router", "Base y respaldo configurables para alojar el router con holgura.", "Red", "/images/products/router-mount.webp"],
-  ["enclosure-ip65", "Caja técnica con tapa", "Caja técnica configurable para electrónica y proyectos protegidos.", "Electrónica", "/images/products/enclosure-ip65-pro.svg"],
+  ["vesa-adapter", "Adaptador VESA (2 patrones)", "Adapta dos patrones VESA con medidas reales y perforaciones verificadas.", "Montaje", "/images/products/geometry/vesa-adapter.png"],
+  ["cable-tray", "Bandeja de Cables", "Canaliza hubs, fuentes y cableado bajo mesa con una bandeja configurable.", "Escritorio", "/images/products/geometry/cable-tray.png"],
+  ["laptop-stand", "Soporte Laptop / Tablet", "Ajusta apoyo, ángulo y dimensiones para tu equipo.", "Ergonomía", "/images/products/geometry/laptop-stand.png"],
+  ["phone-stand", "Soporte / Dock Móvil (USB-C)", "Configura un soporte inclinado con paso para cable USB-C.", "Dock", "/images/products/geometry/phone-stand.png"],
+  ["router-mount", "Soporte de Router", "Base y respaldo configurables para alojar el router con holgura.", "Red", "/images/products/geometry/router-mount.png"],
+  ["enclosure-ip65", "Caja técnica con tapa", "Caja técnica configurable para electrónica y proyectos protegidos.", "Electrónica", "/images/products/geometry/enclosure-ip65.png"],
 ];
 
 const BENEFITS = [

@@ -292,10 +292,10 @@ export default function STLViewerPro({ url, className }: Props) {
   function setView(mode: "iso" | "front" | "top" | "right") {
     const camera = cameraRef.current as any;
     const controls = controlsRef.current as any;
-    const group = groupRef.current as any;
-    if (!camera || !controls || !group || !meshRef.current) return;
+    const mesh = meshRef.current as any;
+    if (!camera || !controls || !mesh) return;
 
-    const box = new THREE.Box3().setFromObject(group);
+    const box = new THREE.Box3().setFromObject(mesh);
     const s = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
     const maxDim = Math.max(s.x, s.y, s.z, 1);
@@ -622,7 +622,7 @@ export default function STLViewerPro({ url, className }: Props) {
           groundRef.current.position.y = -size.y / 2 - 0.02;
         }
 
-        fitCameraToObject(group);
+        fitCameraToObject(mesh);
       },
       undefined,
       () => {
