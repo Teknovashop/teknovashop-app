@@ -1,20 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" role="img" aria-label="Soporte GoPro con horquilla configurable">
   <defs>
-    <radialGradient id="bg" cx="58%" cy="18%" r="82%"><stop offset="0" stop-color="#69c9ff"/><stop offset=".43" stop-color="#205f91"/><stop offset="1" stop-color="#071321"/></radialGradient>
-    <linearGradient id="body" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#dceaf5"/><stop offset=".52" stop-color="#849bae"/><stop offset="1" stop-color="#26394e"/></linearGradient>
-    <filter id="shadow"><feDropShadow dx="0" dy="24" stdDeviation="20" flood-color="#020817" flood-opacity=".6"/></filter>
-    <pattern id="grid" width="62" height="62" patternUnits="userSpaceOnUse"><path d="M62 0H0v62" fill="none" stroke="#8be9ff" stroke-opacity=".13"/></pattern>
+    <radialGradient id="bg" cx="58%" cy="18%" r="82%"><stop offset="0" stop-color="#ffffff"/><stop offset=".43" stop-color="#d9ecff"/><stop offset="1" stop-color="#9fc8ee"/></radialGradient>
+    <linearGradient id="body" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#384556"/><stop offset=".52" stop-color="#1f2b3a"/><stop offset="1" stop-color="#0b1220"/></linearGradient>
+    <filter id="shadow"><feDropShadow dx="0" dy="24" stdDeviation="20" flood-color="#0b2545" flood-opacity=".26"/></filter>
+    <pattern id="grid" width="62" height="62" patternUnits="userSpaceOnUse"><path d="M62 0H0v62" fill="none" stroke="#3b82f6" stroke-opacity=".10"/></pattern>
   </defs>
   <rect width="1200" height="900" fill="url(#bg)"/><rect width="1200" height="900" fill="url(#grid)"/>
-  <ellipse cx="604" cy="708" rx="340" ry="64" fill="#8be9ff" opacity=".13"/>
+  <ellipse cx="604" cy="708" rx="340" ry="64" fill="#3b82f6" opacity=".13"/>
   <g filter="url(#shadow)">
-    <path d="M386 575h450c35 0 64 29 64 64v42H322v-42c0-35 29-64 64-64Z" fill="#2c4056"/>
+    <path d="M386 575h450c35 0 64 29 64 64v42H322v-42c0-35 29-64 64-64Z" fill="#101827"/>
     <rect x="514" y="436" width="190" height="164" rx="30" fill="url(#body)"/>
     <path d="M405 265h112v216H405c-29 0-52-23-52-52V317c0-29 23-52 52-52Z" fill="url(#body)"/>
     <path d="M704 265h112c29 0 52 23 52 52v112c0 29-23 52-52 52H704Z" fill="url(#body)"/>
-    <path d="M542 288h134v168H542Z" fill="#26394e"/>
-    <circle cx="610" cy="374" r="56" fill="#10243a" stroke="#bdf3ff" stroke-width="9"/>
-    <circle cx="610" cy="374" r="18" fill="#dff8ff"/>
+    <path d="M542 288h134v168H542Z" fill="#0b1220"/>
+    <circle cx="610" cy="374" r="56" fill="#071321" stroke="#93c5fd" stroke-width="9"/>
+    <circle cx="610" cy="374" r="18" fill="#cbd5e1"/>
   </g>
-  <text x="72" y="810" fill="#d6f7ff" font-family="Inter,Arial,sans-serif" font-size="24" font-weight="800" letter-spacing="4">SOPORTE GOPRO</text>
+  <text x="72" y="810" fill="#cbd5e1" font-family="Inter,Arial,sans-serif" font-size="24" font-weight="800" letter-spacing="4">SOPORTE GOPRO</text>
 </svg>
