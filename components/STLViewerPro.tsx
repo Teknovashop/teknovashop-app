@@ -300,6 +300,8 @@ export default function STLViewerPro({ url, className }: Props) {
     const mesh = meshRef.current as any;
     if (!camera || !controls || !mesh) return;
 
+    groupRef.current?.updateMatrixWorld?.(true);
+    mesh.updateMatrixWorld?.(true);
     const box = new THREE.Box3().setFromObject(mesh);
     const s = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
@@ -536,8 +538,9 @@ export default function STLViewerPro({ url, className }: Props) {
   function fitCameraToObject(obj: any) {
     const camera = cameraRef.current;
     const controls = controlsRef.current;
-    if (!camera || !controls) return;
+    if (!camera || !controls || !obj) return;
 
+    obj.updateMatrixWorld?.(true);
     const box = new THREE.Box3().setFromObject(obj);
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
@@ -628,6 +631,7 @@ export default function STLViewerPro({ url, className }: Props) {
           groundRef.current.position.y = -size.y / 2 - 0.02;
         }
 
+        group.updateMatrixWorld(true);
         fitCameraToObject(mesh);
       },
       undefined,
