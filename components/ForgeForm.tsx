@@ -112,6 +112,12 @@ const FALLBACK_MODELS: CatalogItem[] = MODELS.map((model) => ({
   label: model.name,
 }));
 
+const LOCAL_FREE_HOLE_MODELS = new Set([
+  "cable-clip",
+  "qr-plate",
+  "vesa-adapter",
+]);
+
 export default function ForgeForm({
   initialModel,
   initialParams,
@@ -229,8 +235,8 @@ export default function ForgeForm({
   }, [slug, productMeta]);
 
   const supportsFreeHoles =
-    productMeta[slug]?.capabilities?.free_holes ??
-    ["qr-plate", "vesa-adapter"].includes(slug);
+    productMeta[slug]?.capabilities?.free_holes === true ||
+    LOCAL_FREE_HOLE_MODELS.has(slug);
 
   const initializedSlug = useRef<string | null>(null);
   useEffect(() => {
