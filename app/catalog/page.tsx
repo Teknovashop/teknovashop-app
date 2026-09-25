@@ -7,18 +7,6 @@ import { MODELS, type ForgeModel } from "@/data/models";
 import { normalizeModelSearch } from "@/lib/model-routing";
 import CatalogFilters from "@/components/CatalogFilters";
 
-const LEGACY_IMAGE_TUNING: Record<string, string> = {
-  "ssd-holder": "scale-[1.18]",
-  "raspi-case": "scale-[1.18]",
-  "mic-arm-clip": "scale-[1.28]",
-  "cable-clip": "scale-[1.16]",
-  "wall-hook": "scale-[1.16]",
-  "camera-plate": "scale-[1.55]",
-  "headset-stand": "scale-[1.2]",
-  "go-pro-mount": "scale-[1.2]",
-  "hub-holder": "scale-[1.22]",
-};
-
 function CubeMark() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-12 w-12">
@@ -88,26 +76,12 @@ function EnclosureProductArt() {
 
 function CatalogImage({ model, priority }: { model: ForgeModel; priority?: boolean }) {
   const [failed, setFailed] = useState(false);
-  const isLegacyRender = model.thumbnail.startsWith("/images/models/");
   const isEnclosure = model.slug === "enclosure-ip65";
 
   return (
     <div
-      className={
-        "catalog-media relative aspect-[4/3] overflow-hidden " +
-        (isLegacyRender
-          ? "bg-[radial-gradient(circle_at_58%_18%,#72c6ff_0%,#2a6da7_38%,#0b243e_72%,#071321_100%)]"
-          : "bg-[#091827]")
-      }
+      className="catalog-media relative aspect-[4/3] overflow-hidden bg-[#091827]"
     >
-      {isLegacyRender && (
-        <>
-          <div className="absolute inset-0 opacity-20 [background-image:linear-gradient(rgba(139,233,255,.18)_1px,transparent_1px),linear-gradient(90deg,rgba(139,233,255,.18)_1px,transparent_1px)] [background-size:34px_34px]" />
-          <div className="absolute -right-12 top-2 h-36 w-36 rounded-full bg-cyan-200/25 blur-3xl" />
-          <div className="absolute bottom-[-18%] left-[12%] h-24 w-[76%] rounded-full bg-cyan-100/15 blur-2xl" />
-        </>
-      )}
-
       {isEnclosure ? (
         <EnclosureProductArt />
       ) : !failed ? (
@@ -119,13 +93,7 @@ function CatalogImage({ model, priority }: { model: ForgeModel; priority?: boole
           fetchPriority={priority ? "high" : "auto"}
           sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
           onError={() => setFailed(true)}
-          className={
-            "object-cover transition duration-700 group-hover:scale-[1.045] " +
-            (isLegacyRender
-              ? "mix-blend-multiply grayscale contrast-[1.28] brightness-[1.08] opacity-95 "
-              : "") +
-            (LEGACY_IMAGE_TUNING[model.slug] || "")
-          }
+          className="object-cover transition duration-700 group-hover:scale-[1.045]"
         />
       ) : (
         <div className="absolute inset-0 grid place-items-center bg-[radial-gradient(circle_at_65%_25%,rgba(37,99,235,.32),transparent_30%),linear-gradient(145deg,#071321,#0a2340_55%,#071321)]">
@@ -141,9 +109,6 @@ function CatalogImage({ model, priority }: { model: ForgeModel; priority?: boole
         </div>
       )}
 
-      {isLegacyRender && (
-        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,.08),transparent_35%,rgba(7,19,33,.35))]" />
-      )}
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#071321]/40 via-transparent to-white/5" />
       <span className="absolute left-3 top-3 rounded-full border border-white/65 bg-white/90 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-700 shadow-sm backdrop-blur">
         Paramétrico

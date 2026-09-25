@@ -1,22 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" role="img" aria-label="Clip Brazo Mic">
-<defs>
- <radialGradient id="bg" cx="58%" cy="20%" r="82%"><stop offset="0" stop-color="#4aa6ff"/><stop offset=".32" stop-color="#123f70"/><stop offset="1" stop-color="#061728"/></radialGradient>
- <linearGradient id="shade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c8efff" stop-opacity=".10"/><stop offset=".55" stop-color="#071321" stop-opacity=".02"/><stop offset="1" stop-color="#071321" stop-opacity=".32"/></linearGradient>
- <pattern id="grid" width="64" height="64" patternUnits="userSpaceOnUse"><path d="M64 0H0V64" fill="none" stroke="#8be9ff" stroke-opacity=".12" stroke-width="1"/></pattern>
- <filter id="grade" color-interpolation-filters="sRGB">
-   <feColorMatrix type="saturate" values=".18"/>
-   <feComponentTransfer><feFuncR type="linear" slope=".80" intercept=".02"/><feFuncG type="linear" slope=".92" intercept=".03"/><feFuncB type="linear" slope="1.18" intercept=".06"/></feComponentTransfer>
- </filter>
- <filter id="glow"><feGaussianBlur stdDeviation="18"/></filter>
-</defs>
-<rect width="1200" height="900" fill="url(#bg)"/>
-<rect width="1200" height="900" fill="url(#grid)"/>
-<ellipse cx="610" cy="715" rx="410" ry="85" fill="#69c7ff" opacity=".18" filter="url(#glow)"/>
-<image href="/images/models/mic-arm-clip.jpg" x="55" y="55" width="1090" height="790" preserveAspectRatio="xMidYMid meet" filter="url(#grade)" opacity=".94"/>
-<rect width="1200" height="900" fill="url(#shade)"/>
-<g fill="none" stroke="#c6f2ff" stroke-opacity=".22" stroke-width="2">
- <rect x="42" y="42" width="330" height="220" rx="18"/><path d="M78 96H332M78 144H300M82 212H344"/>
- <rect x="850" y="70" width="305" height="235" rx="14"/><path d="M890 112H1118M890 162H1080M900 244H1120"/>
- <path d="M70 740H1130M130 690H1060"/>
-</g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" role="img" aria-label="Clip para brazo de microfono configurable">
+  <defs>
+    <radialGradient id="bg" cx="58%" cy="18%" r="82%"><stop offset="0" stop-color="#69c9ff"/><stop offset=".43" stop-color="#205f91"/><stop offset="1" stop-color="#071321"/></radialGradient>
+    <linearGradient id="body" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#dceaf5"/><stop offset=".52" stop-color="#8298ad"/><stop offset="1" stop-color="#26394e"/></linearGradient>
+    <filter id="shadow"><feDropShadow dx="0" dy="24" stdDeviation="20" flood-color="#020817" flood-opacity=".6"/></filter>
+    <pattern id="grid" width="62" height="62" patternUnits="userSpaceOnUse"><path d="M62 0H0v62" fill="none" stroke="#8be9ff" stroke-opacity=".13"/></pattern>
+  </defs>
+  <rect width="1200" height="900" fill="url(#bg)"/><rect width="1200" height="900" fill="url(#grid)"/>
+  <ellipse cx="600" cy="708" rx="330" ry="62" fill="#8be9ff" opacity=".13"/>
+  <g filter="url(#shadow)">
+    <path d="M372 526c-78-86-67-219 26-293 88-70 219-59 290 25l-93 73c-30-35-83-40-120-10-40 32-45 88-12 124Z" fill="url(#body)"/>
+    <path d="M626 282h238c52 0 94 42 94 94v18H640c-24 0-44-20-44-44v-38c0-17 13-30 30-30Z" fill="#4b6075"/>
+    <path d="M634 447h302v60c0 49-40 89-89 89H531c-42 0-76-34-76-76v-29h141c21 0 38-17 38-38Z" fill="#2d4157"/>
+    <path d="M462 445c-32-36-27-91 11-121 36-29 88-24 118 11" fill="none" stroke="#071321" stroke-opacity=".62" stroke-width="46" stroke-linecap="round"/>
+    <g fill="#071321" stroke="#bdf3ff" stroke-width="5">
+      <circle cx="706" cy="337" r="14"/><circle cx="832" cy="337" r="14"/><circle cx="695" cy="526" r="14"/><circle cx="824" cy="526" r="14"/>
+    </g>
+  </g>
+  <text x="72" y="810" fill="#d6f7ff" font-family="Inter,Arial,sans-serif" font-size="24" font-weight="800" letter-spacing="4">CLIP BRAZO MIC</text>
 </svg>
