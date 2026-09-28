@@ -107,6 +107,10 @@ function fallbackField(key: string, value: any) {
   };
 }
 
+function distance2d(a: { x: number; y: number }, b: { x: number; y: number }) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
 const FALLBACK_MODELS: CatalogItem[] = MODELS.map((model) => ({
   slug: model.slug,
   label: model.name,
@@ -386,6 +390,33 @@ export default function ForgeForm({
       fillet_mm: R,
     };
   }, [modelSchema, modelParams, lengthMm, widthMm, heightMm, thicknessMm, filletMm]);
+
+  const holeWarnings = useMemo(() => {
+    if (slug !== "vesa-adapter" || holes.length === 0) return [];
+
+    const patternFrom = Number((params as any).pattern_from ?? 75);
+    const patternTo = Number((params as any).pattern_to ?? 100);
+    const native = [patternFrom, patternTo]
+      .filter((value, index, list) => Number.isFinite(value) && value > 0 && list.indexOf(value) === index)
+      .flatMap((pattern) => {
+        const half = pattern / 2;
+        return [
+          { x: -half, y: -half, label: `${pattern} mm` },
+          { x: half, y: -half, label: `${pattern} mm` },
+          { x: -half, y: half, label: `${pattern} mm` },
+          { x: half, y: half, label: `${pattern} mm` },
+        ];
+      });
+
+    return holes
+      .map((hole, index) => {
+        const overlap = native.find((nativeHole) => distance2d(hole, nativeHole) < 0.5);
+        return overlap
+          ? `Agujero #${index + 1}: (${hole.x}, ${hole.y}) coincide con un taladro VESA nativo de ${overlap.label}. Usa otra coordenada para ver un agujero nuevo.`
+          : "";
+      })
+      .filter(Boolean);
+  }, [slug, holes, params]);
 
   const text_ops = useMemo(() => {
     if (!text?.trim()) return undefined;
@@ -760,6 +791,14 @@ export default function ForgeForm({
               >
                 Limpiar todos
               </button>
+            </div>
+          )}
+
+          {holeWarnings.length > 0 && (
+            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-800">
+              {holeWarnings.map((warning) => (
+                <p key={warning}>{warning}</p>
+              ))}
             </div>
           )}
 
