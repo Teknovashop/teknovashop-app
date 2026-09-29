@@ -1,0 +1,21 @@
+{
+  "name": "Teknovashop Cloud Dev",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:24",
+  "postCreateCommand": "npm ci --no-audit --no-fund",
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": {
+      "label": "Teknovashop Next.js",
+      "onAutoForward": "openPreview"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "bradlc.vscode-tailwindcss"
+      ]
+    }
+  },
+  "remoteUser": "node"
+}
