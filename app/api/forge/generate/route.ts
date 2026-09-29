@@ -229,14 +229,39 @@ export async function POST(req: Request) {
   // Never trust x-user-id or user_id supplied by the browser. If a user is
   // authenticated, derive identity from the signed Supabase session cookie.
   let userId: string | null = null;
+  let accessToken: string | null = null;
   try {
     const supabase = await createSupabaseServerClient();
     const {
       data: { user },
+      error: userError,
     } = await supabase.auth.getUser();
-    userId = user?.id || null;
+
+    if (!userError && user) {
+      userId = user.id;
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (session?.user?.id === user.id) {
+        accessToken = session.access_token || null;
+      }
+    }
   } catch {
     userId = null;
+    accessToken = null;
+  }
+
+  if (userId && !accessToken) {
+    return json(
+      {
+        ok: false,
+        error: "No se ha podido validar la sesión de usuario",
+        code: "FORGE_AUTH_TOKEN_MISSING",
+      },
+      401
+    );
   }
 
   let r: Response;
@@ -245,7 +270,9 @@ export async function POST(req: Request) {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        ...(userId ? { "x-user-id": userId } : {}),
+        ...(accessToken
+          ? { Authorization: `Bearer ${accessToken}` }
+          : {}),
       },
       body: JSON.stringify({
         slug,
@@ -253,7 +280,6 @@ export async function POST(req: Request) {
         params,
         holes,
         text_ops,
-        user_id: userId || null,
       }),
       cache: "no-store",
       signal: AbortSignal.timeout(55000),
