@@ -24,6 +24,7 @@ export async function GET() {
         latencyMs: Date.now() - started,
         engine: data?.engine || null,
         cadqueryVersion: data?.cadquery_version || null,
+        operations: Array.isArray(data?.operations) ? data.operations : [],
       },
       { status: response.ok ? 200 : 502 }
     );
