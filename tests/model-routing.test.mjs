@@ -15,9 +15,9 @@ test('existing product links resolve to supported products', () => {
   }
 });
 
-test('catalogue has 30 unique canonical models with exact geometry previews', () => {
-  assert.equal(MODELS.length, 30);
-  assert.equal(new Set(MODELS.map(model => model.slug)).size, 30);
+test('catalogue has 72 unique canonical models with exact geometry previews', () => {
+  assert.equal(MODELS.length, 72);
+  assert.equal(new Set(MODELS.map(model => model.slug)).size, 72);
   for (const model of MODELS) {
     assert.equal(canonicalModelSlug(model.slug), model.slug);
     assert.equal(
