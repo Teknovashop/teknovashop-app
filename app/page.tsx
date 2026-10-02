@@ -241,10 +241,10 @@ export default function Page() {
               </div>
               <div className="mb-5 flex flex-wrap gap-2">
                 <Link
-                  href="/forge-v2/cable-tray"
+                  href="/forge-v2"
                   className="rounded-xl bg-cyan-300 px-4 py-2.5 text-xs font-black text-[#04101d] transition hover:bg-cyan-200"
                 >
-                  Entrar en Forge V2
+                  Explorar Forge V2
                 </Link>
                 <Link
                   href="/forge-v2/cad-lab"
