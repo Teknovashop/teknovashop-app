@@ -83,7 +83,41 @@ const PRESETS: Record<string, Array<{ name: string; copy: string; params: Params
     { name: "Standard", copy: "Uso general", params: { length: 120, width: 68, height: 45, wall: 3, lid_thickness: 3, lid_gap: 2 } },
     { name: "Workshop", copy: "Más espacio interior", params: { length: 160, width: 90, height: 60, wall: 4, lid_thickness: 4, lid_gap: 2 } },
   ],
+
 };
+
+function humanizeParam(key: string) {
+  return key
+    .replace(/_mm$/i, "")
+    .replace(/_deg$/i, "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function genericFieldsFromDefaults(defaults: Params) {
+  return Object.fromEntries(
+    Object.entries(defaults)
+      .filter(([, value]) => typeof value === "number" && Number.isFinite(value))
+      .map(([key, value]) => {
+        const numeric = Number(value);
+        const isCount = /(count|rows|cols|rib_count)$/i.test(key);
+        const isAngle = /deg|angle/i.test(key);
+        const unit = isAngle ? "°" : isCount ? "" : "mm";
+        const magnitude = Math.max(Math.abs(numeric), 1);
+        return [
+          key,
+          {
+            label: humanizeParam(key),
+            min: isAngle ? 0 : 0,
+            max: isAngle ? 180 : Math.max(20, Math.ceil(magnitude * 4)),
+            step: isCount ? 1 : isAngle ? 1 : 0.5,
+            defaultValue: numeric,
+            unit,
+          },
+        ];
+      })
+  );
+}
 
 function defaultOperation(type: OpKind): ForgeV2Operation {
   const base = {
@@ -185,16 +219,18 @@ function ToolButton({
 export default function ForgeV2Workspace({ slug }: { slug: string }) {
   const product = FORGE_V2_PILOTS[slug];
   const capabilities = useMemo(() => forgeV2Capabilities(slug), [slug]);
-  const fields = useMemo(
+  const staticFields = useMemo(
     () => ((FIELDS as unknown as Record<string, Record<string, any>>)[slug] || {}),
     [slug]
   );
-  const baseParams = useMemo(
+  const staticBaseParams = useMemo(
     () => ({ ...((DEFAULT_PARAMS as unknown as Record<string, Params>)[slug] || {}) }),
     [slug]
   );
 
-  const [params, setParams] = useState<Params>(baseParams);
+  const [fields, setFields] = useState<Record<string, any>>(staticFields);
+  const [baseParams, setBaseParams] = useState<Params>(staticBaseParams);
+  const [params, setParams] = useState<Params>(staticBaseParams);
   const [operations, setOperations] = useState<ForgeV2Operation[]>([]);
   const [history, setHistory] = useState<ForgeV2Operation[][]>([]);
   const [future, setFuture] = useState<ForgeV2Operation[][]>([]);
@@ -248,6 +284,48 @@ export default function ForgeV2Workspace({ slug }: { slug: string }) {
   useEffect(() => {
     void refreshDrafts();
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function hydrateCanonicalProduct() {
+      try {
+        const response = await fetch("/api/forge/v2/catalog", { cache: "no-store" });
+        if (!response.ok) return;
+        const data = await response.json().catch(() => ({}));
+        const product = Array.isArray(data?.products)
+          ? data.products.find((item: any) => item?.slug === slug)
+          : null;
+        if (!product || cancelled) return;
+
+        const canonicalDefaults =
+          product.defaults && typeof product.defaults === "object"
+            ? (product.defaults as Params)
+            : {};
+
+        const nextBase = {
+          ...canonicalDefaults,
+          ...staticBaseParams,
+        };
+        const nextFields = Object.keys(staticFields).length
+          ? staticFields
+          : genericFieldsFromDefaults(canonicalDefaults);
+
+        setBaseParams(nextBase);
+        setFields(nextFields);
+        setParams((current) =>
+          Object.keys(current).length ? { ...nextBase, ...current } : nextBase
+        );
+      } catch {
+        // Static frontend metadata remains a safe fallback.
+      }
+    }
+
+    void hydrateCanonicalProduct();
+    return () => {
+      cancelled = true;
+    };
+  }, [slug, staticBaseParams, staticFields]);
 
   async function saveDraft() {
     setDraftBusy(true);
@@ -578,7 +656,7 @@ export default function ForgeV2Workspace({ slug }: { slug: string }) {
                         }
                         className="w-full rounded-lg border border-white/10 bg-[#071321] px-2 py-2 text-sm text-white outline-none focus:border-cyan-300/50"
                       />
-                      <span className="text-[10px] text-slate-600">mm</span>
+                      <span className="text-[10px] text-slate-600">{field.unit ?? "mm"}</span>
                     </div>
                   </label>
                 ))}
