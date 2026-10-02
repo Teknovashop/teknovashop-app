@@ -132,7 +132,13 @@ export default function CatalogPage() {
               </p>
             </div>
             <div className="min-w-[280px]">
-              <CatalogFilters value={q} onChange={setQ} />
+              <CatalogFilters
+                value={q}
+                onChange={setQ}
+                family={family}
+                onFamilyChange={setFamily}
+                families={families}
+              />
             </div>
           </div>
 
