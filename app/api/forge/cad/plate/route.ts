@@ -24,6 +24,21 @@ export async function POST(req: Request) {
     thickness: Number(body.thickness),
     corner_radius: Number(body.corner_radius),
     chamfer: Number(body.chamfer),
+    operations: Array.isArray(body.operations)
+      ? body.operations.slice(0, 24).map((op: any) => ({
+          type: String(op?.type || ""),
+          x: Number(op?.placement?.x || 0),
+          y: Number(op?.placement?.y || 0),
+          rotation_deg: Number(op?.placement?.rotation_deg || 0),
+          enabled: op?.enabled !== false,
+          ...Object.fromEntries(
+            Object.entries(op?.params || {}).filter(
+              ([, value]) =>
+                typeof value === "number" || typeof value === "string" || typeof value === "boolean"
+            )
+          ),
+        }))
+      : [],
   };
 
   if (
@@ -37,7 +52,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const response = await fetch(`${CAD_BACKEND}/v2/plate/${format}`, {
+    const response = await fetch(`${CAD_BACKEND}/v2/plate/design/${format}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
