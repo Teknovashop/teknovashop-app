@@ -21,7 +21,7 @@ describe("Forge V2 catalog coverage", () => {
   it("keeps advanced operations opt-in by geometry family", () => {
     expect(forgeV2Capabilities("vesa-adapter").holes).toBe(true);
     expect(forgeV2Capabilities("cable-tray").vents).toEqual(["linear", "hex"]);
-    expect(forgeV2Capabilities("universal-mount-plate").cutouts).toBe(true);
+    expect(forgeV2Capabilities("perforated-mount-plate").cutouts).toBe(true);
 
     expect(forgeV2Capabilities("headset-stand").holes).toBeUndefined();
     expect(forgeV2Capabilities("headset-stand").dimensions).toBe(true);
