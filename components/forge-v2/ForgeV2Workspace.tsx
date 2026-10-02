@@ -216,9 +216,46 @@ function ToolButton({
   );
 }
 
+
+function capabilitiesFromBackend(product: any, fallback: Record<string, any>) {
+  const ops = new Set<string>(
+    Array.isArray(product?.v2_capabilities) ? product.v2_capabilities : []
+  );
+  const vents: string[] = [];
+  if (ops.has("vent_linear")) vents.push("linear");
+  if (ops.has("vent_hex")) vents.push("hex");
+
+  return {
+    ...fallback,
+    text: product?.capabilities?.text !== false,
+    holes:
+      ops.has("hole") ||
+      ops.has("counterbore") ||
+      ops.has("hole_pattern") ||
+      undefined,
+    slots: ops.has("slot") || undefined,
+    cutouts:
+      ops.has("cutout_rect") ||
+      ops.has("cutout_circle") ||
+      ops.has("pocket_rect") ||
+      undefined,
+    holePatterns: ops.has("hole_pattern") || undefined,
+    cableChannels: ops.has("cable_channel") || undefined,
+    vents: vents.length ? vents : undefined,
+    waves:
+      ops.has("wave_ribs") || ops.has("scallop_pattern") || undefined,
+    ribs: ops.has("rib") || ops.has("boss") || undefined,
+    mountingPatterns: ops.has("vesa_pattern") ? ["vesa"] : undefined,
+  };
+}
+
 export default function ForgeV2Workspace({ slug }: { slug: string }) {
   const product = FORGE_V2_PILOTS[slug];
-  const capabilities = useMemo(() => forgeV2Capabilities(slug), [slug]);
+  const fallbackCapabilities = useMemo(() => forgeV2Capabilities(slug), [slug]);
+  const [capabilities, setCapabilities] = useState<Record<string, any>>(
+    fallbackCapabilities
+  );
+  const [catalogVariant, setCatalogVariant] = useState<Params>({});
   const staticFields = useMemo(
     () => ((FIELDS as unknown as Record<string, Record<string, any>>)[slug] || {}),
     [slug]
@@ -313,6 +350,12 @@ export default function ForgeV2Workspace({ slug }: { slug: string }) {
 
         setBaseParams(nextBase);
         setFields(nextFields);
+        setCatalogVariant(
+          product.variant && typeof product.variant === "object"
+            ? (product.variant as Params)
+            : {}
+        );
+        setCapabilities(capabilitiesFromBackend(product, fallbackCapabilities));
         setParams((current) =>
           Object.keys(current).length ? { ...nextBase, ...current } : nextBase
         );
@@ -325,7 +368,7 @@ export default function ForgeV2Workspace({ slug }: { slug: string }) {
     return () => {
       cancelled = true;
     };
-  }, [slug, staticBaseParams, staticFields]);
+  }, [slug, staticBaseParams, staticFields, fallbackCapabilities]);
 
   async function saveDraft() {
     setDraftBusy(true);
@@ -560,7 +603,19 @@ export default function ForgeV2Workspace({ slug }: { slug: string }) {
   }
 
   const hasErrors = issues.some((issue) => issue.level === "error");
-  const presets = PRESETS[slug] || [];
+  const presets = useMemo(() => {
+    const explicit = PRESETS[slug] || [];
+    const hasVariant = Object.keys(catalogVariant).length > 0;
+    if (!hasVariant) return explicit;
+    return [
+      ...explicit,
+      {
+        name: "Variante técnica",
+        copy: "Configuración alternativa validada por el contrato canónico del producto.",
+        params: catalogVariant,
+      },
+    ];
+  }, [slug, catalogVariant]);
 
   return (
     <main className="min-h-screen bg-[#06111d] text-white">
