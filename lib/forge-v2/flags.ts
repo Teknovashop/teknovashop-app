@@ -8,7 +8,7 @@ export const FORGE_FLAGS = {
   advancedOperations:
     preview || process.env.NEXT_PUBLIC_ENABLE_ADVANCED_OPERATIONS === "1",
   experimentalSurfaces:
-    process.env.NEXT_PUBLIC_ENABLE_EXPERIMENTAL_SURFACES === "1",
+    preview || process.env.NEXT_PUBLIC_ENABLE_EXPERIMENTAL_SURFACES === "1",
   betaModels: preview || process.env.NEXT_PUBLIC_ENABLE_BETA_MODELS === "1",
 } as const;
 
