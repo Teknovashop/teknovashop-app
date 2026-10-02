@@ -4,14 +4,17 @@ export type ForgeV2OperationType =
   | "cutout_rect"
   | "cutout_circle"
   | "counterbore"
+  | "pocket_rect"
   | "hole_pattern"
   | "vesa_pattern"
   | "vent_linear"
   | "vent_hex"
+  | "scallop_pattern"
   | "cable_channel"
   | "text_engrave"
   | "text_emboss"
   | "rib"
+  | "boss"
   | "wave_ribs";
 
 export type ForgeV2Operation = {
