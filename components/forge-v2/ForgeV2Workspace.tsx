@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import ForgeV2ProductRail from "@/components/forge-v2/ForgeV2ProductRail";
 import { useEffect, useMemo, useRef, useState } from "react";
 import STLViewerPro from "@/components/STLViewerPro";
 import { DEFAULT_PARAMS, FIELDS } from "@/lib/forge-config";
@@ -249,7 +250,13 @@ function capabilitiesFromBackend(product: any, fallback: Record<string, any>) {
   };
 }
 
-export default function ForgeV2Workspace({ slug }: { slug: string }) {
+export default function ForgeV2Workspace({
+  slug,
+  premiumSurface = false,
+}: {
+  slug: string;
+  premiumSurface?: boolean;
+}) {
   const product = FORGE_V2_PILOTS[slug];
   const fallbackCapabilities = useMemo(() => forgeV2Capabilities(slug), [slug]);
   const [capabilities, setCapabilities] = useState<Record<string, any>>(
@@ -679,7 +686,16 @@ export default function ForgeV2Workspace({ slug }: { slug: string }) {
         </div>
       </div>
 
-      <div className="mx-auto grid max-w-[1680px] gap-4 p-4 xl:grid-cols-[300px_minmax(0,1fr)_390px]">
+      <div
+        className={
+          "mx-auto grid gap-4 p-4 " +
+          (premiumSurface
+            ? "max-w-[1920px] xl:grid-cols-[300px_minmax(0,1fr)_390px] 2xl:grid-cols-[220px_300px_minmax(0,1fr)_390px]"
+            : "max-w-[1680px] xl:grid-cols-[300px_minmax(0,1fr)_390px]")
+        }
+      >
+        {premiumSurface && <ForgeV2ProductRail currentSlug={slug} />}
+
         <aside className="max-h-[calc(100vh-132px)] overflow-y-auto rounded-3xl border border-white/10 bg-white/[0.04] p-4">
           <details className="group rounded-2xl border border-white/10 bg-[#0b1d30]">
             <summary className="cursor-pointer list-none px-4 py-3 text-sm font-black">
@@ -986,11 +1002,38 @@ export default function ForgeV2Workspace({ slug }: { slug: string }) {
           </div>
         </aside>
 
-        <section className="min-w-0 overflow-hidden rounded-3xl border border-cyan-300/15 bg-[#071321] shadow-[0_30px_100px_rgba(0,0,0,.35)]">
+        <section className="relative min-w-0 overflow-hidden rounded-3xl border border-cyan-300/15 bg-[#071321] shadow-[0_30px_100px_rgba(0,0,0,.35)]">
+          {premiumSurface && (
+            <div className="pointer-events-none absolute inset-x-4 top-4 z-20 flex items-center justify-between gap-3">
+              <div className="rounded-full border border-cyan-200/15 bg-[#06111d]/75 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.16em] text-cyan-200 backdrop-blur-xl">
+                Live parametric viewport
+              </div>
+              <div
+                className={
+                  "rounded-full border px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.12em] backdrop-blur-xl " +
+                  (hasErrors
+                    ? "border-rose-300/20 bg-rose-400/10 text-rose-200"
+                    : "border-emerald-300/20 bg-emerald-400/10 text-emerald-200")
+                }
+              >
+                {hasErrors ? "Revisar geometría" : "Modelo válido"} · {operations.length} ops
+              </div>
+            </div>
+          )}
           <STLViewerPro
             url={previewUrl}
             className="h-[720px] border-0 bg-[#071321] shadow-none"
           />
+          {premiumSurface && (
+            <div className="pointer-events-none absolute inset-x-4 bottom-4 z-20 flex flex-wrap items-center justify-between gap-2">
+              <div className="rounded-xl border border-white/10 bg-[#06111d]/75 px-3 py-2 text-[9px] font-bold text-slate-400 backdrop-blur-xl">
+                mm · mesh-v2 · schema 2
+              </div>
+              <div className="rounded-xl border border-white/10 bg-[#06111d]/75 px-3 py-2 text-[9px] font-bold text-slate-400 backdrop-blur-xl">
+                Undo {history.length} · Redo {future.length}
+              </div>
+            </div>
+          )}
         </section>
 
         <aside className="max-h-[calc(100vh-132px)] overflow-y-auto rounded-3xl border border-white/10 bg-white/[0.04] p-4">
