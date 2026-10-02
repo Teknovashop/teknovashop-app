@@ -30,6 +30,23 @@ type OpKind =
 
 type Params = Record<string, number | string | boolean>;
 
+type CloudDraft = {
+  id: string;
+  name: string;
+  product_slug: string;
+  params: Params;
+  operations: ForgeV2Operation[];
+  text_ops?: Array<{
+    text?: string;
+    mode?: "engrave" | "emboss";
+    size?: number;
+    depth?: number;
+    pos?: [number, number, number];
+    anchor?: "top" | "bottom";
+  }>;
+  updated_at: string;
+};
+
 const LABELS: Record<OpKind, string> = {
   hole: "Agujero",
   slot: "Ranura",
@@ -181,7 +198,90 @@ export default function ForgeV2Workspace({ slug }: { slug: string }) {
     "Forge V2 Beta · tu flujo estable V1 permanece disponible"
   );
   const [busy, setBusy] = useState(false);
+  const [drafts, setDrafts] = useState<CloudDraft[]>([]);
+  const [draftName, setDraftName] = useState("Mi diseño");
+  const [draftBusy, setDraftBusy] = useState(false);
+  const [draftMessage, setDraftMessage] = useState("");
   const validationSeq = useRef(0);
+
+  function currentTextOps() {
+    return textValue.trim()
+      ? [{
+          text: textValue.trim().slice(0, 40),
+          mode: textMode,
+          size: textSize,
+          depth: textDepth,
+          pos: [textX, textY, 0] as [number, number, number],
+          rot: [0, 0, 0] as [number, number, number],
+          anchor: textAnchor,
+        }]
+      : [];
+  }
+
+  async function refreshDrafts() {
+    try {
+      const response = await fetch("/api/forge/v2/drafts", { cache: "no-store" });
+      if (!response.ok) return;
+      const data = await response.json().catch(() => ({}));
+      setDrafts(Array.isArray(data?.drafts) ? data.drafts : []);
+    } catch {
+      // Cloud drafts are optional and must never block geometry editing.
+    }
+  }
+
+  useEffect(() => {
+    void refreshDrafts();
+  }, []);
+
+  async function saveDraft() {
+    setDraftBusy(true);
+    setDraftMessage("");
+    try {
+      const response = await fetch("/api/forge/v2/drafts", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: draftName,
+          product_slug: slug,
+          product_version: "1.0.0-beta.1",
+          params,
+          operations,
+          text_ops: currentTextOps(),
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 401) {
+        window.location.href = `/login?next=${encodeURIComponent("/forge-v2/" + slug)}`;
+        return;
+      }
+      if (!response.ok) throw new Error(data?.error || "No se pudo guardar");
+      setDraftMessage("Guardado en tu cuenta");
+      await refreshDrafts();
+    } catch (error: any) {
+      setDraftMessage(error?.message || "No se pudo guardar");
+    } finally {
+      setDraftBusy(false);
+    }
+  }
+
+  function loadDraft(draft: CloudDraft) {
+    if (draft.product_slug !== slug) return;
+    setParams({ ...baseParams, ...(draft.params || {}) });
+    setOperations(Array.isArray(draft.operations) ? draft.operations : []);
+    setHistory([]);
+    setFuture([]);
+    const text = draft.text_ops?.[0];
+    setTextValue(String(text?.text || ""));
+    setTextMode(text?.mode === "emboss" ? "emboss" : "engrave");
+    setTextAnchor(text?.anchor === "bottom" ? "bottom" : "top");
+    setTextSize(Number(text?.size || 8));
+    setTextDepth(Number(text?.depth || 1.2));
+    setTextX(Number(text?.pos?.[0] || 0));
+    setTextY(Number(text?.pos?.[1] || 0));
+    setDraftName(draft.name);
+    setPreviewUrl(undefined);
+    setDraftMessage("Borrador cargado · genera una nueva preview para validar");
+  }
 
   function commit(next: ForgeV2Operation[]) {
     setHistory((items) => [...items.slice(-29), operations]);
@@ -330,19 +430,7 @@ export default function ForgeV2Workspace({ slug }: { slug: string }) {
           slug,
           params,
           operations,
-          text_ops: textValue.trim()
-            ? [
-                {
-                  text: textValue.trim().slice(0, 40),
-                  mode: textMode,
-                  size: textSize,
-                  depth: textDepth,
-                  pos: [textX, textY, 0],
-                  rot: [0, 0, 0],
-                  anchor: textAnchor,
-                },
-              ]
-            : [],
+          text_ops: currentTextOps(),
           engine_version: "mesh-v2",
           schema_version: 2,
         }),
@@ -654,6 +742,63 @@ export default function ForgeV2Workspace({ slug }: { slug: string }) {
               </div>
             </details>
           )}
+
+          <details className="group mt-3 rounded-2xl border border-white/10 bg-[#0b1d30]">
+            <summary className="cursor-pointer list-none px-4 py-3 text-sm font-black">
+              <span className="flex items-center justify-between">
+                Borradores en la nube
+                <span className="text-cyan-300 transition group-open:rotate-45">＋</span>
+              </span>
+            </summary>
+            <div className="border-t border-white/10 p-3">
+              <div className="flex gap-2">
+                <input
+                  value={draftName}
+                  maxLength={100}
+                  onChange={(event) => setDraftName(event.target.value)}
+                  className="min-w-0 flex-1 rounded-lg border border-white/10 bg-[#071321] px-3 py-2 text-xs text-white outline-none focus:border-cyan-300/50"
+                  placeholder="Nombre del diseño"
+                />
+                <button
+                  type="button"
+                  disabled={draftBusy || !draftName.trim()}
+                  onClick={() => void saveDraft()}
+                  className="rounded-lg bg-cyan-300 px-3 py-2 text-xs font-black text-[#071321] transition hover:bg-cyan-200 disabled:opacity-50"
+                >
+                  {draftBusy ? "Guardando…" : "Guardar"}
+                </button>
+              </div>
+              {draftMessage && (
+                <p className="mt-2 text-[10px] leading-4 text-cyan-100/75">{draftMessage}</p>
+              )}
+              {drafts.filter((draft) => draft.product_slug === slug).length > 0 && (
+                <div className="mt-3 grid gap-2">
+                  {drafts
+                    .filter((draft) => draft.product_slug === slug)
+                    .slice(0, 5)
+                    .map((draft) => (
+                      <button
+                        key={draft.id}
+                        type="button"
+                        onClick={() => loadDraft(draft)}
+                        className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2 text-left transition hover:bg-white/[0.07]"
+                      >
+                        <span>
+                          <span className="block text-xs font-bold text-white">{draft.name}</span>
+                          <span className="mt-0.5 block text-[9px] text-slate-500">
+                            {new Date(draft.updated_at).toLocaleString("es-ES")}
+                          </span>
+                        </span>
+                        <span className="text-[10px] font-black text-cyan-300">Cargar</span>
+                      </button>
+                    ))}
+                </div>
+              )}
+              <p className="mt-3 text-[9px] leading-4 text-slate-500">
+                Parámetros, operaciones y personalización se guardan asociados únicamente a tu cuenta.
+              </p>
+            </div>
+          </details>
 
           <div className="mt-4 rounded-2xl border border-cyan-300/10 bg-cyan-300/[0.04] p-3 text-[11px] leading-5 text-slate-400">
             Todas las secciones se mantienen cerradas al entrar. Solo aparecen
