@@ -2,7 +2,11 @@ export type ForgeV2OperationType =
   | "hole"
   | "slot"
   | "cutout_rect"
+  | "hole_pattern"
+  | "vesa_pattern"
   | "vent_linear"
+  | "vent_hex"
+  | "cable_channel"
   | "text_engrave"
   | "text_emboss"
   | "rib";
