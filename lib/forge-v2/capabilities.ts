@@ -4,6 +4,8 @@ export type ForgeV2Capability =
   | "holes"
   | "slots"
   | "cutouts"
+  | "holePatterns"
+  | "cableChannels"
   | "vents"
   | "waves"
   | "ribs"
@@ -25,6 +27,8 @@ export const FORGE_V2_PILOTS: Record<
       holes: true,
       slots: true,
       cutouts: true,
+      holePatterns: true,
+      cableChannels: true,
       vents: ["linear", "hex"],
       ribs: true,
       text: true,
@@ -38,6 +42,7 @@ export const FORGE_V2_PILOTS: Record<
       holes: true,
       slots: true,
       cutouts: true,
+      holePatterns: true,
       mountingPatterns: ["vesa"],
       text: true,
     },
@@ -50,6 +55,8 @@ export const FORGE_V2_PILOTS: Record<
       holes: true,
       slots: true,
       cutouts: true,
+      holePatterns: true,
+      cableChannels: true,
       vents: ["linear", "hex"],
       ribs: true,
       text: true,
