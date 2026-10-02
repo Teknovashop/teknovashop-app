@@ -7,6 +7,7 @@ import { MODELS, type ForgeModel } from "@/data/models";
 import { normalizeModelSearch } from "@/lib/model-routing";
 import CatalogFilters from "@/components/CatalogFilters";
 import { forgeV2Capabilities } from "@/lib/forge-v2/capabilities";
+import { hasStudioRender, marketingImageFor, technicalImageFor } from "@/lib/catalog-media";
 
 const LEGACY_IMAGE_TUNING: Record<string, string> = {
   "ssd-holder": "scale-[1.18]",
@@ -30,12 +31,13 @@ function CubeMark() {
 }
 
 function CatalogImage({ model, priority }: { model: ForgeModel; priority?: boolean }) {
-  const [source, setSource] = useState(model.thumbnail);
+  const [source, setSource] = useState(marketingImageFor(model));
   const [failed, setFailed] = useState(false);
 
   function handleError() {
-    if (source !== model.geometryThumbnail && model.geometryThumbnail) {
-      setSource(model.geometryThumbnail);
+    const technical = technicalImageFor(model);
+    if (source !== technical) {
+      setSource(technical);
       return;
     }
     setFailed(true);
@@ -84,7 +86,7 @@ function CatalogImage({ model, priority }: { model: ForgeModel; priority?: boole
           </span>
         )}
         <span className="rounded-full border border-cyan-200/20 bg-[#071321]/75 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-cyan-100 backdrop-blur">
-          {model.thumbnail.startsWith("/images/") ? "Studio render" : "Geometría real"}
+          {hasStudioRender(model) ? "Studio render" : "Geometría real"}
         </span>
       </div>
     </div>
