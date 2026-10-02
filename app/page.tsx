@@ -16,12 +16,12 @@ const HERO_VIDEO_POSTER =
   process.env.NEXT_PUBLIC_HERO_POSTER_URL || "/hero/hero.jpg";
 
 const TEMPLATES = [
-  ["cable-tray", "Bandeja de Cables", "Canaliza hubs, fuentes y cableado bajo mesa con una bandeja configurable.", "Escritorio", "/images/products/professional/cable-tray.webp"],
-  ["phone-stand", "Soporte / Dock Móvil (USB-C)", "Configura un soporte inclinado con paso para cable USB-C.", "Dock", "/images/products/professional/phone-stand.webp"],
-  ["ssd-holder", "Caddy SSD 2.5 a 3.5", "Adaptador paramétrico para montar un SSD de 2.5 pulgadas en bahía de 3.5.", "Hardware", "/images/products/professional/ssd-holder.webp"],
-  ["hub-holder", "Soporte Hub USB", "Alojamiento abierto configurable para hubs USB.", "Escritorio", "/images/products/professional/hub-holder.webp"],
-  ["camera-plate", "Placa para Cámara", "Placa configurable con tornillo 1/4 y ranura de ajuste.", "Cámara", "/images/products/professional/camera-plate.webp"],
-  ["laptop-stand", "Soporte Laptop / Tablet", "Ajusta apoyo, ángulo y dimensiones para tu equipo.", "Ergonomía", "/images/products/professional/laptop-stand.webp"],
+  ["cable-tray", "Bandeja de Cables", "Canales, ventilación, patrones, agujeros y refuerzos sobre una base paramétrica.", "Cableado"],
+  ["vesa-adapter", "Adaptador VESA", "Combina patrones de montaje, perforaciones, ranuras, rebajes y cortes técnicos.", "Montaje"],
+  ["electronics-box", "Caja electrónica universal", "Ajusta volumen, pared y tapa y prepara entradas, ventilación y organización interior.", "Electrónica"],
+  ["vertical-laptop-dock", "Dock vertical para portátil", "Adapta hueco, altura y apoyo al grosor real de tu equipo.", "Escritorio"],
+  ["webcam-monitor-mount", "Soporte webcam de monitor", "Controla apoyo, caída y ángulo para sensores y cámaras compactas.", "Foto y vídeo"],
+  ["parametric-lidded-box", "Caja paramétrica con tapa", "Una base versátil para almacenamiento, proyectos maker y electrónica ligera.", "Organización"],
 ];
 
 const BENEFITS = [
@@ -49,6 +49,7 @@ const SOFTWARE_JSON_LD = {
     "Previsualización 3D a escala",
     "Cotas y medición",
     "Generación STL",
+    "Cortes, ranuras, patrones, ventilación y ondulaciones",
     "Design ID y manifiesto SHA-256",
   ],
 };
@@ -90,26 +91,26 @@ export default function Page() {
             <Reveal>
               <div className="home-pill">
                 <span className="h-1.5 w-1.5 rounded-full bg-cyan-300" />
-                Diseño paramétrico listo para imprimir
+                Forge V2 · diseño paramétrico guiado
               </div>
 
               <h1 className="mt-6 text-5xl font-black leading-[0.98] tracking-[-0.045em] sm:text-6xl lg:text-7xl">
-                Diseña accesorios tech paramétricos <span className="home-gradient-text">en minutos.</span>
+                Diseña piezas que se adaptan a ti, <span className="home-gradient-text">no al revés.</span>
               </h1>
 
               <p className="mt-6 max-w-xl text-base leading-7 text-slate-300 sm:text-lg">
-                Ajusta medidas reales, valida la pieza en 3D y genera un diseño trazable preparado para tu slicer. Sin rehacer cada variante desde cero en CAD.
+                Parte de una geometría profesional, modifica medidas reales y aplica operaciones como agujeros, cortes, ranuras, ventilación, patrones, refuerzos y ondulaciones. Valida todo en 3D antes de fabricar.
               </p>
 
               <div className="mt-8 flex flex-wrap gap-3">
                 <Link href={CONFIGURATOR_HREF} className="home-primary-btn home-primary-btn-lg">
-                  Probar configurador <Arrow />
+                  Entrar en Forge <Arrow />
                 </Link>
                 <a href="#templates" className="home-secondary-btn">Ver plantillas</a>
               </div>
 
               <div className="mt-8 flex flex-wrap gap-x-6 gap-y-3 text-xs text-slate-300">
-                {["Sin experiencia CAD obligatoria", "Vista 3D a escala", "STL validado", "Diseño trazable"].map((item) => (
+                {["72 bases paramétricas", "Operaciones geométricas", "Vista 3D a escala", "Diseño trazable"].map((item) => (
                   <span key={item} className="flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full bg-cyan-300" />
                     {item}
@@ -141,10 +142,10 @@ export default function Page() {
         <div className="border-y border-white/10 bg-white/[0.035]">
           <div className="mx-auto grid max-w-7xl grid-cols-2 divide-x divide-white/10 px-5 md:grid-cols-4 lg:px-8">
             {[
-              ["18", "modelos paramétricos canónicos"],
-              ["172", "pruebas automáticas de calidad"],
+              ["72", "productos paramétricos canónicos"],
+              ["596", "pruebas backend verificadas"],
+              ["11+", "operaciones Forge V2"],
               ["SHA-256", "trazabilidad por diseño"],
-              ["3D", "previsualización antes de comprar"],
             ].map((item) => (
               <div key={item[0]} className="px-4 py-5 text-center">
                 <div className="font-black">{item[0]}</div>
@@ -176,7 +177,7 @@ export default function Page() {
               >
                 <div className="relative aspect-[4/3] overflow-hidden bg-slate-100">
                   <Image
-                    src={template[4]}
+                    src={"/api/catalog/thumbnail/" + template[0]}
                     alt={template[1]}
                     fill
                     sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
@@ -222,6 +223,63 @@ export default function Page() {
         </div>
       </section>
 
+      <section id="forge-v2" className="home-section overflow-hidden bg-[#071321] text-white">
+        <div className="mx-auto max-w-7xl px-5 lg:px-8">
+          <Reveal>
+            <div className="grid gap-10 lg:grid-cols-[0.8fr_1.2fr] lg:items-end">
+              <div>
+                <div className="home-pill">
+                  <span className="h-1.5 w-1.5 rounded-full bg-cyan-300" />
+                  Forge V2 · operaciones
+                </div>
+                <h2 className="mt-5 text-4xl font-black tracking-[-0.045em] sm:text-5xl">
+                  De configurar medidas a <span className="home-gradient-text">editar geometría.</span>
+                </h2>
+                <p className="mt-5 max-w-xl text-sm leading-7 text-slate-300 sm:text-base">
+                  Cada herramienta aparece solo cuando la pieza la soporta. Las operaciones se validan antes de generar y quedan registradas como parte del diseño reproducible.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {[
+                  ["○", "Agujeros", "Diámetro y posición"],
+                  ["▭", "Ranuras", "Largo, ancho y giro"],
+                  ["◉", "Rebajes", "Counterbore técnico"],
+                  ["⌗", "Patrones", "Lineal, rejilla y VESA"],
+                  ["≋", "Ventilación", "Lineal y hexagonal"],
+                  ["∿", "Ondulaciones", "Relieve estructural"],
+                  ["□", "Cortes", "Rectangular y circular"],
+                  ["╱", "Canales", "Paso de cable"],
+                  ["▲", "Refuerzos", "Nervios aditivos"],
+                ].map(([icon, name, copy]) => (
+                  <div key={name} className="rounded-2xl border border-white/10 bg-white/[0.045] p-4 transition hover:border-cyan-300/25 hover:bg-cyan-300/[0.06]">
+                    <div className="text-xl font-light text-cyan-300">{icon}</div>
+                    <div className="mt-3 text-sm font-black">{name}</div>
+                    <div className="mt-1 text-[11px] leading-5 text-slate-400">{copy}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Reveal>
+
+          <Reveal delay={90}>
+            <div className="mt-10 grid gap-px overflow-hidden rounded-[1.6rem] border border-white/10 bg-white/10 md:grid-cols-4">
+              {[
+                ["01", "Elige una base", "72 productos agrupados por uso."],
+                ["02", "Añade operaciones", "Una pila editable, reversible y versionada."],
+                ["03", "Valida", "El motor rechaza combinaciones geométricas inseguras."],
+                ["04", "Genera", "Preview y artefacto final siguen separados."],
+              ].map(([n, title, copy]) => (
+                <div key={n} className="bg-[#071321] p-5">
+                  <div className="text-[10px] font-black tracking-[0.16em] text-cyan-300">{n}</div>
+                  <div className="mt-3 font-black">{title}</div>
+                  <div className="mt-2 text-xs leading-5 text-slate-400">{copy}</div>
+                </div>
+              ))}
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
       <section id="quality" className="home-section">
         <div className="mx-auto max-w-7xl px-5 lg:px-8">
           <Reveal>
@@ -255,8 +313,8 @@ export default function Page() {
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             {[
-              ["18 modelos canónicos", "Cada producto corresponde a una geometría concreta y parametrizable."],
-              ["172 checks automatizados", "Regresión de geometría, parámetros, exportación y trazabilidad."],
+              ["72 modelos canónicos", "Cada producto corresponde a una geometría concreta, parametrizable y comprobada."],
+              ["596 pruebas backend", "Regresión de geometría, parámetros, operaciones V2, exportación y trazabilidad."],
               ["Design ID único", "Cada generación puede identificarse, versionarse y licenciarse."],
               ["Manifiesto reproducible", "Parámetros, versión y SHA-256 acompañan al diseño final."],
             ].map((proof) => (
