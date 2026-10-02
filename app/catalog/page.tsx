@@ -125,7 +125,7 @@ export default function CatalogPage() {
                 Catálogo paramétrico
               </div>
               <h1 className="mt-5 max-w-4xl text-4xl font-black leading-[1.02] tracking-[-0.045em] sm:text-5xl">
-                30 bases técnicas. Un sistema para crear piezas <span className="home-gradient-text">realmente tuyas.</span>
+                72 bases técnicas. Un sistema para crear piezas <span className="home-gradient-text">realmente tuyas.</span>
               </h1>
               <p className="mt-5 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
                 Selecciona una geometría real, ajusta solo los parámetros que importan y valida el resultado en una mesa 3D a escala antes de comprar.
@@ -144,10 +144,10 @@ export default function CatalogPage() {
 
           <div className="mt-9 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/10 sm:grid-cols-5">
             {[
-              ["30", "modelos canónicos"],
+              ["72", "modelos canónicos"],
               ["mm", "medidas reales"],
               ["SHA-256", "trazabilidad"],
-              ["12", "nuevas bases"],
+              ["54", "nuevas bases"],
               ["3D", "preview protegido"],
             ].map(([value, label]) => (
               <div key={label} className="bg-[#071321]/85 px-4 py-4 text-center backdrop-blur">
