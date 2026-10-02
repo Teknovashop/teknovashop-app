@@ -7,7 +7,12 @@ import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 
-type Props = { url?: string | null; className?: string };
+type Props = {
+  url?: string | null;
+  className?: string;
+  pickMode?: boolean;
+  onPickPoint?: (point: Point3) => void;
+};
 type Unit = "mm" | "cm";
 type ToolMode = "orbit" | "measure";
 type Point3 = { x: number; y: number; z: number };
@@ -76,7 +81,12 @@ function applyViewerFraming(camera: any, mount: HTMLDivElement | null) {
   camera.clearViewOffset();
 }
 
-export default function STLViewerPro({ url, className }: Props) {
+export default function STLViewerPro({
+  url,
+  className,
+  pickMode = false,
+  onPickPoint,
+}: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
 
   // Refs laxos para evitar choques con @types/three en Vercel
@@ -95,6 +105,8 @@ export default function STLViewerPro({ url, className }: Props) {
   const measureGroupRef = useRef<any>(null);
   const pointerDownRef = useRef<{ x: number; y: number } | null>(null);
   const toolModeRef = useRef<ToolMode>("orbit");
+  const pickModeRef = useRef(false);
+  const onPickPointRef = useRef<Props["onPickPoint"]>(onPickPoint);
   const measurePointsRef = useRef<Point3[]>([]);
 
   const [viewerError, setViewerError] = useState<string | null>(null);
@@ -327,9 +339,17 @@ export default function STLViewerPro({ url, className }: Props) {
   useEffect(() => {
     toolModeRef.current = toolMode;
     if (controlsRef.current) {
-      controlsRef.current.enabled = toolMode === "orbit";
+      controlsRef.current.enabled = toolMode === "orbit" && !pickModeRef.current;
     }
   }, [toolMode]);
+
+  useEffect(() => {
+    pickModeRef.current = pickMode;
+    onPickPointRef.current = onPickPoint;
+    if (controlsRef.current) {
+      controlsRef.current.enabled = toolModeRef.current === "orbit" && !pickMode;
+    }
+  }, [pickMode, onPickPoint]);
 
   useEffect(() => {
     if (dimensionGroupRef.current) {
@@ -441,7 +461,8 @@ export default function STLViewerPro({ url, className }: Props) {
     };
 
     const onPointerUp = (ev: PointerEvent) => {
-      if (toolModeRef.current !== "measure" || !meshRef.current) return;
+      const picking = pickModeRef.current;
+      if ((!picking && toolModeRef.current !== "measure") || !meshRef.current) return;
 
       const start = pointerDownRef.current;
       pointerDownRef.current = null;
@@ -456,6 +477,12 @@ export default function STLViewerPro({ url, className }: Props) {
       if (!hits.length) return;
 
       const p = hits[0].point;
+
+      if (picking) {
+        onPickPointRef.current?.({ x: p.x, y: p.y, z: p.z });
+        return;
+      }
+
       const next: Point3[] =
         measurePointsRef.current.length === 1
           ? [measurePointsRef.current[0], { x: p.x, y: p.y, z: p.z }]
@@ -913,7 +940,9 @@ export default function STLViewerPro({ url, className }: Props) {
       )}
 
       <div className="pointer-events-none absolute bottom-3 right-3 z-20 max-w-[52%] rounded-lg border border-white/10 bg-[#071321]/80 px-2.5 py-1.5 text-right text-[9px] font-medium text-slate-300 backdrop-blur">
-        {toolMode === "measure"
+        {pickMode
+          ? "Haz clic sobre la pieza para colocar la operación"
+          : toolMode === "measure"
           ? measurePoints.length === 0
             ? "Selecciona el primer punto"
             : measurePoints.length === 1
