@@ -20,7 +20,19 @@ export type ForgeModelSlug =
   | "laptop-stand"
   | "mic-arm-clip"
   | "camera-plate"
-  | "hub-holder";
+  | "hub-holder"
+  | "vertical-laptop-dock"
+  | "universal-mount-plate"
+  | "mini-pc-mount"
+  | "desk-grommet"
+  | "under-desk-channel"
+  | "multi-device-dock"
+  | "webcam-monitor-mount"
+  | "network-switch-mount"
+  | "electronics-box"
+  | "controller-stand"
+  | "drill-template"
+  | "drawer-divider";
 
 export type ForgeParams = Record<string, number | boolean | string>;
 
