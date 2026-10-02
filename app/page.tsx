@@ -143,8 +143,8 @@ export default function Page() {
           <div className="mx-auto grid max-w-7xl grid-cols-2 divide-x divide-white/10 px-5 md:grid-cols-4 lg:px-8">
             {[
               ["72", "productos paramétricos canónicos"],
-              ["596", "pruebas backend verificadas"],
-              ["11+", "operaciones Forge V2"],
+              ["600+", "pruebas automatizadas"],
+              ["V2", "operaciones versionadas"],
               ["SHA-256", "trazabilidad por diseño"],
             ].map((item) => (
               <div key={item[0]} className="px-4 py-5 text-center">
@@ -239,6 +239,20 @@ export default function Page() {
                   Cada herramienta aparece solo cuando la pieza la soporta. Las operaciones se validan antes de generar y quedan registradas como parte del diseño reproducible.
                 </p>
               </div>
+              <div className="mb-5 flex flex-wrap gap-2">
+                <Link
+                  href="/forge-v2/cable-tray"
+                  className="rounded-xl bg-cyan-300 px-4 py-2.5 text-xs font-black text-[#04101d] transition hover:bg-cyan-200"
+                >
+                  Entrar en Forge V2
+                </Link>
+                <Link
+                  href="/forge-v2/cad-lab"
+                  className="rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-xs font-black text-white transition hover:bg-white/10"
+                >
+                  Ver CAD Engine Lab
+                </Link>
+              </div>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {[
                   ["○", "Agujeros", "Diámetro y posición"],
@@ -314,7 +328,7 @@ export default function Page() {
           <div className="grid gap-4 sm:grid-cols-2">
             {[
               ["72 modelos canónicos", "Cada producto corresponde a una geometría concreta, parametrizable y comprobada."],
-              ["596 pruebas backend", "Regresión de geometría, parámetros, operaciones V2, exportación y trazabilidad."],
+              ["600+ pruebas automatizadas", "Regresión de geometría, parámetros, operaciones V2, exportación y trazabilidad."],
               ["Design ID único", "Cada generación puede identificarse, versionarse y licenciarse."],
               ["Manifiesto reproducible", "Parámetros, versión y SHA-256 acompañan al diseño final."],
             ].map((proof) => (
