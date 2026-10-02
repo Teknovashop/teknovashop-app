@@ -33,7 +33,12 @@ type CadOpKind =
   | "cutout_circle"
   | "counterbore"
   | "pocket_rect"
+  | "hole_pattern"
   | "vesa_pattern"
+  | "vent_linear"
+  | "vent_hex"
+  | "cable_channel"
+  | "rib"
   | "boss";
 
 const CAD_OP_LABELS: Record<CadOpKind, string> = {
@@ -43,7 +48,12 @@ const CAD_OP_LABELS: Record<CadOpKind, string> = {
   cutout_circle: "Corte circular",
   counterbore: "Counterbore",
   pocket_rect: "Rebaje",
+  hole_pattern: "Patrón de agujeros",
   vesa_pattern: "Patrón VESA",
+  vent_linear: "Ventilación lineal",
+  vent_hex: "Ventilación hexagonal",
+  cable_channel: "Canal de cable",
+  rib: "Nervio / refuerzo",
   boss: "Boss",
 };
 
@@ -77,8 +87,33 @@ function createCadOperation(type: CadOpKind): ForgeV2Operation {
       };
     case "pocket_rect":
       return { ...base, params: { width_mm: 24, height_mm: 16, depth_mm: 1.5 } };
+    case "hole_pattern":
+      return {
+        ...base,
+        params: {
+          diameter_mm: 4,
+          rows: 2,
+          cols: 3,
+          spacing_x_mm: 14,
+          spacing_y_mm: 14,
+        },
+      };
     case "vesa_pattern":
       return { ...base, params: { pitch_mm: 75, diameter_mm: 5 } };
+    case "vent_linear":
+      return {
+        ...base,
+        params: { count: 5, length_mm: 30, width_mm: 3, spacing_mm: 8 },
+      };
+    case "vent_hex":
+      return {
+        ...base,
+        params: { rows: 2, cols: 3, radius_mm: 3, gap_mm: 2 },
+      };
+    case "cable_channel":
+      return { ...base, params: { length_mm: 45, width_mm: 9 } };
+    case "rib":
+      return { ...base, params: { length_mm: 55, width_mm: 5, height_mm: 4 } };
     case "boss":
       return { ...base, params: { diameter_mm: 14, height_mm: 4 } };
   }
@@ -110,6 +145,7 @@ export default function CadLabWorkspace() {
     latencyMs?: number;
     engine?: string | null;
     cadqueryVersion?: string | null;
+    operations?: string[];
   }>({});
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState(
@@ -267,12 +303,8 @@ export default function CadLabWorkspace() {
             value={health.cadqueryVersion || "2.8.x"}
           />
           <Metric
-            label="Latencia health"
-            value={
-              typeof health.latencyMs === "number"
-                ? `${health.latencyMs} ms`
-                : "—"
-            }
+            label="Operaciones B-Rep"
+            value={String(health.operations?.length || "—")}
           />
         </div>
       </section>
