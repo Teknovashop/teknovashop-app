@@ -55,17 +55,10 @@ const ADVANCED: Record<string, ForgeV2ProductCapabilities> = {
   },
   "qr-plate": PLATE_CAPABILITIES,
   "camera-plate": PLATE_CAPABILITIES,
-  "universal-mount-plate": PLATE_CAPABILITIES,
-  "vesa-offset-adapter": {
-    ...PLATE_CAPABILITIES,
-    mountingPatterns: ["vesa"],
-  },
   "perforated-mount-plate": PLATE_CAPABILITIES,
-  "circular-pattern-adapter": PLATE_CAPABILITIES,
   "drill-template": PLATE_CAPABILITIES,
   "multipattern-transition-plate": PLATE_CAPABILITIES,
   "inset-label": PLATE_CAPABILITIES,
-  "parametric-spacer": PLATE_CAPABILITIES,
 };
 
 export const FORGE_V2_PRODUCTS: Record<string, ProductProfile> = Object.fromEntries(
