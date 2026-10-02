@@ -25,7 +25,7 @@ function CatalogImage({ model, priority }: { model: ForgeModel; priority?: boole
     >
       {!failed ? (
         <Image
-          src={model.thumbnail}
+          src={model.geometryThumbnail || model.thumbnail}
           alt={model.name}
           fill
           loading={priority ? "eager" : "lazy"}
@@ -52,26 +52,44 @@ function CatalogImage({ model, priority }: { model: ForgeModel; priority?: boole
       <span className="absolute left-3 top-3 rounded-full border border-white/65 bg-white/90 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-700 shadow-sm backdrop-blur">
         Paramétrico
       </span>
-      <span className="absolute right-3 top-3 rounded-full border border-cyan-200/20 bg-[#071321]/75 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-cyan-100 backdrop-blur">
-        3D validado
-      </span>
+      <div className="absolute right-3 top-3 flex gap-1.5">
+        {model.isNew && (
+          <span className="rounded-full border border-emerald-200/20 bg-emerald-300/90 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-emerald-950 shadow-sm">
+            Nuevo
+          </span>
+        )}
+        <span className="rounded-full border border-cyan-200/20 bg-[#071321]/75 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-cyan-100 backdrop-blur">
+          Geometría real
+        </span>
+      </div>
     </div>
   );
 }
 
 export default function CatalogPage() {
   const [q, setQ] = useState("");
+  const [family, setFamily] = useState("");
+  const families = useMemo(
+    () =>
+      Array.from(
+        new Set(MODELS.map((model) => model.family).filter(Boolean) as string[])
+      ).sort((a, b) => a.localeCompare(b, "es")),
+    []
+  );
 
   const filtered = useMemo(() => {
     const t = normalizeModelSearch(q);
-    if (!t) return MODELS;
-    return MODELS.filter(
-      (m) =>
+    return MODELS.filter((m) => {
+      const matchesQuery =
+        !t ||
         normalizeModelSearch(m.name).includes(t) ||
         normalizeModelSearch(m.slug).includes(t) ||
-        normalizeModelSearch(m.description).includes(t)
-    );
-  }, [q]);
+        normalizeModelSearch(m.description).includes(t) ||
+        normalizeModelSearch(m.family || "").includes(t);
+      const matchesFamily = !family || m.family === family;
+      return matchesQuery && matchesFamily;
+    });
+  }, [q, family]);
 
   return (
     <main className="min-h-screen bg-[#f6f8fc] text-[#07111f]">
@@ -107,7 +125,7 @@ export default function CatalogPage() {
                 Catálogo paramétrico
               </div>
               <h1 className="mt-5 max-w-4xl text-4xl font-black leading-[1.02] tracking-[-0.045em] sm:text-5xl">
-                18 bases técnicas para crear una pieza <span className="home-gradient-text">a tu medida.</span>
+                30 bases técnicas. Un sistema para crear piezas <span className="home-gradient-text">realmente tuyas.</span>
               </h1>
               <p className="mt-5 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
                 Selecciona una geometría real, ajusta solo los parámetros que importan y valida el resultado en una mesa 3D a escala antes de comprar.
@@ -118,11 +136,12 @@ export default function CatalogPage() {
             </div>
           </div>
 
-          <div className="mt-9 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/10 sm:grid-cols-4">
+          <div className="mt-9 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/10 sm:grid-cols-5">
             {[
-              ["18", "modelos canónicos"],
+              ["30", "modelos canónicos"],
               ["mm", "medidas reales"],
               ["SHA-256", "trazabilidad"],
+              ["12", "nuevas bases"],
               ["3D", "preview protegido"],
             ].map(([value, label]) => (
               <div key={label} className="bg-[#071321]/85 px-4 py-4 text-center backdrop-blur">
@@ -142,13 +161,16 @@ export default function CatalogPage() {
               Mostrando <strong className="text-slate-900">{filtered.length}</strong> de {MODELS.length} modelos
             </div>
           </div>
-          {q && (
+          {(q || family) && (
             <button
               type="button"
-              onClick={() => setQ("")}
+              onClick={() => {
+                setQ("");
+                setFamily("");
+              }}
               className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-blue-600 shadow-sm hover:border-blue-200 hover:bg-blue-50"
             >
-              Limpiar búsqueda
+              Limpiar filtros
             </button>
           )}
         </div>
@@ -164,6 +186,10 @@ export default function CatalogPage() {
                 <CatalogImage model={m} priority={index < 3} />
 
                 <div className="p-5">
+                  <div className="mb-2 flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.14em] text-cyan-700">
+                    <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
+                    {m.family || "Forge"}
+                  </div>
                   <h2 className="text-[1.05rem] font-black tracking-tight text-[#07111f]">
                     {m.name}
                   </h2>
