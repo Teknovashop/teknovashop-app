@@ -17,12 +17,15 @@ type OpKind =
   | "hole"
   | "slot"
   | "cutout_rect"
+  | "cutout_circle"
+  | "counterbore"
   | "hole_pattern"
   | "vesa_pattern"
   | "vent_linear"
   | "vent_hex"
   | "cable_channel"
-  | "rib";
+  | "rib"
+  | "wave_ribs";
 
 type Params = Record<string, number | string | boolean>;
 
@@ -30,12 +33,15 @@ const LABELS: Record<OpKind, string> = {
   hole: "Agujero",
   slot: "Ranura",
   cutout_rect: "Corte rectangular",
+  cutout_circle: "Corte circular",
+  counterbore: "Agujero con rebaje",
   hole_pattern: "Patrón de agujeros",
   vesa_pattern: "Patrón VESA",
   vent_linear: "Ventilación lineal",
   vent_hex: "Rejilla hexagonal",
   cable_channel: "Canal de cable",
   rib: "Refuerzo",
+  wave_ribs: "Ondulación estructural",
 };
 
 const PRESETS: Record<string, Array<{ name: string; copy: string; params: Params }>> = {
@@ -72,6 +78,17 @@ function defaultOperation(type: OpKind): ForgeV2Operation {
       return { ...base, params: { length_mm: 24, width_mm: 6 } };
     case "cutout_rect":
       return { ...base, params: { width_mm: 24, height_mm: 14 } };
+    case "cutout_circle":
+      return { ...base, params: { diameter_mm: 18 } };
+    case "counterbore":
+      return {
+        ...base,
+        params: {
+          through_diameter_mm: 5,
+          bore_diameter_mm: 10,
+          bore_depth_mm: 2,
+        },
+      };
     case "hole_pattern":
       return {
         ...base,
@@ -99,6 +116,17 @@ function defaultOperation(type: OpKind): ForgeV2Operation {
       return { ...base, params: { length_mm: 28, width_mm: 7 } };
     case "rib":
       return { ...base, params: { length_mm: 30, width_mm: 4, height_mm: 4 } };
+    case "wave_ribs":
+      return {
+        ...base,
+        params: {
+          length_mm: 36,
+          rib_width_mm: 2,
+          amplitude_mm: 4,
+          count: 5,
+          spacing_mm: 5,
+        },
+      };
   }
 }
 
@@ -434,9 +462,21 @@ export default function ForgeV2Workspace({ slug }: { slug: string }) {
                 <ToolButton label="Ranura" onClick={() => add("slot")} />
               )}
               {capabilities.cutouts && (
+                <>
+                  <ToolButton
+                    label="Corte rectangular"
+                    onClick={() => add("cutout_rect")}
+                  />
+                  <ToolButton
+                    label="Corte circular"
+                    onClick={() => add("cutout_circle")}
+                  />
+                </>
+              )}
+              {capabilities.holes && (
                 <ToolButton
-                  label="Corte rectangular"
-                  onClick={() => add("cutout_rect")}
+                  label="Agujero con rebaje"
+                  onClick={() => add("counterbore")}
                 />
               )}
               {capabilities.holePatterns && (
@@ -486,6 +526,12 @@ export default function ForgeV2Workspace({ slug }: { slug: string }) {
                 )}
                 {capabilities.ribs && (
                   <ToolButton label="Refuerzo" onClick={() => add("rib")} />
+                )}
+                {capabilities.waves && (
+                  <ToolButton
+                    label="Ondulación estructural"
+                    onClick={() => add("wave_ribs")}
+                  />
                 )}
               </div>
             </details>

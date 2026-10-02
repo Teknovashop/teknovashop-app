@@ -2,6 +2,8 @@ export type ForgeV2OperationType =
   | "hole"
   | "slot"
   | "cutout_rect"
+  | "cutout_circle"
+  | "counterbore"
   | "hole_pattern"
   | "vesa_pattern"
   | "vent_linear"
@@ -9,7 +11,8 @@ export type ForgeV2OperationType =
   | "cable_channel"
   | "text_engrave"
   | "text_emboss"
-  | "rib";
+  | "rib"
+  | "wave_ribs";
 
 export type ForgeV2Operation = {
   id: string;
