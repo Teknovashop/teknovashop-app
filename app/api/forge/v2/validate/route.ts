@@ -11,16 +11,15 @@ const BACKEND = (
 ).replace(/\/+$/, "");
 
 export async function POST(req: Request) {
-  if (
-    process.env.NEXT_PUBLIC_ENABLE_FORGE_V2_ENGINE !== "1" &&
-    process.env.VERCEL_ENV !== "preview"
-  ) {
-    return NextResponse.json({ ok: false, error: "FORGE_V2_DISABLED" }, { status: 404 });
-  }
-
   const body = await req.json().catch(() => null);
   if (!body) {
     return NextResponse.json({ ok: false, error: "INVALID_JSON" }, { status: 400 });
+  }
+
+  const pilots = new Set(["cable-tray", "vesa-adapter", "enclosure-ip65"]);
+  const slug = String(body?.slug || "").trim().toLowerCase();
+  if (!pilots.has(slug)) {
+    return NextResponse.json({ ok: false, error: "FORGE_V2_PRODUCT_NOT_ENABLED" }, { status: 404 });
   }
 
   try {
