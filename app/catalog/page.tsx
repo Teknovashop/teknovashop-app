@@ -7,6 +7,19 @@ import { MODELS, type ForgeModel } from "@/data/models";
 import { normalizeModelSearch } from "@/lib/model-routing";
 import CatalogFilters from "@/components/CatalogFilters";
 import { forgeV2Capabilities } from "@/lib/forge-v2/capabilities";
+import { hasStudioRender, marketingImageFor, technicalImageFor } from "@/lib/catalog-media";
+
+const LEGACY_IMAGE_TUNING: Record<string, string> = {
+  "ssd-holder": "scale-[1.18]",
+  "raspi-case": "scale-[1.18]",
+  "mic-arm-clip": "scale-[1.28]",
+  "cable-clip": "scale-[1.16]",
+  "wall-hook": "scale-[1.16]",
+  "camera-plate": "scale-[1.55]",
+  "headset-stand": "scale-[1.2]",
+  "go-pro-mount": "scale-[1.2]",
+  "hub-holder": "scale-[1.22]",
+};
 
 function CubeMark() {
   return (
@@ -18,7 +31,17 @@ function CubeMark() {
 }
 
 function CatalogImage({ model, priority }: { model: ForgeModel; priority?: boolean }) {
+  const [source, setSource] = useState(marketingImageFor(model));
   const [failed, setFailed] = useState(false);
+
+  function handleError() {
+    const technical = technicalImageFor(model);
+    if (source !== technical) {
+      setSource(technical);
+      return;
+    }
+    setFailed(true);
+  }
 
   return (
     <div
@@ -26,14 +49,17 @@ function CatalogImage({ model, priority }: { model: ForgeModel; priority?: boole
     >
       {!failed ? (
         <Image
-          src={model.geometryThumbnail || model.thumbnail}
+          src={source}
           alt={model.name}
           fill
           loading={priority ? "eager" : "lazy"}
           fetchPriority={priority ? "high" : "auto"}
           sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-          onError={() => setFailed(true)}
-          className="object-cover transition duration-700 group-hover:scale-[1.045]"
+          onError={handleError}
+          className={
+            "object-cover transition duration-700 group-hover:scale-[1.035] " +
+            (LEGACY_IMAGE_TUNING[model.slug] || "")
+          }
         />
       ) : (
         <div className="absolute inset-0 grid place-items-center bg-[radial-gradient(circle_at_65%_25%,rgba(37,99,235,.32),transparent_30%),linear-gradient(145deg,#071321,#0a2340_55%,#071321)]">
@@ -60,7 +86,7 @@ function CatalogImage({ model, priority }: { model: ForgeModel; priority?: boole
           </span>
         )}
         <span className="rounded-full border border-cyan-200/20 bg-[#071321]/75 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-cyan-100 backdrop-blur">
-          Geometría real
+          {hasStudioRender(model) ? "Studio render" : "Geometría real"}
         </span>
       </div>
     </div>

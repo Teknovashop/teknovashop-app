@@ -16,12 +16,12 @@ const HERO_VIDEO_POSTER =
   process.env.NEXT_PUBLIC_HERO_POSTER_URL || "/hero/hero.jpg";
 
 const TEMPLATES = [
-  ["cable-tray", "Bandeja de Cables", "Canales, ventilación, patrones, agujeros y refuerzos sobre una base paramétrica.", "Cableado"],
-  ["vesa-adapter", "Adaptador VESA", "Combina patrones de montaje, perforaciones, ranuras, rebajes y cortes técnicos.", "Montaje"],
-  ["electronics-box", "Caja electrónica universal", "Ajusta volumen, pared y tapa y prepara entradas, ventilación y organización interior.", "Electrónica"],
-  ["vertical-laptop-dock", "Dock vertical para portátil", "Adapta hueco, altura y apoyo al grosor real de tu equipo.", "Escritorio"],
-  ["webcam-monitor-mount", "Soporte webcam de monitor", "Controla apoyo, caída y ángulo para sensores y cámaras compactas.", "Foto y vídeo"],
-  ["parametric-lidded-box", "Caja paramétrica con tapa", "Una base versátil para almacenamiento, proyectos maker y electrónica ligera.", "Organización"],
+  ["cable-tray", "Bandeja de Cables", "Canales, ventilación, patrones, agujeros y refuerzos sobre una base paramétrica.", "Cableado", "/images/products/professional/cable-tray.webp"],
+  ["vesa-shelf", "Bandeja VESA", "Montaje VESA configurable con bandeja técnica y geometría reforzada.", "Montaje", "/images/products/professional/vesa-shelf.webp"],
+  ["camera-plate", "Placa para Cámara", "Placa técnica con ranura de ajuste y fijación para cámara.", "Foto y vídeo", "/images/products/professional/camera-plate.webp"],
+  ["phone-stand", "Soporte / Dock Móvil", "Dock configurable con inclinación y gestión de cable USB-C.", "Escritorio", "/images/products/professional/phone-stand.webp"],
+  ["router-mount", "Soporte de Router", "Soporte técnico con base, respaldo y holguras configurables.", "Electrónica", "/images/products/professional/router-mount.webp"],
+  ["laptop-stand", "Soporte Laptop / Tablet", "Soporte inclinado con geometría paramétrica y ventilación libre.", "Escritorio", "/images/products/professional/laptop-stand.webp"],
 ];
 
 const BENEFITS = [
@@ -177,7 +177,7 @@ export default function Page() {
               >
                 <div className="relative aspect-[4/3] overflow-hidden bg-slate-100">
                   <Image
-                    src={"/api/catalog/thumbnail/" + template[0]}
+                    src={template[4]}
                     alt={template[1]}
                     fill
                     sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"

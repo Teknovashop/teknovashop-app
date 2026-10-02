@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { MODELS } from "@/data/models";
 import { forgeV2Capabilities } from "@/lib/forge-v2/capabilities";
+import { marketingImageFor } from "@/lib/catalog-media";
 import { normalizeModelSearch } from "@/lib/model-routing";
 
 const FAVORITES_KEY = "teknovashop:forge-v2:favorites";
@@ -195,12 +196,12 @@ export default function ForgeV2Hub() {
               >
                 <Link href={"/forge-v2/" + model.slug} className="relative block aspect-[16/10] overflow-hidden bg-[#071321]">
                   <Image
-                    src={model.geometryThumbnail || model.thumbnail}
+                    src={marketingImageFor(model)}
                     alt={model.name}
                     fill
                     priority={index < 3}
                     sizes="(max-width: 640px) 100vw, (max-width: 1280px) 50vw, 33vw"
-                    className="object-cover transition duration-700 group-hover:scale-[1.04]"
+                    className="object-cover transition duration-700 group-hover:scale-[1.035]"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-[#05101c]/65 via-transparent to-transparent" />
                 </Link>
