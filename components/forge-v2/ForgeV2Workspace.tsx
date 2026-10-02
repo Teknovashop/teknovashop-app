@@ -20,12 +20,15 @@ type OpKind =
   | "cutout_rect"
   | "cutout_circle"
   | "counterbore"
+  | "pocket_rect"
   | "hole_pattern"
   | "vesa_pattern"
   | "vent_linear"
   | "vent_hex"
+  | "scallop_pattern"
   | "cable_channel"
   | "rib"
+  | "boss"
   | "wave_ribs";
 
 type Params = Record<string, number | string | boolean>;
@@ -53,12 +56,15 @@ const LABELS: Record<OpKind, string> = {
   cutout_rect: "Corte rectangular",
   cutout_circle: "Corte circular",
   counterbore: "Agujero con rebaje",
+  pocket_rect: "Rebaje rectangular",
   hole_pattern: "Patrón de agujeros",
   vesa_pattern: "Patrón VESA",
   vent_linear: "Ventilación lineal",
   vent_hex: "Rejilla hexagonal",
+  scallop_pattern: "Patrón de muescas",
   cable_channel: "Canal de cable",
   rib: "Refuerzo",
+  boss: "Boss cilíndrico",
   wave_ribs: "Ondulación estructural",
 };
 
@@ -107,6 +113,8 @@ function defaultOperation(type: OpKind): ForgeV2Operation {
           bore_depth_mm: 2,
         },
       };
+    case "pocket_rect":
+      return { ...base, params: { width_mm: 28, height_mm: 18, depth_mm: 1.2 } };
     case "hole_pattern":
       return {
         ...base,
@@ -130,10 +138,17 @@ function defaultOperation(type: OpKind): ForgeV2Operation {
         ...base,
         params: { rows: 2, cols: 3, radius_mm: 3, gap_mm: 2 },
       };
+    case "scallop_pattern":
+      return {
+        ...base,
+        params: { count: 3, diameter_mm: 6, spacing_mm: 9 },
+      };
     case "cable_channel":
       return { ...base, params: { length_mm: 28, width_mm: 7 } };
     case "rib":
       return { ...base, params: { length_mm: 30, width_mm: 4, height_mm: 4 } };
+    case "boss":
+      return { ...base, params: { diameter_mm: 14, height_mm: 4 } };
     case "wave_ribs":
       return {
         ...base,
@@ -602,6 +617,10 @@ export default function ForgeV2Workspace({ slug }: { slug: string }) {
                     label="Corte circular"
                     onClick={() => add("cutout_circle")}
                   />
+                  <ToolButton
+                    label="Rebaje rectangular"
+                    onClick={() => add("pocket_rect")}
+                  />
                 </>
               )}
               {capabilities.holes && (
@@ -655,8 +674,17 @@ export default function ForgeV2Workspace({ slug }: { slug: string }) {
                     onClick={() => add("cable_channel")}
                   />
                 )}
+                {capabilities.holePatterns && (
+                  <ToolButton
+                    label="Patrón de muescas"
+                    onClick={() => add("scallop_pattern")}
+                  />
+                )}
                 {capabilities.ribs && (
-                  <ToolButton label="Refuerzo" onClick={() => add("rib")} />
+                  <>
+                    <ToolButton label="Refuerzo" onClick={() => add("rib")} />
+                    <ToolButton label="Boss cilíndrico" onClick={() => add("boss")} />
+                  </>
                 )}
                 {capabilities.waves && (
                   <ToolButton
