@@ -202,6 +202,7 @@ export default function ForgeV2Workspace({ slug }: { slug: string }) {
   const [draftName, setDraftName] = useState("Mi diseño");
   const [draftBusy, setDraftBusy] = useState(false);
   const [draftMessage, setDraftMessage] = useState("");
+  const [placingId, setPlacingId] = useState<string | null>(null);
   const validationSeq = useRef(0);
 
   function currentTextOps() {
@@ -357,6 +358,24 @@ export default function ForgeV2Workspace({ slug }: { slug: string }) {
           : op
       )
     );
+  }
+
+  function placeOperation(id: string, x: number, y: number) {
+    commit(
+      operations.map((op) =>
+        op.id === id
+          ? {
+              ...op,
+              placement: {
+                ...(op.placement || {}),
+                x: Number(x.toFixed(1)),
+                y: Number(y.toFixed(1)),
+              },
+            }
+          : op
+      )
+    );
+    setPreviewUrl(undefined);
   }
 
   function patchPlacement(
@@ -879,6 +898,21 @@ export default function ForgeV2Workspace({ slug }: { slug: string }) {
                       Eliminar
                     </button>
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPlacingId((current) => (current === op.id ? null : op.id))
+                    }
+                    className={
+                      "mt-3 w-full rounded-lg border px-3 py-2 text-xs font-black transition " +
+                      (placingId === op.id
+                        ? "border-cyan-300/50 bg-cyan-300/15 text-cyan-100"
+                        : "border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]")
+                    }
+                  >
+                    {placingId === op.id ? "Cancelar colocación" : "⌖ Colocar en visor"}
+                  </button>
 
                   <label className="mt-3 block text-[9px] font-bold uppercase tracking-wide text-slate-500">
                     Cara objetivo
