@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import STLViewerPro from "@/components/STLViewerPro";
 import { DEFAULT_PARAMS, FIELDS } from "@/lib/forge-config";
@@ -170,7 +171,7 @@ export default function ForgeV2Workspace({ slug }: { slug: string }) {
   >([]);
   const [previewUrl, setPreviewUrl] = useState<string | undefined>();
   const [feedback, setFeedback] = useState(
-    "Laboratorio V2 · producción permanece en V1"
+    "Forge V2 Beta · tu flujo estable V1 permanece disponible"
   );
   const [busy, setBusy] = useState(false);
   const validationSeq = useRef(0);
@@ -341,12 +342,24 @@ export default function ForgeV2Workspace({ slug }: { slug: string }) {
             </div>
             <h1 className="mt-1 text-xl font-black">{product.label}</h1>
           </div>
-          <div className="flex items-center gap-2 text-[11px] font-bold">
+          <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold">
+            <Link
+              href={"/forge/" + slug}
+              className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-slate-300 transition hover:bg-white/10"
+            >
+              ← Volver a Forge estable
+            </Link>
+            <Link
+              href="/catalog"
+              className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-slate-300 transition hover:bg-white/10"
+            >
+              Catálogo
+            </Link>
             <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-slate-300">
               mesh-v2 · schema 2
             </span>
             <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-3 py-1.5 text-amber-200">
-              Preview aislado · V1 intacto
+              Beta aislada · V1 intacto
             </span>
           </div>
         </div>
