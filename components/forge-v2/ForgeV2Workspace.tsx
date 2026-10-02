@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import STLViewerPro from "@/components/STLViewerPro";
 import {
   FORGE_V2_PILOTS,
@@ -51,21 +51,80 @@ export default function ForgeV2Workspace({ slug }: { slug: string }) {
   const product = FORGE_V2_PILOTS[slug];
   const capabilities = useMemo(() => forgeV2Capabilities(slug), [slug]);
   const [operations, setOperations] = useState<ForgeV2Operation[]>([]);
+  const [history, setHistory] = useState<ForgeV2Operation[][]>([]);
+  const [future, setFuture] = useState<ForgeV2Operation[][]>([]);
+  const [issues, setIssues] = useState<Array<{ code: string; message: string; level: string }>>([]);
+  const validationSeq = useRef(0);
+
+  function commit(next: ForgeV2Operation[]) {
+    setHistory((items) => [...items.slice(-29), operations]);
+    setFuture([]);
+    setOperations(next);
+  }
   const [previewUrl, setPreviewUrl] = useState<string | undefined>();
   const [feedback, setFeedback] = useState<string>("Laboratorio V2 · sin cambios en V1");
   const [busy, setBusy] = useState(false);
 
   function add(type: OpKind) {
-    setOperations((current) => [...current, defaultOperation(type)]);
+    commit([...operations, defaultOperation(type)]);
   }
 
   function remove(id: string) {
-    setOperations((current) => current.filter((op) => op.id !== id));
+    commit(operations.filter((op) => op.id !== id));
+  }
+
+  function duplicate(id: string) {
+    const source = operations.find((op) => op.id === id);
+    if (!source) return;
+    const copy = {
+      ...source,
+      id: createOperationId(),
+      placement: { ...(source.placement || {}), x: Number(source.placement?.x || 0) + 5 },
+      params: { ...source.params },
+    };
+    const index = operations.findIndex((op) => op.id === id);
+    const next = [...operations];
+    next.splice(index + 1, 0, copy);
+    commit(next);
+  }
+
+  function toggle(id: string) {
+    commit(
+      operations.map((op) =>
+        op.id === id ? { ...op, enabled: !op.enabled } : op
+      )
+    );
+  }
+
+  function move(id: string, delta: number) {
+    const index = operations.findIndex((op) => op.id === id);
+    const target = index + delta;
+    if (index < 0 || target < 0 || target >= operations.length) return;
+    const next = [...operations];
+    const [item] = next.splice(index, 1);
+    next.splice(target, 0, item);
+    commit(next);
+  }
+
+  function undo() {
+    const previous = history.at(-1);
+    if (!previous) return;
+    setFuture((items) => [operations, ...items].slice(0, 30));
+    setOperations(previous);
+    setHistory((items) => items.slice(0, -1));
+  }
+
+  function redo() {
+    const next = future[0];
+    if (!next) return;
+    setHistory((items) => [...items.slice(-29), operations]);
+    setOperations(next);
+    setFuture((items) => items.slice(1));
   }
 
   function patchNumber(id: string, field: "x" | "y", value: number) {
-    setOperations((current) =>
-      current.map((op) =>
+    commit(
+      operations.map((op) =>
         op.id === id
           ? {
               ...op,
@@ -75,6 +134,37 @@ export default function ForgeV2Workspace({ slug }: { slug: string }) {
       )
     );
   }
+
+  function patchParam(id: string, key: string, value: number) {
+    commit(
+      operations.map((op) =>
+        op.id === id
+          ? { ...op, params: { ...op.params, [key]: value } }
+          : op
+      )
+    );
+  }
+
+  useEffect(() => {
+    const seq = ++validationSeq.current;
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch("/api/forge/v2/validate", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ slug, params: {}, operations }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (seq !== validationSeq.current) return;
+        setIssues(Array.isArray(data?.issues) ? data.issues : []);
+      } catch {
+        if (seq === validationSeq.current) {
+          setIssues([{ code: "validation", message: "Validación temporalmente no disponible", level: "warning" }]);
+        }
+      }
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [operations, slug]);
 
   async function generate() {
     setBusy(true);
@@ -117,6 +207,16 @@ export default function ForgeV2Workspace({ slug }: { slug: string }) {
           </div>
         </div>
       </header>
+
+      <div className="mx-auto flex max-w-[1680px] items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+        <div className="flex gap-2">
+          <button disabled={!history.length} onClick={undo} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold disabled:opacity-30">↶ Undo</button>
+          <button disabled={!future.length} onClick={redo} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold disabled:opacity-30">↷ Redo</button>
+        </div>
+        <div className={"rounded-full px-3 py-1.5 text-[11px] font-black " + (issues.some((x) => x.level === "error") ? "bg-rose-400/10 text-rose-200" : "bg-emerald-400/10 text-emerald-200")}>
+          {issues.some((x) => x.level === "error") ? `${issues.length} incidencias` : "Geometría válida"}
+        </div>
+      </div>
 
       <div className="mx-auto grid max-w-[1680px] gap-4 p-4 xl:grid-cols-[240px_minmax(0,1fr)_360px]">
         <aside className="rounded-3xl border border-white/10 bg-white/[0.04] p-4">
@@ -163,8 +263,17 @@ export default function ForgeV2Workspace({ slug }: { slug: string }) {
               <div key={op.id} className="rounded-2xl border border-white/10 bg-[#0b1d30] p-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-sm font-black">{index + 1}. {op.type}</div>
-                  <button onClick={() => remove(op.id)} className="text-xs font-bold text-rose-300 hover:text-rose-200">Eliminar</button>
+                  <div className="flex gap-1">
+                    <button onClick={() => move(op.id, -1)} className="rounded px-1.5 text-xs text-slate-400 hover:bg-white/10">↑</button>
+                    <button onClick={() => move(op.id, 1)} className="rounded px-1.5 text-xs text-slate-400 hover:bg-white/10">↓</button>
+                    <button onClick={() => duplicate(op.id)} className="rounded px-1.5 text-xs text-cyan-300 hover:bg-white/10">Duplicar</button>
+                    <button onClick={() => remove(op.id)} className="rounded px-1.5 text-xs font-bold text-rose-300 hover:bg-white/10">Eliminar</button>
+                  </div>
                 </div>
+                <label className="mt-3 flex items-center gap-2 text-xs text-slate-400">
+                  <input type="checkbox" checked={op.enabled} onChange={() => toggle(op.id)} className="accent-cyan-300" />
+                  Operación activa
+                </label>
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   {(["x", "y"] as const).map((key) => (
                     <label key={key} className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
@@ -178,16 +287,38 @@ export default function ForgeV2Workspace({ slug }: { slug: string }) {
                     </label>
                   ))}
                 </div>
-                <div className="mt-3 rounded-xl bg-white/[0.04] px-3 py-2 font-mono text-[10px] leading-5 text-slate-400">
-                  {JSON.stringify(op.params)}
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {Object.entries(op.params).filter(([, value]) => typeof value === "number").map(([key, value]) => (
+                    <label key={key} className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                      {key.replaceAll("_", " ")}
+                      <input
+                        type="number"
+                        value={Number(value)}
+                        min={0}
+                        step={0.5}
+                        onChange={(event) => patchParam(op.id, key, Number(event.target.value))}
+                        className="mt-1 w-full rounded-lg border border-white/10 bg-[#071321] px-2 py-2 text-sm text-white outline-none focus:border-cyan-300/50"
+                      />
+                    </label>
+                  ))}
                 </div>
               </div>
             ))}
           </div>
 
+          {issues.length > 0 && (
+            <div className="mt-4 space-y-2">
+              {issues.map((issue, index) => (
+                <div key={issue.code + index} className={"rounded-xl border px-3 py-2 text-xs leading-5 " + (issue.level === "error" ? "border-rose-300/20 bg-rose-400/10 text-rose-200" : "border-amber-300/20 bg-amber-400/10 text-amber-200")}>
+                  {issue.message}
+                </div>
+              ))}
+            </div>
+          )}
+
           <button
             onClick={generate}
-            disabled={busy}
+            disabled={busy || issues.some((issue) => issue.level === "error")}
             className="mt-5 w-full rounded-xl bg-cyan-300 px-4 py-3 text-sm font-black text-[#04101d] transition hover:bg-cyan-200 disabled:opacity-50"
           >
             {busy ? "Generando…" : "Validar y generar V2"}
