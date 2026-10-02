@@ -170,6 +170,13 @@ export default function ForgeV2Workspace({ slug }: { slug: string }) {
     Array<{ code: string; message: string; level: string }>
   >([]);
   const [previewUrl, setPreviewUrl] = useState<string | undefined>();
+  const [textValue, setTextValue] = useState("");
+  const [textMode, setTextMode] = useState<"engrave" | "emboss">("engrave");
+  const [textAnchor, setTextAnchor] = useState<"top" | "bottom">("top");
+  const [textSize, setTextSize] = useState(8);
+  const [textDepth, setTextDepth] = useState(1.2);
+  const [textX, setTextX] = useState(0);
+  const [textY, setTextY] = useState(0);
   const [feedback, setFeedback] = useState(
     "Forge V2 Beta · tu flujo estable V1 permanece disponible"
   );
@@ -240,6 +247,16 @@ export default function ForgeV2Workspace({ slug }: { slug: string }) {
     setHistory((items) => [...items.slice(-29), operations]);
     setOperations(next);
     setFuture((items) => items.slice(1));
+  }
+
+  function patchTarget(id: string, face: "top" | "bottom") {
+    commit(
+      operations.map((op) =>
+        op.id === id
+          ? { ...op, target: { ...(op.target || {}), face } }
+          : op
+      )
+    );
   }
 
   function patchPlacement(
@@ -313,6 +330,19 @@ export default function ForgeV2Workspace({ slug }: { slug: string }) {
           slug,
           params,
           operations,
+          text_ops: textValue.trim()
+            ? [
+                {
+                  text: textValue.trim().slice(0, 40),
+                  mode: textMode,
+                  size: textSize,
+                  depth: textDepth,
+                  pos: [textX, textY, 0],
+                  rot: [0, 0, 0],
+                  anchor: textAnchor,
+                },
+              ]
+            : [],
           engine_version: "mesh-v2",
           schema_version: 2,
         }),
@@ -550,6 +580,81 @@ export default function ForgeV2Workspace({ slug }: { slug: string }) {
             </details>
           )}
 
+          {capabilities.text && (
+            <details className="group mt-3 rounded-2xl border border-white/10 bg-[#0b1d30]">
+              <summary className="cursor-pointer list-none px-4 py-3 text-sm font-black">
+                <span className="flex items-center justify-between">
+                  Texto y marcado
+                  <span className="text-cyan-300 transition group-open:rotate-45">＋</span>
+                </span>
+              </summary>
+              <div className="grid gap-3 border-t border-white/10 p-3">
+                <label className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                  Texto
+                  <input
+                    type="text"
+                    value={textValue}
+                    maxLength={40}
+                    onChange={(event) => {
+                      setTextValue(event.target.value);
+                      setPreviewUrl(undefined);
+                    }}
+                    placeholder="Nombre, referencia, versión…"
+                    className="mt-1 w-full rounded-lg border border-white/10 bg-[#071321] px-3 py-2 text-sm normal-case tracking-normal text-white outline-none focus:border-cyan-300/50"
+                  />
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                    Modo
+                    <select
+                      value={textMode}
+                      onChange={(event) => setTextMode(event.target.value as "engrave" | "emboss")}
+                      className="mt-1 w-full rounded-lg border border-white/10 bg-[#071321] px-2 py-2 text-xs text-white"
+                    >
+                      <option value="engrave">Grabado</option>
+                      <option value="emboss">Relieve</option>
+                    </select>
+                  </label>
+                  <label className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                    Cara
+                    <select
+                      value={textAnchor}
+                      onChange={(event) => setTextAnchor(event.target.value as "top" | "bottom")}
+                      className="mt-1 w-full rounded-lg border border-white/10 bg-[#071321] px-2 py-2 text-xs text-white"
+                    >
+                      <option value="top">Superior</option>
+                      <option value="bottom">Inferior</option>
+                    </select>
+                  </label>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    ["Tamaño mm", textSize, setTextSize, 3, 30, 0.5],
+                    ["Profundidad mm", textDepth, setTextDepth, 0.4, 4, 0.1],
+                    ["X mm", textX, setTextX, -100, 100, 1],
+                    ["Y mm", textY, setTextY, -100, 100, 1],
+                  ].map(([label, value, setter, min, max, step]) => (
+                    <label key={String(label)} className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                      {String(label)}
+                      <input
+                        type="number"
+                        value={Number(value)}
+                        min={Number(min)}
+                        max={Number(max)}
+                        step={Number(step)}
+                        onChange={(event) => (setter as (value: number) => void)(Number(event.target.value))}
+                        className="mt-1 w-full rounded-lg border border-white/10 bg-[#071321] px-2 py-2 text-xs text-white outline-none focus:border-cyan-300/50"
+                      />
+                    </label>
+                  ))}
+                </div>
+                <p className="text-[10px] leading-4 text-slate-500">
+                  La personalización se procesa en el backend y queda registrada en el manifiesto del diseño.
+                </p>
+              </div>
+            </details>
+          )}
+
           <div className="mt-4 rounded-2xl border border-cyan-300/10 bg-cyan-300/[0.04] p-3 text-[11px] leading-5 text-slate-400">
             Todas las secciones se mantienen cerradas al entrar. Solo aparecen
             herramientas que el contrato de esta pieza declara compatibles.
@@ -629,6 +734,20 @@ export default function ForgeV2Workspace({ slug }: { slug: string }) {
                       Eliminar
                     </button>
                   </div>
+
+                  <label className="mt-3 block text-[9px] font-bold uppercase tracking-wide text-slate-500">
+                    Cara objetivo
+                    <select
+                      value={op.target?.face || "top"}
+                      onChange={(event) =>
+                        patchTarget(op.id, event.target.value as "top" | "bottom")
+                      }
+                      className="mt-1 w-full rounded-lg border border-white/10 bg-[#071321] px-2 py-2 text-xs normal-case tracking-normal text-white"
+                    >
+                      <option value="top">Superior</option>
+                      <option value="bottom">Inferior</option>
+                    </select>
+                  </label>
 
                   <label className="mt-3 flex items-center gap-2 text-xs text-slate-400">
                     <input
