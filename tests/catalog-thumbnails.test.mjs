@@ -18,7 +18,7 @@ function assertWebp(bytes, message) {
 }
 
 test("every catalogue card has a unique geometry-derived thumbnail route", () => {
-  assert.equal(MODELS.length, 30);
+  assert.equal(MODELS.length, 72);
   const seen = new Set();
 
   for (const model of MODELS) {
