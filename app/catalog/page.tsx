@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import { MODELS, type ForgeModel } from "@/data/models";
 import { normalizeModelSearch } from "@/lib/model-routing";
 import CatalogFilters from "@/components/CatalogFilters";
+import { forgeV2Capabilities } from "@/lib/forge-v2/capabilities";
 
 function CubeMark() {
   return (
@@ -64,6 +65,22 @@ function CatalogImage({ model, priority }: { model: ForgeModel; priority?: boole
       </div>
     </div>
   );
+}
+
+
+function capabilityLabels(slug: string) {
+  const capabilities = forgeV2Capabilities(slug);
+  const labels: string[] = [];
+  if (capabilities.holes) labels.push("Agujeros");
+  if (capabilities.slots) labels.push("Ranuras");
+  if (capabilities.cutouts) labels.push("Cortes");
+  if (capabilities.vents) labels.push("Ventilación");
+  if (capabilities.waves) labels.push("Ondulación");
+  if (capabilities.ribs) labels.push("Refuerzos");
+  if (capabilities.mountingPatterns) labels.push("Patrones");
+  if (capabilities.cableChannels) labels.push("Canales");
+  if (!labels.length) labels.push("Dimensiones", "Texto");
+  return labels.slice(0, 4);
 }
 
 export default function CatalogPage() {
@@ -183,38 +200,58 @@ export default function CatalogPage() {
 
         {filtered.length > 0 ? (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {filtered.map((m, index) => (
-              <Link
-                key={m.id}
-                href={"/forge/" + encodeURIComponent(m.slug)}
-                className="group overflow-hidden rounded-[1.35rem] border border-slate-200 bg-white shadow-[0_18px_55px_rgba(15,23,42,.065)] transition duration-300 hover:-translate-y-1.5 hover:border-blue-300 hover:shadow-[0_28px_80px_rgba(15,23,42,.14)]"
-              >
-                <CatalogImage model={m} priority={index < 3} />
+            {filtered.map((m, index) => {
+              const capabilities = capabilityLabels(m.slug);
+              return (
+                <article
+                  key={m.id}
+                  className="group overflow-hidden rounded-[1.35rem] border border-slate-200 bg-white shadow-[0_18px_55px_rgba(15,23,42,.065)] transition duration-300 hover:-translate-y-1.5 hover:border-blue-300 hover:shadow-[0_28px_80px_rgba(15,23,42,.14)]"
+                >
+                  <Link href={"/forge-v2/" + encodeURIComponent(m.slug)} className="block">
+                    <CatalogImage model={m} priority={index < 3} />
+                  </Link>
 
-                <div className="p-5">
-                  <div className="mb-2 flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.14em] text-cyan-700">
-                    <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
-                    {m.family || "Forge"}
-                  </div>
-                  <h2 className="text-[1.05rem] font-black tracking-tight text-[#07111f]">
-                    {m.name}
-                  </h2>
-                  <p className="mt-2 min-h-[3rem] text-sm leading-6 text-slate-500">
-                    {m.description}
-                  </p>
+                  <div className="p-5">
+                    <div className="mb-2 flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.14em] text-cyan-700">
+                      <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
+                      {m.family || "Forge"}
+                    </div>
+                    <h2 className="text-[1.05rem] font-black tracking-tight text-[#07111f]">
+                      {m.name}
+                    </h2>
+                    <p className="mt-2 min-h-[3rem] text-sm leading-6 text-slate-500">
+                      {m.description}
+                    </p>
 
-                  <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4">
-                    <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                      listo para configurar
-                    </span>
-                    <span className="inline-flex items-center gap-1 text-sm font-black text-blue-600 transition group-hover:translate-x-1">
-                      Configurar <span aria-hidden>→</span>
-                    </span>
+                    <div className="mt-4 flex flex-wrap gap-1.5">
+                      {capabilities.map((label) => (
+                        <span
+                          key={label}
+                          className="rounded-full border border-cyan-100 bg-cyan-50 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.08em] text-cyan-800"
+                        >
+                          {label}
+                        </span>
+                      ))}
+                    </div>
+
+                    <div className="mt-5 grid grid-cols-2 gap-2 border-t border-slate-100 pt-4">
+                      <Link
+                        href={"/forge/" + encodeURIComponent(m.slug)}
+                        className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-black text-slate-700 transition hover:border-blue-200 hover:bg-blue-50"
+                      >
+                        Forge estable
+                      </Link>
+                      <Link
+                        href={"/forge-v2/" + encodeURIComponent(m.slug)}
+                        className="inline-flex items-center justify-center rounded-xl bg-[#071321] px-3 py-2.5 text-xs font-black text-cyan-200 transition hover:bg-[#0c2039]"
+                      >
+                        Forge V2 →
+                      </Link>
+                    </div>
                   </div>
-                </div>
-              </Link>
-            ))}
+                </article>
+              );
+            })}
           </div>
         ) : (
           <div className="rounded-3xl border border-dashed border-slate-300 bg-white px-6 py-20 text-center shadow-sm">
