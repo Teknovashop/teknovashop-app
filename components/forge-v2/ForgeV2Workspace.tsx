@@ -107,7 +107,7 @@ export default function ForgeV2Workspace({ slug }: { slug: string }) {
   }
 
   function undo() {
-    const previous = history.at(-1);
+    const previous = history.length ? history[history.length - 1] : undefined;
     if (!previous) return;
     setFuture((items) => [operations, ...items].slice(0, 30));
     setOperations(previous);
@@ -290,7 +290,7 @@ export default function ForgeV2Workspace({ slug }: { slug: string }) {
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   {Object.entries(op.params).filter(([, value]) => typeof value === "number").map(([key, value]) => (
                     <label key={key} className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                      {key.replaceAll("_", " ")}
+                      {key.split("_").join(" ")}
                       <input
                         type="number"
                         value={Number(value)}
