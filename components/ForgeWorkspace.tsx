@@ -33,14 +33,12 @@ export default function ForgeWorkspace({ model, params }: { model: string; param
             Teknovashop <span className="text-cyan-300">Forge</span>
           </Link>
           <div className="flex flex-wrap gap-2">
-            {["cable-tray", "vesa-adapter", "enclosure-ip65"].includes(model) && (
-              <Link
-                href={"/forge-v2/" + model}
-                className="rounded-xl border border-cyan-300/25 bg-cyan-300/10 px-4 py-2 text-sm font-black text-cyan-100 transition hover:bg-cyan-300/15"
-              >
-                Probar Forge V2 Beta
-              </Link>
-            )}
+            <Link
+              href={"/forge-v2/" + model}
+              className="rounded-xl border border-cyan-300/25 bg-cyan-300/10 px-4 py-2 text-sm font-black text-cyan-100 transition hover:bg-cyan-300/15"
+            >
+              Abrir Forge V2
+            </Link>
             <Link href="/account" className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-bold text-slate-200 transition hover:bg-white/10">
               Mis compras
             </Link>

@@ -1,3 +1,4 @@
+import { isForgeV2Product } from "@/lib/forge-v2/capabilities";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -16,9 +17,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "INVALID_JSON" }, { status: 400 });
   }
 
-  const pilots = new Set(["cable-tray", "vesa-adapter", "enclosure-ip65"]);
   const slug = String(body?.slug || "").trim().toLowerCase();
-  if (!pilots.has(slug)) {
+  if (!isForgeV2Product(slug)) {
     return NextResponse.json({ ok: false, error: "FORGE_V2_PRODUCT_NOT_ENABLED" }, { status: 404 });
   }
 
