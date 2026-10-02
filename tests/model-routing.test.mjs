@@ -15,12 +15,20 @@ test('existing product links resolve to supported products', () => {
   }
 });
 
-test('catalogue has 18 unique canonical models and existing images', () => {
-  assert.equal(MODELS.length, 18);
-  assert.equal(new Set(MODELS.map(model => model.slug)).size, 18);
+test('catalogue has 30 unique canonical models with exact geometry previews', () => {
+  assert.equal(MODELS.length, 30);
+  assert.equal(new Set(MODELS.map(model => model.slug)).size, 30);
   for (const model of MODELS) {
     assert.equal(canonicalModelSlug(model.slug), model.slug);
-    assert.ok(existsSync(new URL(`../public${model.thumbnail}`, import.meta.url)));
+    assert.equal(
+      model.geometryThumbnail,
+      `/api/catalog/thumbnail/${model.slug}`,
+      `${model.slug} must use its own canonical geometry thumbnail`
+    );
+
+    if (model.thumbnail.startsWith('/images/')) {
+      assert.ok(existsSync(new URL(`../public${model.thumbnail}`, import.meta.url)));
+    }
   }
 });
 

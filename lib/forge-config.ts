@@ -170,6 +170,42 @@ export const DEFAULT_PARAMS: Record<ForgeModelSlug, ForgeParams> = {
     tolerance: 0.5,
     wall: 3,
   },
+  "vertical-laptop-dock": {
+    length: 180, depth: 90, wall: 4, slot: 24, height: 65,
+  },
+  "universal-mount-plate": {
+    width: 120, height: 90, thickness: 5, rail: 10,
+  },
+  "mini-pc-mount": {
+    width: 130, depth: 125, height: 45, wall: 4, lip: 16,
+  },
+  "desk-grommet": {
+    outer_d: 65, inner_d: 50, height: 18, flange: 4,
+  },
+  "under-desk-channel": {
+    length: 240, width: 55, height: 35, wall: 3,
+  },
+  "multi-device-dock": {
+    width: 190, depth: 105, height: 55, wall: 4, slots: 3,
+  },
+  "webcam-monitor-mount": {
+    width: 55, depth: 45, back: 35, wall: 4, angle_deg: 10,
+  },
+  "network-switch-mount": {
+    width: 180, depth: 95, height: 42, wall: 4, front_lip: 12,
+  },
+  "electronics-box": {
+    length: 130, width: 85, height: 45, wall: 3, lid: 3,
+  },
+  "controller-stand": {
+    width: 95, depth: 110, height: 85, wall: 5, angle_deg: 28,
+  },
+  "drill-template": {
+    length: 160, width: 45, thickness: 6, hole_d: 5, spacing: 32,
+  },
+  "drawer-divider": {
+    length: 220, height: 55, thickness: 3, foot: 14,
+  },
 };
 
 /**
@@ -338,6 +374,86 @@ export const FIELDS: Partial<Record<ForgeModelSlug, Fields>> = {
     hub_d:     { label: "Fondo hub (mm)",     type: "number", step: 1,   min: 20, defaultValue: 30 },
     tolerance: { label: "Holgura (mm)",       type: "number", step: 0.1, min: 0,  defaultValue: 0.5 },
     wall:      { label: "Grosor (mm)",        type: "number", step: 0.5, min: 2,  defaultValue: 3 },
+  },
+  "vertical-laptop-dock": {
+    length: { label: "Largo (mm)", type: "number", step: 1, min: 120, max: 320, defaultValue: 180 },
+    depth: { label: "Fondo (mm)", type: "number", step: 1, min: 60, max: 160, defaultValue: 90 },
+    wall: { label: "Grosor (mm)", type: "number", step: 0.5, min: 3, max: 8, defaultValue: 4 },
+    slot: { label: "Apertura portátil (mm)", type: "number", step: 0.5, min: 12, max: 55, defaultValue: 24 },
+    height: { label: "Altura (mm)", type: "number", step: 1, min: 40, max: 120, defaultValue: 65 },
+  },
+  "universal-mount-plate": {
+    width: { label: "Ancho (mm)", type: "number", step: 1, min: 70, max: 260, defaultValue: 120 },
+    height: { label: "Alto (mm)", type: "number", step: 1, min: 50, max: 220, defaultValue: 90 },
+    thickness: { label: "Grosor (mm)", type: "number", step: 0.5, min: 3, max: 10, defaultValue: 5 },
+    rail: { label: "Carril (mm)", type: "number", step: 1, min: 6, max: 28, defaultValue: 10 },
+  },
+  "mini-pc-mount": {
+    width: { label: "Ancho interior (mm)", type: "number", step: 1, min: 80, max: 240, defaultValue: 130 },
+    depth: { label: "Fondo (mm)", type: "number", step: 1, min: 70, max: 220, defaultValue: 125 },
+    height: { label: "Altura lateral (mm)", type: "number", step: 1, min: 25, max: 100, defaultValue: 45 },
+    wall: { label: "Pared (mm)", type: "number", step: 0.5, min: 3, max: 8, defaultValue: 4 },
+    lip: { label: "Labio frontal (mm)", type: "number", step: 1, min: 8, max: 35, defaultValue: 16 },
+  },
+  "desk-grommet": {
+    outer_d: { label: "Ø exterior (mm)", type: "number", step: 1, min: 45, max: 100, defaultValue: 65 },
+    inner_d: { label: "Ø paso útil (mm)", type: "number", step: 1, min: 25, max: 80, defaultValue: 50 },
+    height: { label: "Altura (mm)", type: "number", step: 1, min: 10, max: 40, defaultValue: 18 },
+    flange: { label: "Ala superior (mm)", type: "number", step: 0.5, min: 2, max: 10, defaultValue: 4 },
+  },
+  "under-desk-channel": {
+    length: { label: "Largo (mm)", type: "number", step: 5, min: 140, max: 500, defaultValue: 240 },
+    width: { label: "Ancho (mm)", type: "number", step: 1, min: 35, max: 120, defaultValue: 55 },
+    height: { label: "Altura (mm)", type: "number", step: 1, min: 22, max: 90, defaultValue: 35 },
+    wall: { label: "Pared (mm)", type: "number", step: 0.5, min: 2.5, max: 7, defaultValue: 3 },
+  },
+  "multi-device-dock": {
+    width: { label: "Ancho total (mm)", type: "number", step: 1, min: 120, max: 340, defaultValue: 190 },
+    depth: { label: "Fondo (mm)", type: "number", step: 1, min: 70, max: 180, defaultValue: 105 },
+    height: { label: "Altura divisores (mm)", type: "number", step: 1, min: 35, max: 100, defaultValue: 55 },
+    wall: { label: "Grosor (mm)", type: "number", step: 0.5, min: 3, max: 8, defaultValue: 4 },
+    slots: { label: "Número de huecos", type: "number", step: 1, min: 2, max: 5, defaultValue: 3 },
+  },
+  "webcam-monitor-mount": {
+    width: { label: "Ancho (mm)", type: "number", step: 1, min: 35, max: 100, defaultValue: 55 },
+    depth: { label: "Fondo (mm)", type: "number", step: 1, min: 25, max: 90, defaultValue: 45 },
+    back: { label: "Caída trasera (mm)", type: "number", step: 1, min: 20, max: 80, defaultValue: 35 },
+    wall: { label: "Grosor (mm)", type: "number", step: 0.5, min: 3, max: 8, defaultValue: 4 },
+    angle_deg: { label: "Ángulo (°)", type: "number", step: 1, min: 0, max: 30, defaultValue: 10 },
+  },
+  "network-switch-mount": {
+    width: { label: "Ancho interior (mm)", type: "number", step: 1, min: 110, max: 340, defaultValue: 180 },
+    depth: { label: "Fondo (mm)", type: "number", step: 1, min: 60, max: 220, defaultValue: 95 },
+    height: { label: "Altura lateral (mm)", type: "number", step: 1, min: 25, max: 90, defaultValue: 42 },
+    wall: { label: "Pared (mm)", type: "number", step: 0.5, min: 3, max: 8, defaultValue: 4 },
+    front_lip: { label: "Labio frontal (mm)", type: "number", step: 1, min: 6, max: 30, defaultValue: 12 },
+  },
+  "electronics-box": {
+    length: { label: "Largo (mm)", type: "number", step: 1, min: 70, max: 260, defaultValue: 130 },
+    width: { label: "Ancho (mm)", type: "number", step: 1, min: 45, max: 180, defaultValue: 85 },
+    height: { label: "Altura (mm)", type: "number", step: 1, min: 25, max: 120, defaultValue: 45 },
+    wall: { label: "Pared (mm)", type: "number", step: 0.5, min: 2.5, max: 8, defaultValue: 3 },
+    lid: { label: "Tapa (mm)", type: "number", step: 0.5, min: 2.5, max: 8, defaultValue: 3 },
+  },
+  "controller-stand": {
+    width: { label: "Ancho (mm)", type: "number", step: 1, min: 60, max: 160, defaultValue: 95 },
+    depth: { label: "Fondo (mm)", type: "number", step: 1, min: 70, max: 180, defaultValue: 110 },
+    height: { label: "Altura (mm)", type: "number", step: 1, min: 55, max: 150, defaultValue: 85 },
+    wall: { label: "Grosor (mm)", type: "number", step: 0.5, min: 3, max: 9, defaultValue: 5 },
+    angle_deg: { label: "Ángulo apoyo (°)", type: "number", step: 1, min: 12, max: 50, defaultValue: 28 },
+  },
+  "drill-template": {
+    length: { label: "Largo (mm)", type: "number", step: 5, min: 100, max: 400, defaultValue: 160 },
+    width: { label: "Ancho (mm)", type: "number", step: 1, min: 28, max: 90, defaultValue: 45 },
+    thickness: { label: "Grosor (mm)", type: "number", step: 0.5, min: 4, max: 12, defaultValue: 6 },
+    hole_d: { label: "Ø agujero (mm)", type: "number", step: 0.5, min: 2, max: 15, defaultValue: 5 },
+    spacing: { label: "Paso entre agujeros (mm)", type: "number", step: 1, min: 10, max: 80, defaultValue: 32 },
+  },
+  "drawer-divider": {
+    length: { label: "Largo (mm)", type: "number", step: 5, min: 120, max: 500, defaultValue: 220 },
+    height: { label: "Altura (mm)", type: "number", step: 1, min: 30, max: 120, defaultValue: 55 },
+    thickness: { label: "Grosor (mm)", type: "number", step: 0.5, min: 2, max: 8, defaultValue: 3 },
+    foot: { label: "Pie (mm)", type: "number", step: 1, min: 8, max: 30, defaultValue: 14 },
   },
 };
 
