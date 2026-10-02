@@ -3,6 +3,11 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import STLViewerPro from "@/components/STLViewerPro";
+import {
+  createOperationId,
+  type ForgeV2Operation,
+  type ForgeV2OperationType,
+} from "@/lib/forge-v2/spec";
 
 type CadParams = {
   width: number;
@@ -19,6 +24,65 @@ const DEFAULTS: CadParams = {
   corner_radius: 5,
   chamfer: 1,
 };
+
+
+type CadOpKind =
+  | "hole"
+  | "slot"
+  | "cutout_rect"
+  | "cutout_circle"
+  | "counterbore"
+  | "pocket_rect"
+  | "vesa_pattern"
+  | "boss";
+
+const CAD_OP_LABELS: Record<CadOpKind, string> = {
+  hole: "Agujero",
+  slot: "Ranura",
+  cutout_rect: "Corte rectangular",
+  cutout_circle: "Corte circular",
+  counterbore: "Counterbore",
+  pocket_rect: "Rebaje",
+  vesa_pattern: "Patrón VESA",
+  boss: "Boss",
+};
+
+function createCadOperation(type: CadOpKind): ForgeV2Operation {
+  const base = {
+    id: createOperationId(),
+    type: type as ForgeV2OperationType,
+    version: 1 as const,
+    enabled: true,
+    target: { face: "top" as const },
+    placement: { x: 0, y: 0, rotation_deg: 0 },
+  };
+
+  switch (type) {
+    case "hole":
+      return { ...base, params: { diameter_mm: 6 } };
+    case "slot":
+      return { ...base, params: { length_mm: 24, width_mm: 6 } };
+    case "cutout_rect":
+      return { ...base, params: { width_mm: 24, height_mm: 14 } };
+    case "cutout_circle":
+      return { ...base, params: { diameter_mm: 18 } };
+    case "counterbore":
+      return {
+        ...base,
+        params: {
+          through_diameter_mm: 5,
+          bore_diameter_mm: 10,
+          bore_depth_mm: 2,
+        },
+      };
+    case "pocket_rect":
+      return { ...base, params: { width_mm: 24, height_mm: 16, depth_mm: 1.5 } };
+    case "vesa_pattern":
+      return { ...base, params: { pitch_mm: 75, diameter_mm: 5 } };
+    case "boss":
+      return { ...base, params: { diameter_mm: 14, height_mm: 4 } };
+  }
+}
 
 function Metric({
   label,
@@ -40,6 +104,7 @@ function Metric({
 export default function CadLabWorkspace() {
   const [params, setParams] = useState<CadParams>(DEFAULTS);
   const [previewUrl, setPreviewUrl] = useState<string>();
+  const [operations, setOperations] = useState<ForgeV2Operation[]>([]);
   const [health, setHealth] = useState<{
     ok?: boolean;
     latencyMs?: number;
@@ -81,7 +146,7 @@ export default function CadLabWorkspace() {
       const response = await fetch("/api/forge/cad/plate", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...params, format: "stl" }),
+        body: JSON.stringify({ ...params, operations, format: "stl" }),
       });
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
@@ -108,7 +173,7 @@ export default function CadLabWorkspace() {
       const response = await fetch("/api/forge/cad/plate", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...params, format: "step" }),
+        body: JSON.stringify({ ...params, operations, format: "step" }),
       });
       if (!response.ok) throw new Error("No se pudo exportar STEP");
       const blob = await response.blob();
@@ -124,6 +189,41 @@ export default function CadLabWorkspace() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function addOperation(type: CadOpKind) {
+    setOperations((current) => [...current, createCadOperation(type)].slice(0, 24));
+    setPreviewUrl(undefined);
+  }
+
+  function removeOperation(id: string) {
+    setOperations((current) => current.filter((operation) => operation.id !== id));
+    setPreviewUrl(undefined);
+  }
+
+  function patchPlacement(id: string, key: "x" | "y" | "rotation_deg", value: number) {
+    setOperations((current) =>
+      current.map((operation) =>
+        operation.id === id
+          ? {
+              ...operation,
+              placement: { ...(operation.placement || {}), [key]: value },
+            }
+          : operation
+      )
+    );
+    setPreviewUrl(undefined);
+  }
+
+  function patchParam(id: string, key: string, value: number) {
+    setOperations((current) =>
+      current.map((operation) =>
+        operation.id === id
+          ? { ...operation, params: { ...operation.params, [key]: value } }
+          : operation
+      )
+    );
+    setPreviewUrl(undefined);
   }
 
   return (
@@ -218,6 +318,87 @@ export default function CadLabWorkspace() {
               </label>
             ))}
           </div>
+
+          <details className="group mt-5 rounded-2xl border border-white/10 bg-[#0b1d30]">
+            <summary className="cursor-pointer list-none px-4 py-3 text-sm font-black">
+              <span className="flex items-center justify-between">
+                Operaciones CAD
+                <span className="text-cyan-300 transition group-open:rotate-45">＋</span>
+              </span>
+            </summary>
+            <div className="border-t border-white/10 p-3">
+              <div className="grid grid-cols-2 gap-2">
+                {(Object.keys(CAD_OP_LABELS) as CadOpKind[]).map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => addOperation(type)}
+                    className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-left text-[11px] font-bold text-slate-200 transition hover:border-cyan-300/25 hover:bg-cyan-300/10"
+                  >
+                    ＋ {CAD_OP_LABELS[type]}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </details>
+
+          {operations.length > 0 && (
+            <div className="mt-4 space-y-2">
+              {operations.map((operation, index) => (
+                <details
+                  key={operation.id}
+                  className="rounded-2xl border border-white/10 bg-white/[0.035]"
+                >
+                  <summary className="cursor-pointer list-none px-3 py-3 text-xs font-black">
+                    {index + 1}. {CAD_OP_LABELS[operation.type as CadOpKind] || operation.type}
+                  </summary>
+                  <div className="border-t border-white/10 p-3">
+                    <div className="grid grid-cols-3 gap-2">
+                      {(["x", "y", "rotation_deg"] as const).map((key) => (
+                        <label key={key} className="text-[9px] font-bold uppercase text-slate-500">
+                          {key === "rotation_deg" ? "Rotación" : key}
+                          <input
+                            type="number"
+                            value={Number(operation.placement?.[key] || 0)}
+                            onChange={(event) =>
+                              patchPlacement(operation.id, key, Number(event.target.value))
+                            }
+                            className="mt-1 w-full rounded-lg border border-white/10 bg-[#071321] px-2 py-1.5 text-xs text-white"
+                          />
+                        </label>
+                      ))}
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      {Object.entries(operation.params)
+                        .filter(([, value]) => typeof value === "number")
+                        .map(([key, value]) => (
+                          <label key={key} className="text-[9px] font-bold uppercase text-slate-500">
+                            {key.replace(/_/g, " ")}
+                            <input
+                              type="number"
+                              min={0}
+                              step={0.5}
+                              value={Number(value)}
+                              onChange={(event) =>
+                                patchParam(operation.id, key, Number(event.target.value))
+                              }
+                              className="mt-1 w-full rounded-lg border border-white/10 bg-[#071321] px-2 py-1.5 text-xs text-white"
+                            />
+                          </label>
+                        ))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeOperation(operation.id)}
+                      className="mt-3 rounded-lg border border-rose-300/20 bg-rose-300/5 px-3 py-1.5 text-[10px] font-black text-rose-200"
+                    >
+                      Eliminar
+                    </button>
+                  </div>
+                </details>
+              ))}
+            </div>
+          )}
 
           <div className="mt-5 grid gap-2">
             <button
