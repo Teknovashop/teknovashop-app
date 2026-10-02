@@ -108,6 +108,9 @@ export default function STLViewerPro({ url, className }: Props) {
   const [modelInfo, setModelInfo] = useState<{ x: number; y: number; z: number; triangles: number } | null>(null);
   const [toolMode, setToolMode] = useState<ToolMode>("orbit");
   const [showDimensions, setShowDimensions] = useState(true);
+  const [showEdges, setShowEdges] = useState(true);
+  const [wireframe, setWireframe] = useState(false);
+  const [xray, setXray] = useState(false);
   const [measurePoints, setMeasurePoints] = useState<Point3[]>([]);
 
   function disposeObject(root: any) {
@@ -333,6 +336,22 @@ export default function STLViewerPro({ url, className }: Props) {
       dimensionGroupRef.current.visible = showDimensions;
     }
   }, [showDimensions]);
+
+  useEffect(() => {
+    if (edgesRef.current) {
+      edgesRef.current.visible = showEdges;
+    }
+  }, [showEdges]);
+
+  useEffect(() => {
+    const material = meshRef.current?.material as any;
+    if (!material) return;
+    material.wireframe = wireframe;
+    material.transparent = xray;
+    material.opacity = xray ? 0.38 : 1;
+    material.depthWrite = !xray;
+    material.needsUpdate = true;
+  }, [wireframe, xray]);
 
   // Init escena
   useEffect(() => {
@@ -602,6 +621,10 @@ export default function STLViewerPro({ url, className }: Props) {
           color: bgLight ? 0xd7e1ee : 0xbccbe0,
           metalness: 0.28,
           roughness: 0.54,
+          wireframe,
+          transparent: xray,
+          opacity: xray ? 0.38 : 1,
+          depthWrite: !xray,
         });
         const mesh = new THREE.Mesh(geometry, mat);
         mesh.castShadow = showShadow;
@@ -613,6 +636,7 @@ export default function STLViewerPro({ url, className }: Props) {
         const edgesGeom = new THREE.EdgesGeometry(geometry, 15);
         const edgesMat = new THREE.LineBasicMaterial({ color: bgLight ? 0x1e3a5f : 0x8be9ff });
         const edges = new THREE.LineSegments(edgesGeom, edgesMat);
+        edges.visible = showEdges;
         group.add(edges);
         edgesRef.current = edges;
 
@@ -793,6 +817,36 @@ export default function STLViewerPro({ url, className }: Props) {
             <option value="mm">mm</option>
             <option value="cm">cm</option>
           </select>
+
+          <label className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-[11px] font-bold text-slate-300">
+            <input
+              type="checkbox"
+              checked={showEdges}
+              onChange={(e) => setShowEdges(e.target.checked)}
+              className="accent-cyan-300"
+            />
+            Contornos
+          </label>
+
+          <label className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-[11px] font-bold text-slate-300">
+            <input
+              type="checkbox"
+              checked={wireframe}
+              onChange={(e) => setWireframe(e.target.checked)}
+              className="accent-cyan-300"
+            />
+            Wireframe
+          </label>
+
+          <label className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-[11px] font-bold text-slate-300">
+            <input
+              type="checkbox"
+              checked={xray}
+              onChange={(e) => setXray(e.target.checked)}
+              className="accent-cyan-300"
+            />
+            Rayos X
+          </label>
 
           <button
             type="button"
