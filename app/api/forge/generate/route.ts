@@ -144,6 +144,9 @@ async function registerDesign(args: {
   slug: string;
   params: Dict;
   data: any;
+  engineVersion: "mesh-v1" | "mesh-v2";
+  schemaVersion: number;
+  operations: any[];
 }) {
   const designId = String(args.data?.design_id || "").trim();
   const stlPath = String(args.data?.path || args.data?.object_key || "").trim();
@@ -183,6 +186,9 @@ async function registerDesign(args: {
     product_version: String(args.data?.product_version || "unversioned"),
     product_stage: String(args.data?.product_stage || "unversioned"),
     parameters: args.params || {},
+    engine_version: args.engineVersion,
+    schema_version: args.schemaVersion,
+    operations: args.operations || [],
     stl_path: stlPath,
     manifest_path: manifestPath,
     sha256,
@@ -224,6 +230,18 @@ export async function POST(req: Request) {
 
   const holes = Array.isArray(body?.holes) ? body.holes : [];
   const text_ops = Array.isArray(body?.text_ops) ? body.text_ops : [];
+  const operations = Array.isArray(body?.operations) ? body.operations : [];
+  const requestedEngine =
+    body?.engine_version === "mesh-v2" ? "mesh-v2" : "mesh-v1";
+  const requestedSchema = requestedEngine === "mesh-v2" ? 2 : 1;
+
+  if (
+    requestedEngine === "mesh-v2" &&
+    process.env.NEXT_PUBLIC_ENABLE_FORGE_V2_ENGINE !== "1"
+  ) {
+    return json({ ok: false, error: "FORGE_V2_DISABLED" }, 404);
+  }
+
   const model = slug.replace(/-/g, "_");
 
   // Never trust x-user-id or user_id supplied by the browser. If a user is
@@ -280,6 +298,9 @@ export async function POST(req: Request) {
         params,
         holes,
         text_ops,
+        operations,
+        engine_version: requestedEngine,
+        schema_version: requestedSchema,
       }),
       cache: "no-store",
       signal: AbortSignal.timeout(55000),
@@ -333,6 +354,9 @@ export async function POST(req: Request) {
       slug,
       params,
       data,
+      engineVersion: requestedEngine,
+      schemaVersion: requestedSchema,
+      operations,
     });
   } catch (e: any) {
     console.error("design registration failed", data?.design_id, e);
