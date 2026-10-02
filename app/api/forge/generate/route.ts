@@ -237,7 +237,8 @@ export async function POST(req: Request) {
 
   if (
     requestedEngine === "mesh-v2" &&
-    process.env.NEXT_PUBLIC_ENABLE_FORGE_V2_ENGINE !== "1"
+    process.env.NEXT_PUBLIC_ENABLE_FORGE_V2_ENGINE !== "1" &&
+    process.env.VERCEL_ENV !== "preview"
   ) {
     return json({ ok: false, error: "FORGE_V2_DISABLED" }, 404);
   }
