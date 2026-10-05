@@ -3,11 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 
 type RendererBundle = {
-  THREE: typeof import("three");
-  renderer: import("three").WebGLRenderer;
-  STLLoader: typeof import("three/examples/jsm/loaders/STLLoader.js").STLLoader;
-  mergeVertices: typeof import("three/examples/jsm/utils/BufferGeometryUtils.js").mergeVertices;
-  toCreasedNormals: typeof import("three/examples/jsm/utils/BufferGeometryUtils.js").toCreasedNormals;
+  THREE: any;
+  renderer: any;
+  STLLoader: any;
+  mergeVertices: any;
+  toCreasedNormals: any;
 };
 
 let rendererBundlePromise: Promise<RendererBundle> | null = null;
@@ -144,7 +144,7 @@ async function renderSnapshot(slug: string): Promise<string> {
   geometry.dispose();
   material.dispose();
   ground.geometry.dispose();
-  (ground.material as THREE.Material).dispose();
+  (ground.material as any).dispose?.();
 
   return dataUrl;
 }
