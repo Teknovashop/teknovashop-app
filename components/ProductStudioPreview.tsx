@@ -70,11 +70,11 @@ async function renderSnapshot(slug: string): Promise<string> {
   const camera = new THREE.PerspectiveCamera(30, 960 / 600, 0.1, 100);
 
   const material = new THREE.MeshPhysicalMaterial({
-    color: 0x202a36,
-    metalness: 0.34,
-    roughness: 0.28,
-    clearcoat: 0.32,
-    clearcoatRoughness: 0.22,
+    color: 0x2d3947,
+    metalness: 0.24,
+    roughness: 0.30,
+    clearcoat: 0.34,
+    clearcoatRoughness: 0.20,
     side: THREE.DoubleSide,
     flatShading: false,
   });
@@ -117,20 +117,20 @@ async function renderSnapshot(slug: string): Promise<string> {
   ground.receiveShadow = true;
   scene.add(ground);
 
-  scene.add(new THREE.HemisphereLight(0xf3f9ff, 0x203246, 3.4));
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x5f7f9f, 4.2));
 
-  const key = new THREE.DirectionalLight(0xffffff, 5.6);
+  const key = new THREE.DirectionalLight(0xffffff, 6.4);
   key.position.set(-4.5, 7.2, 6.4);
   key.castShadow = true;
   key.shadow.mapSize.set(1024, 1024);
   key.shadow.bias = -0.0004;
   scene.add(key);
 
-  const rim = new THREE.DirectionalLight(0x77cfff, 3.0);
+  const rim = new THREE.DirectionalLight(0x8bd7ff, 3.8);
   rim.position.set(5.5, 4.0, 3.0);
   scene.add(rim);
 
-  const fill = new THREE.DirectionalLight(0xd6e9ff, 2.0);
+  const fill = new THREE.DirectionalLight(0xe4f1ff, 2.8);
   fill.position.set(-3.0, 2.5, -4.0);
   scene.add(fill);
 
@@ -139,7 +139,37 @@ async function renderSnapshot(slug: string): Promise<string> {
   camera.updateProjectionMatrix();
 
   renderer.render(scene, camera);
-  const dataUrl = renderer.domElement.toDataURL("image/webp", 0.9);
+
+  // Compose the transparent WebGL render onto an explicit light Studio
+  // background before exporting. This avoids browsers encoding transparent
+  // WebP pixels against black and guarantees visual parity across themes.
+  const studioCanvas = document.createElement("canvas");
+  studioCanvas.width = 960;
+  studioCanvas.height = 600;
+  const ctx = studioCanvas.getContext("2d");
+  if (!ctx) throw new Error("studio canvas unavailable");
+
+  const gradient = ctx.createLinearGradient(0, 0, 960, 600);
+  gradient.addColorStop(0, "#f5fbff");
+  gradient.addColorStop(0.42, "#dcefff");
+  gradient.addColorStop(1, "#9fc4df");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 960, 600);
+
+  const glow = ctx.createRadialGradient(260, 110, 20, 260, 110, 360);
+  glow.addColorStop(0, "rgba(255,255,255,0.96)");
+  glow.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, 960, 600);
+
+  const horizon = ctx.createLinearGradient(0, 405, 0, 600);
+  horizon.addColorStop(0, "rgba(255,255,255,0.05)");
+  horizon.addColorStop(1, "rgba(28,70,105,0.22)");
+  ctx.fillStyle = horizon;
+  ctx.fillRect(0, 405, 960, 195);
+
+  ctx.drawImage(renderer.domElement, 0, 0, 960, 600);
+  const dataUrl = studioCanvas.toDataURL("image/webp", 0.92);
 
   geometry.dispose();
   material.dispose();
