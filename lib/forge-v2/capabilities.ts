@@ -53,6 +53,11 @@ const ADVANCED: Record<string, ForgeV2ProductCapabilities> = {
     cableChannels: true,
     vents: ["linear", "hex"],
   },
+  "electronics-box": {
+    ...PLATE_CAPABILITIES,
+    cableChannels: true,
+    vents: ["linear", "hex"],
+  },
   "qr-plate": PLATE_CAPABILITIES,
   "camera-plate": PLATE_CAPABILITIES,
   "perforated-mount-plate": PLATE_CAPABILITIES,
