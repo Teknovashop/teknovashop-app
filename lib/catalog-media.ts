@@ -1,11 +1,23 @@
 import type { ForgeModel } from "@/data/models";
 
+const GENERATED_RENDER_VERSION = "studio-v3";
+
+function versionGeneratedRender(src: string) {
+  if (!src.startsWith("/api/catalog/thumbnail/")) return src;
+  const separator = src.includes("?") ? "&" : "?";
+  return `${src}${separator}v=${GENERATED_RENDER_VERSION}`;
+}
+
 export function marketingImageFor(model: ForgeModel) {
-  return model.thumbnail || model.geometryThumbnail || "/hero/hero.jpg";
+  return versionGeneratedRender(
+    model.thumbnail || model.geometryThumbnail || "/hero/hero.jpg"
+  );
 }
 
 export function technicalImageFor(model: ForgeModel) {
-  return model.geometryThumbnail || model.thumbnail || "/hero/hero.jpg";
+  return versionGeneratedRender(
+    model.geometryThumbnail || model.thumbnail || "/hero/hero.jpg"
+  );
 }
 
 export function hasStudioRender(model: ForgeModel) {
