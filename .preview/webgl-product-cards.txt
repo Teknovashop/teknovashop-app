@@ -1,1 +1,0 @@
-Preview refresh for WebGL product cards with canonical STL backend.
