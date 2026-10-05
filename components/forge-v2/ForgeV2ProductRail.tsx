@@ -4,7 +4,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { MODELS } from "@/data/models";
-import { marketingImageFor } from "@/lib/catalog-media";
+import { hasStudioRender, marketingImageFor } from "@/lib/catalog-media";
+import ProductStudioPreview from "@/components/ProductStudioPreview";
 import { normalizeModelSearch } from "@/lib/model-routing";
 
 export default function ForgeV2ProductRail({
@@ -77,13 +78,17 @@ export default function ForgeV2ProductRail({
                 }
               >
                 <div className="relative h-11 w-14 shrink-0 overflow-hidden rounded-lg bg-[#071321]">
-                  <Image
-                    src={marketingImageFor(model)}
-                    alt=""
-                    fill
-                    sizes="56px"
-                    className="object-cover"
-                  />
+                  {hasStudioRender(model) ? (
+                    <Image
+                      src={marketingImageFor(model)}
+                      alt=""
+                      fill
+                      sizes="56px"
+                      className="object-cover"
+                    />
+                  ) : (
+                    <ProductStudioPreview slug={model.slug} />
+                  )}
                 </div>
                 <div className="min-w-0">
                   <div
