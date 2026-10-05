@@ -39,6 +39,7 @@ export default function ProductStudioPreview({
       try {
         const THREE = await import("three");
         const { STLLoader } = await import("three/examples/jsm/loaders/STLLoader.js");
+        const { mergeVertices, toCreasedNormals } = await import("three/examples/jsm/utils/BufferGeometryUtils.js");
 
         const response = await fetch(
           "/api/catalog/mesh/" + encodeURIComponent(slug),
@@ -48,8 +49,16 @@ export default function ProductStudioPreview({
         const buffer = await response.arrayBuffer();
         if (cancelled) return;
 
-        const geometry = new STLLoader().parse(buffer);
-        geometry.computeVertexNormals();
+        const rawGeometry = new STLLoader().parse(buffer);
+
+        // STL stores each triangle independently. Merge coincident vertices and
+        // rebuild normals with a crease threshold so coplanar triangles share
+        // one visual plane while real manufactured corners stay sharp.
+        const mergedGeometry = mergeVertices(rawGeometry, 1e-4);
+        rawGeometry.dispose();
+        const geometry = toCreasedNormals(mergedGeometry, Math.PI / 4);
+        if (geometry !== mergedGeometry) mergedGeometry.dispose();
+        geometry.computeBoundingBox();
         geometry.center();
 
         const scene = new THREE.Scene();
@@ -71,11 +80,13 @@ export default function ProductStudioPreview({
         host.replaceChildren(canvas);
 
         const material = new THREE.MeshPhysicalMaterial({
-          color: 0x111820,
-          metalness: 0.82,
-          roughness: 0.24,
-          clearcoat: 0.28,
-          clearcoatRoughness: 0.24,
+          color: 0x0f151d,
+          metalness: 0.78,
+          roughness: 0.30,
+          clearcoat: 0.22,
+          clearcoatRoughness: 0.28,
+          side: THREE.DoubleSide,
+          flatShading: false,
         });
 
         const mesh = new THREE.Mesh(geometry, material);
