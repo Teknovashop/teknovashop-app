@@ -5,6 +5,7 @@ import ForgeV2ProductRail from "@/components/forge-v2/ForgeV2ProductRail";
 import { useEffect, useMemo, useRef, useState } from "react";
 import STLViewerPro from "@/components/STLViewerPro";
 import { DEFAULT_PARAMS, FIELDS } from "@/lib/forge-config";
+import { isCadV2Product } from "@/lib/forge-v2/cad-products";
 import {
   FORGE_V2_PILOTS,
   forgeV2Capabilities,
@@ -604,6 +605,82 @@ export default function ForgeV2Workspace({
       setFeedback("V2 generado · artefacto trazable registrado");
     } catch (error: any) {
       setFeedback(error?.message || "No se pudo generar V2");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+
+  async function generateCadPreview() {
+    if (!isCadV2Product(slug)) return;
+    setBusy(true);
+    setFeedback("Generando B-Rep real con CadQuery…");
+    try {
+      const response = await fetch(
+        "/api/forge/cad/product/" + encodeURIComponent(slug),
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            params,
+            operations,
+            format: "stl",
+          }),
+        }
+      );
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(
+          data?.detail || data?.error || "No se pudo generar CAD V2"
+        );
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      setPreviewUrl((current) => {
+        if (current?.startsWith("blob:")) URL.revokeObjectURL(current);
+        return url;
+      });
+      setFeedback("CAD B-Rep generado · STL listo para comparar en el visor");
+    } catch (error: any) {
+      setFeedback(error?.message || "No se pudo generar CAD V2");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function downloadCadStep() {
+    if (!isCadV2Product(slug)) return;
+    setBusy(true);
+    setFeedback("Exportando STEP desde B-Rep…");
+    try {
+      const response = await fetch(
+        "/api/forge/cad/product/" + encodeURIComponent(slug),
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            params,
+            operations,
+            format: "step",
+          }),
+        }
+      );
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(
+          data?.detail || data?.error || "No se pudo exportar STEP"
+        );
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = slug + ".step";
+      anchor.click();
+      URL.revokeObjectURL(url);
+      setFeedback("STEP CAD exportado correctamente");
+    } catch (error: any) {
+      setFeedback(error?.message || "No se pudo exportar STEP");
     } finally {
       setBusy(false);
     }
@@ -1214,6 +1291,34 @@ export default function ForgeV2Workspace({
           >
             {busy ? "Generando…" : "Validar y generar V2"}
           </button>
+
+          {premiumSurface && isCadV2Product(slug) && (
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => void generateCadPreview()}
+                disabled={busy || hasErrors}
+                className="rounded-xl border border-violet-300/25 bg-violet-300/10 px-3 py-2.5 text-[11px] font-black text-violet-100 transition hover:bg-violet-300/15 disabled:opacity-50"
+              >
+                CAD B-Rep
+              </button>
+              <button
+                type="button"
+                onClick={() => void downloadCadStep()}
+                disabled={busy || hasErrors}
+                className="rounded-xl border border-white/10 bg-white/[0.05] px-3 py-2.5 text-[11px] font-black text-slate-200 transition hover:bg-white/[0.09] disabled:opacity-50"
+              >
+                Exportar STEP
+              </button>
+            </div>
+          )}
+
+          {premiumSurface && isCadV2Product(slug) && (
+            <div className="mt-2 rounded-xl border border-violet-300/10 bg-violet-300/[0.04] px-3 py-2 text-[9px] leading-4 text-violet-100/70">
+              Piloto CAD aislado · compara el resultado B-Rep con mesh-v2 sin sustituir el flujo estable.
+            </div>
+          )}
+
           <p className="mt-3 text-xs leading-5 text-slate-400">{feedback}</p>
         </aside>
       </div>
