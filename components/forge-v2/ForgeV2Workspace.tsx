@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import STLViewerPro from "@/components/STLViewerPro";
 import { DEFAULT_PARAMS, FIELDS } from "@/lib/forge-config";
 import { isCadV2Product } from "@/lib/forge-v2/cad-products";
+import { isCadV2Enclosure } from "@/lib/forge-v2/cad-enclosures";
 import {
   FORGE_V2_PILOTS,
   forgeV2Capabilities,
@@ -686,6 +687,87 @@ export default function ForgeV2Workspace({
     }
   }
 
+
+  async function generateCadEnclosurePart(part: "body-stl" | "lid-stl") {
+    if (!isCadV2Enclosure(slug)) return;
+    setBusy(true);
+    setFeedback(
+      part === "body-stl"
+        ? "Generando cuerpo hueco B-Rep…"
+        : "Generando tapa CAD con operaciones…"
+    );
+    try {
+      const response = await fetch(
+        "/api/forge/cad/enclosure/" +
+          encodeURIComponent(slug) +
+          "/" +
+          part,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ params, operations }),
+        }
+      );
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(
+          data?.detail || data?.error || "No se pudo generar la caja CAD"
+        );
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      setPreviewUrl((current) => {
+        if (current?.startsWith("blob:")) URL.revokeObjectURL(current);
+        return url;
+      });
+      setFeedback(
+        part === "body-stl"
+          ? "Cuerpo hueco CAD generado"
+          : "Tapa CAD generada con operaciones"
+      );
+    } catch (error: any) {
+      setFeedback(error?.message || "No se pudo generar la caja CAD");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function downloadCadEnclosureStep() {
+    if (!isCadV2Enclosure(slug)) return;
+    setBusy(true);
+    setFeedback("Exportando tapa STEP desde B-Rep…");
+    try {
+      const response = await fetch(
+        "/api/forge/cad/enclosure/" +
+          encodeURIComponent(slug) +
+          "/lid-step",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ params, operations }),
+        }
+      );
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(
+          data?.detail || data?.error || "No se pudo exportar la tapa STEP"
+        );
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = slug + "-lid.step";
+      anchor.click();
+      URL.revokeObjectURL(url);
+      setFeedback("Tapa STEP exportada correctamente");
+    } catch (error: any) {
+      setFeedback(error?.message || "No se pudo exportar la tapa STEP");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const hasErrors = issues.some((issue) => issue.level === "error");
   const presets = useMemo(() => {
     const explicit = PRESETS[slug] || [];
@@ -1317,6 +1399,40 @@ export default function ForgeV2Workspace({
             <div className="mt-2 rounded-xl border border-violet-300/10 bg-violet-300/[0.04] px-3 py-2 text-[9px] leading-4 text-violet-100/70">
               Piloto CAD aislado · compara el resultado B-Rep con mesh-v2 sin sustituir el flujo estable.
             </div>
+          )}
+
+          {premiumSurface && isCadV2Enclosure(slug) && (
+            <>
+              <div className="mt-2 grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => void generateCadEnclosurePart("body-stl")}
+                  disabled={busy || hasErrors}
+                  className="rounded-xl border border-fuchsia-300/20 bg-fuchsia-300/10 px-2 py-2.5 text-[10px] font-black text-fuchsia-100 transition hover:bg-fuchsia-300/15 disabled:opacity-50"
+                >
+                  Cuerpo CAD
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void generateCadEnclosurePart("lid-stl")}
+                  disabled={busy || hasErrors}
+                  className="rounded-xl border border-violet-300/20 bg-violet-300/10 px-2 py-2.5 text-[10px] font-black text-violet-100 transition hover:bg-violet-300/15 disabled:opacity-50"
+                >
+                  Tapa CAD
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void downloadCadEnclosureStep()}
+                  disabled={busy || hasErrors}
+                  className="rounded-xl border border-white/10 bg-white/[0.05] px-2 py-2.5 text-[10px] font-black text-slate-200 transition hover:bg-white/[0.09] disabled:opacity-50"
+                >
+                  STEP tapa
+                </button>
+              </div>
+              <div className="mt-2 rounded-xl border border-fuchsia-300/10 bg-fuchsia-300/[0.04] px-3 py-2 text-[9px] leading-4 text-fuchsia-100/70">
+                Familia CAD de cajas · cuerpo hueco independiente + tapa operable.
+              </div>
+            </>
           )}
 
           <p className="mt-3 text-xs leading-5 text-slate-400">{feedback}</p>
