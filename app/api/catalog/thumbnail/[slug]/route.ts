@@ -22,19 +22,25 @@ export async function GET(
   }
 
   try {
-    const response = await fetch(
-      `${BACKEND}/catalog/thumbnail/${encodeURIComponent(slug)}.png`,
-      {
-        cache: "force-cache",
-        next: { revalidate: 86400 },
-        signal: AbortSignal.timeout(20000),
-      }
-    );
+    const target = `${BACKEND}/catalog/thumbnail/${encodeURIComponent(slug)}.png`;
+    let response: Response | null = null;
 
-    if (!response.ok) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      response = await fetch(target, {
+        cache: "no-store",
+        signal: AbortSignal.timeout(attempt === 0 ? 12000 : 18000),
+      }).catch(() => null);
+
+      if (response?.ok || response?.status === 404) break;
+      if (attempt === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 650));
+      }
+    }
+
+    if (!response?.ok) {
       return NextResponse.json(
         { error: "THUMBNAIL_NOT_FOUND" },
-        { status: response.status === 404 ? 404 : 502 }
+        { status: response?.status === 404 ? 404 : 502 }
       );
     }
 

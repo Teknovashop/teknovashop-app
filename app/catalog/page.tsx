@@ -33,13 +33,30 @@ function CubeMark() {
 function CatalogImage({ model, priority }: { model: ForgeModel; priority?: boolean }) {
   const [source, setSource] = useState(marketingImageFor(model));
   const [failed, setFailed] = useState(false);
+  const [technicalRetries, setTechnicalRetries] = useState(0);
+
+  function technicalRetryUrl() {
+    const technical = technicalImageFor(model);
+    const separator = technical.includes("?") ? "&" : "?";
+    return `${technical}${separator}retry=${technicalRetries + 1}`;
+  }
 
   function handleError() {
     const technical = technicalImageFor(model);
-    if (source !== technical) {
+
+    if (!source.startsWith(technical)) {
       setSource(technical);
+      setTechnicalRetries(0);
       return;
     }
+
+    if (technicalRetries < 2 && technical.startsWith("/api/catalog/thumbnail/")) {
+      const retryUrl = technicalRetryUrl();
+      setTechnicalRetries((current) => current + 1);
+      window.setTimeout(() => setSource(retryUrl), 650 * (technicalRetries + 1));
+      return;
+    }
+
     setFailed(true);
   }
 
@@ -64,12 +81,15 @@ function CatalogImage({ model, priority }: { model: ForgeModel; priority?: boole
       ) : (
         <div className="absolute inset-0 grid place-items-center bg-[radial-gradient(circle_at_65%_25%,rgba(37,99,235,.32),transparent_30%),linear-gradient(145deg,#071321,#0a2340_55%,#071321)]">
           <div className="absolute inset-0 opacity-30 [background-image:linear-gradient(rgba(139,233,255,.14)_1px,transparent_1px),linear-gradient(90deg,rgba(139,233,255,.14)_1px,transparent_1px)] [background-size:32px_32px]" />
-          <div className="relative text-center text-cyan-200/70">
+          <div className="relative max-w-[230px] text-center text-cyan-200/70">
             <div className="mx-auto grid h-20 w-20 place-items-center rounded-3xl border border-cyan-200/15 bg-white/5 backdrop-blur">
               <CubeMark />
             </div>
-            <div className="mt-4 text-[10px] font-black uppercase tracking-[0.2em] text-cyan-100/65">
-              Preview de producto
+            <div className="mt-4 text-[10px] font-black uppercase tracking-[0.2em] text-cyan-100/70">
+              Geometría temporalmente no disponible
+            </div>
+            <div className="mt-2 text-[10px] leading-4 text-slate-400">
+              La pieza sigue disponible en Forge. Reintentaremos la vista técnica al recargar.
             </div>
           </div>
         </div>
