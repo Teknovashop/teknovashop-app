@@ -7,7 +7,8 @@ import { MODELS, type ForgeModel } from "@/data/models";
 import { normalizeModelSearch } from "@/lib/model-routing";
 import CatalogFilters from "@/components/CatalogFilters";
 import { forgeV2Capabilities } from "@/lib/forge-v2/capabilities";
-import { hasStudioRender, marketingImageFor, technicalImageFor } from "@/lib/catalog-media";
+import { hasStudioRender, marketingImageFor } from "@/lib/catalog-media";
+import ProductStudioPreview from "@/components/ProductStudioPreview";
 
 const LEGACY_IMAGE_TUNING: Record<string, string> = {
   "ssd-holder": "scale-[1.18]",
@@ -31,71 +32,30 @@ function CubeMark() {
 }
 
 function CatalogImage({ model, priority }: { model: ForgeModel; priority?: boolean }) {
-  const [source, setSource] = useState(marketingImageFor(model));
   const [failed, setFailed] = useState(false);
-  const [technicalRetries, setTechnicalRetries] = useState(0);
-
-  function technicalRetryUrl() {
-    const technical = technicalImageFor(model);
-    const separator = technical.includes("?") ? "&" : "?";
-    return `${technical}${separator}retry=${technicalRetries + 1}`;
-  }
-
-  function handleError() {
-    const technical = technicalImageFor(model);
-
-    if (!source.startsWith(technical)) {
-      setSource(technical);
-      setTechnicalRetries(0);
-      return;
-    }
-
-    if (technicalRetries < 2 && technical.startsWith("/api/catalog/thumbnail/")) {
-      const retryUrl = technicalRetryUrl();
-      setTechnicalRetries((current) => current + 1);
-      window.setTimeout(() => setSource(retryUrl), 650 * (technicalRetries + 1));
-      return;
-    }
-
-    setFailed(true);
-  }
+  const studio = hasStudioRender(model);
 
   return (
-    <div
-      className="catalog-media relative aspect-[4/3] overflow-hidden bg-[#091827]"
-    >
-      {!failed ? (
+    <div className="catalog-media relative aspect-[4/3] overflow-hidden bg-[#091827]">
+      {studio && !failed ? (
         <Image
-          src={source}
+          src={marketingImageFor(model)}
           alt={model.name}
           fill
           loading={priority ? "eager" : "lazy"}
           fetchPriority={priority ? "high" : "auto"}
           sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-          onError={handleError}
+          onError={() => setFailed(true)}
           className={
             "object-cover transition duration-700 group-hover:scale-[1.035] " +
             (LEGACY_IMAGE_TUNING[model.slug] || "")
           }
         />
       ) : (
-        <div className="absolute inset-0 grid place-items-center bg-[radial-gradient(circle_at_65%_25%,rgba(37,99,235,.32),transparent_30%),linear-gradient(145deg,#071321,#0a2340_55%,#071321)]">
-          <div className="absolute inset-0 opacity-30 [background-image:linear-gradient(rgba(139,233,255,.14)_1px,transparent_1px),linear-gradient(90deg,rgba(139,233,255,.14)_1px,transparent_1px)] [background-size:32px_32px]" />
-          <div className="relative max-w-[230px] text-center text-cyan-200/70">
-            <div className="mx-auto grid h-20 w-20 place-items-center rounded-3xl border border-cyan-200/15 bg-white/5 backdrop-blur">
-              <CubeMark />
-            </div>
-            <div className="mt-4 text-[10px] font-black uppercase tracking-[0.2em] text-cyan-100/70">
-              Geometría temporalmente no disponible
-            </div>
-            <div className="mt-2 text-[10px] leading-4 text-slate-400">
-              La pieza sigue disponible en Forge. Reintentaremos la vista técnica al recargar.
-            </div>
-          </div>
-        </div>
+        <ProductStudioPreview slug={model.slug} />
       )}
 
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#071321]/40 via-transparent to-white/5" />
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#071321]/32 via-transparent to-white/5" />
       <span className="absolute left-3 top-3 rounded-full border border-white/65 bg-white/90 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-700 shadow-sm backdrop-blur">
         Paramétrico
       </span>
@@ -106,13 +66,12 @@ function CatalogImage({ model, priority }: { model: ForgeModel; priority?: boole
           </span>
         )}
         <span className="rounded-full border border-cyan-200/20 bg-[#071321]/75 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-cyan-100 backdrop-blur">
-          {hasStudioRender(model) ? "Studio render" : "Geometría real"}
+          {studio ? "Studio render" : "Geometría real 3D"}
         </span>
       </div>
     </div>
   );
 }
-
 
 function capabilityLabels(slug: string) {
   const capabilities = forgeV2Capabilities(slug);
