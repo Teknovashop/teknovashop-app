@@ -1,6 +1,6 @@
 import type { ForgeModel } from "@/data/models";
 
-const GENERATED_RENDER_VERSION = "studio-v4";
+const GENERATED_RENDER_VERSION = "studio-v6";
 
 function versionGeneratedRender(src: string) {
   if (!src.startsWith("/api/catalog/thumbnail/")) return src;
