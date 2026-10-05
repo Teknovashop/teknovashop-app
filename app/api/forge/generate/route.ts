@@ -235,12 +235,23 @@ export async function POST(req: Request) {
     body?.engine_version === "mesh-v2" ? "mesh-v2" : "mesh-v1";
   const requestedSchema = requestedEngine === "mesh-v2" ? 2 : 1;
 
+  const forgeV2Enabled =
+    process.env.ENABLE_FORGE_V2_ENGINE === "1" ||
+    process.env.NEXT_PUBLIC_ENABLE_FORGE_V2_ENGINE === "1";
+
   if (
     requestedEngine === "mesh-v2" &&
-    process.env.NEXT_PUBLIC_ENABLE_FORGE_V2_ENGINE !== "1" &&
+    !forgeV2Enabled &&
     process.env.VERCEL_ENV !== "preview"
   ) {
-    return json({ ok: false, error: "FORGE_V2_DISABLED" }, 404);
+    return json(
+      {
+        ok: false,
+        error: "FORGE_V2_DISABLED",
+        detail: "Forge V2 is not enabled in this production environment.",
+      },
+      503
+    );
   }
 
   const model = slug.replace(/-/g, "_");
