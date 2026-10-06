@@ -10,9 +10,16 @@ const BACKEND = (
   "https://teknovashop-forge.onrender.com"
 ).replace(/\/+$/, "");
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const response = await fetch(`${BACKEND}/catalog/products`, {
+    const requestUrl = new URL(request.url);
+    const upstream = new URL(`${BACKEND}/catalog/products`);
+    for (const key of ["stage", "public_only"]) {
+      const value = requestUrl.searchParams.get(key);
+      if (value) upstream.searchParams.set(key, value);
+    }
+
+    const response = await fetch(upstream.toString(), {
       cache: "no-store",
       signal: AbortSignal.timeout(15000),
     });
