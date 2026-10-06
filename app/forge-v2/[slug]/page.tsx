@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import ForgeV2Workspace from "@/components/forge-v2/ForgeV2Workspace";
-import { isForgeV2Product } from "@/lib/forge-v2/capabilities";
 import { FORGE_FLAGS } from "@/lib/forge-v2/flags";
+import { getCanonicalProduct } from "@/lib/server-canonical-catalog";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +11,13 @@ export default async function ForgeV2LabPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  if (!isForgeV2Product(slug)) notFound();
+  const product = await getCanonicalProduct(slug);
+  if (!product) notFound();
 
-  return <ForgeV2Workspace slug={slug} premiumSurface={FORGE_FLAGS.experimentalSurfaces} />;
+  return (
+    <ForgeV2Workspace
+      slug={product.slug}
+      premiumSurface={FORGE_FLAGS.experimentalSurfaces}
+    />
+  );
 }
