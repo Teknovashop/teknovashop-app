@@ -1,4 +1,5 @@
 import type { ForgeModel } from "@/data/models";
+import { premiumStudioImage } from "@/lib/catalog-studio-assets";
 
 const GENERATED_RENDER_VERSION = "studio-v6";
 
@@ -10,7 +11,7 @@ function versionGeneratedRender(src: string) {
 
 export function marketingImageFor(model: ForgeModel) {
   return versionGeneratedRender(
-    model.thumbnail || model.geometryThumbnail || "/hero/hero.jpg"
+    premiumStudioImage(model.slug) || model.thumbnail || model.geometryThumbnail || "/hero/hero.jpg"
   );
 }
 
@@ -22,7 +23,7 @@ export function technicalImageFor(model: ForgeModel) {
 
 export function hasStudioRender(model: ForgeModel) {
   return Boolean(
-    model.thumbnail?.startsWith("/images/") ||
+    premiumStudioImage(model.slug) || model.thumbnail?.startsWith("/images/") ||
       model.thumbnail?.startsWith("/api/catalog/studio/")
   );
 }

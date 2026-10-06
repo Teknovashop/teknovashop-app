@@ -23,12 +23,13 @@ describe("catalog media contract", () => {
 
   it("keeps the exact geometry image separate for technical validation", () => {
     const vesa = model("vesa-adapter");
-    expect(technicalImageFor(vesa)).toBe("/api/catalog/thumbnail/vesa-adapter");
+    expect(technicalImageFor(vesa)).toBe("/api/catalog/thumbnail/vesa-adapter?v=studio-v6");
   });
 
-  it("falls back to exact generated geometry for new products without studio art yet", () => {
+  it("uses the new dock studio image while retaining exact technical geometry", () => {
     const dock = model("vertical-laptop-dock");
-    expect(marketingImageFor(dock)).toBe("/api/catalog/thumbnail/vertical-laptop-dock");
-    expect(hasStudioRender(dock)).toBe(false);
+    expect(marketingImageFor(dock)).toBe("/images/products/premium-v1/vertical-laptop-dock.webp");
+    expect(technicalImageFor(dock)).toBe("/api/catalog/thumbnail/vertical-laptop-dock?v=studio-v6");
+    expect(hasStudioRender(dock)).toBe(true);
   });
 });

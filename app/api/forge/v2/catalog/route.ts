@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withPremiumStudio } from "@/lib/catalog-studio-assets";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,6 +26,9 @@ export async function GET(request: Request) {
     });
     const text = await response.text();
     const data = text ? JSON.parse(text) : {};
+    if (response.ok && Array.isArray(data.products)) {
+      data.products = data.products.map(withPremiumStudio);
+    }
     return NextResponse.json(data, { status: response.status });
   } catch (error: any) {
     return NextResponse.json(
