@@ -37,8 +37,11 @@ export type HubProduct = ForgeModel & {
 };
 
 export function toHubProduct(product: CanonicalProduct): HubProduct {
-  const thumbnail =
-    product.marketing_image || `/api/catalog/thumbnail/${product.slug}`;
+  const thumbnail = product.marketing_image
+    ? product.marketing_image.startsWith("/catalog/studio/")
+      ? `/api/catalog/studio/${product.slug}`
+      : product.marketing_image
+    : `/api/catalog/thumbnail/${product.slug}`;
 
   return {
     id: product.slug,
