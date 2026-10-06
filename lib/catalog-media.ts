@@ -21,5 +21,8 @@ export function technicalImageFor(model: ForgeModel) {
 }
 
 export function hasStudioRender(model: ForgeModel) {
-  return Boolean(model.thumbnail?.startsWith("/images/"));
+  return Boolean(
+    model.thumbnail?.startsWith("/images/") ||
+      model.thumbnail?.startsWith("/api/catalog/studio/")
+  );
 }
