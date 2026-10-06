@@ -256,7 +256,7 @@ export default function ForgeV2Hub() {
             const production = model.stage === "production";
             return (
               <article key={model.slug} className="group overflow-hidden rounded-[1.45rem] border border-white/10 bg-white/[0.045] transition hover:-translate-y-1 hover:border-cyan-300/25 hover:bg-white/[0.065]">
-                <Link href={"/forge-v2/" + model.slug} className="relative block aspect-[16/10] overflow-hidden bg-[#071321]">
+                <Link href={"/forge-v2/" + model.slug} className="relative block aspect-[4/3] overflow-hidden bg-[#071321]">
                   {hasStudioRender(model) ? (
                     <Image src={marketingImageFor(model)} alt={model.name} fill priority={index < 3} sizes="(max-width: 640px) 100vw, (max-width: 1280px) 50vw, 33vw" className="object-cover transition duration-700 group-hover:scale-[1.035]" />
                   ) : (
