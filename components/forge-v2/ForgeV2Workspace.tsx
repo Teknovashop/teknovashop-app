@@ -7,10 +7,7 @@ import STLViewerPro from "@/components/STLViewerPro";
 import { DEFAULT_PARAMS, FIELDS } from "@/lib/forge-config";
 import { isCadV2Product } from "@/lib/forge-v2/cad-products";
 import { isCadV2Enclosure } from "@/lib/forge-v2/cad-enclosures";
-import {
-  FORGE_V2_PILOTS,
-  forgeV2Capabilities,
-} from "@/lib/forge-v2/capabilities";
+import { forgeV2Capabilities } from "@/lib/forge-v2/capabilities";
 import {
   createOperationId,
   type ForgeV2Operation,
@@ -259,8 +256,8 @@ export default function ForgeV2Workspace({
   slug: string;
   premiumSurface?: boolean;
 }) {
-  const product = FORGE_V2_PILOTS[slug];
   const fallbackCapabilities = useMemo(() => forgeV2Capabilities(slug), [slug]);
+  const [productName, setProductName] = useState(slug);
   const [capabilities, setCapabilities] = useState<Record<string, any>>(
     fallbackCapabilities
   );
@@ -357,6 +354,7 @@ export default function ForgeV2Workspace({
           ? staticFields
           : genericFieldsFromDefaults(canonicalDefaults);
 
+        setProductName(product.name || slug);
         setBaseParams(nextBase);
         setFields(nextFields);
         setCatalogVariant(
@@ -795,7 +793,7 @@ export default function ForgeV2Workspace({
             <div className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-300">
               Teknovashop Forge · V2 Lab
             </div>
-            <h1 className="mt-1 text-xl font-black">{product.label}</h1>
+            <h1 className="mt-1 text-xl font-black">{productName}</h1>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold">
             <Link

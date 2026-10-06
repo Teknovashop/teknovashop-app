@@ -1,5 +1,3 @@
-import { MODELS } from "@/data/models";
-
 export type ForgeV2Capability =
   | "dimensions"
   | "text"
@@ -66,24 +64,32 @@ const ADVANCED: Record<string, ForgeV2ProductCapabilities> = {
   "inset-label": PLATE_CAPABILITIES,
 };
 
+/**
+ * Legacy compatibility surface. Product existence no longer lives here;
+ * /catalog/products is canonical. These entries only describe explicit
+ * frontend capability overrides.
+ */
 export const FORGE_V2_PRODUCTS: Record<string, ProductProfile> = Object.fromEntries(
-  MODELS.map((model) => [
-    model.slug,
+  Object.entries(ADVANCED).map(([slug, capabilities]) => [
+    slug,
     {
-      label: model.name,
+      label: slug,
       engine: "mesh-v2" as const,
-      capabilities: ADVANCED[model.slug] || BASE_CAPABILITIES,
+      capabilities,
     },
   ])
 );
 
-// Compatibility alias: older V2 components imported FORGE_V2_PILOTS.
 export const FORGE_V2_PILOTS = FORGE_V2_PRODUCTS;
 
 export function forgeV2Capabilities(slug: string) {
-  return FORGE_V2_PRODUCTS[slug]?.capabilities || {};
+  return ADVANCED[slug] || BASE_CAPABILITIES;
 }
 
+/**
+ * Deprecated: backend catalog validates existence. Kept only so old imports
+ * fail open to the canonical server check instead of maintaining a local list.
+ */
 export function isForgeV2Product(slug: string) {
-  return Boolean(FORGE_V2_PRODUCTS[slug]);
+  return Boolean(slug?.trim());
 }

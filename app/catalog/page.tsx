@@ -2,13 +2,16 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { MODELS, type ForgeModel } from "@/data/models";
-import { normalizeModelSearch } from "@/lib/model-routing";
+import { useEffect, useMemo, useState } from "react";
 import CatalogFilters from "@/components/CatalogFilters";
-import { forgeV2Capabilities } from "@/lib/forge-v2/capabilities";
-import { hasStudioRender, marketingImageFor } from "@/lib/catalog-media";
 import ProductStudioPreview from "@/components/ProductStudioPreview";
+import { hasStudioRender, marketingImageFor } from "@/lib/catalog-media";
+import {
+  fetchCanonicalCatalog,
+  toHubProduct,
+  type HubProduct,
+} from "@/lib/canonical-catalog";
+import { normalizeModelSearch } from "@/lib/model-routing";
 
 const LEGACY_IMAGE_TUNING: Record<string, string> = {
   "ssd-holder": "scale-[1.18]",
@@ -22,16 +25,27 @@ const LEGACY_IMAGE_TUNING: Record<string, string> = {
   "hub-holder": "scale-[1.22]",
 };
 
-function CubeMark() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-12 w-12">
-      <path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z" />
-      <path d="m4.4 7.7 7.6 4.2 7.6-4.2M12 12v9" />
-    </svg>
-  );
+function labelsFor(model: HubProduct) {
+  const labels: string[] = [];
+  const caps = model.v2Capabilities || [];
+  const add = (label: string) => {
+    if (!labels.includes(label)) labels.push(label);
+  };
+  for (const capability of caps) {
+    if (capability.includes("hole")) add("Agujeros");
+    else if (capability.includes("slot")) add("Ranuras");
+    else if (capability.includes("cutout")) add("Cortes");
+    else if (capability.includes("vent")) add("Ventilación");
+    else if (capability.includes("wave")) add("Ondulación");
+    else if (capability.includes("rib") || capability.includes("boss")) add("Refuerzos");
+    else if (capability.includes("pattern")) add("Patrones");
+    else if (capability.includes("channel")) add("Canales");
+  }
+  if (!labels.length) labels.push("Dimensiones", "Texto");
+  return labels.slice(0, 4);
 }
 
-function CatalogImage({ model, priority }: { model: ForgeModel; priority?: boolean }) {
+function CatalogImage({ model, priority }: { model: HubProduct; priority?: boolean }) {
   const [failed, setFailed] = useState(false);
   const studio = hasStudioRender(model);
 
@@ -54,64 +68,64 @@ function CatalogImage({ model, priority }: { model: ForgeModel; priority?: boole
       ) : (
         <ProductStudioPreview slug={model.slug} />
       )}
-
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#071321]/32 via-transparent to-white/5" />
       <span className="absolute left-3 top-3 rounded-full border border-white/65 bg-white/90 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-700 shadow-sm backdrop-blur">
         Paramétrico
       </span>
-      <div className="absolute right-3 top-3 flex gap-1.5">
-        {model.isNew && (
-          <span className="rounded-full border border-emerald-200/20 bg-emerald-300/90 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-emerald-950 shadow-sm">
-            Nuevo
-          </span>
-        )}
-        <span className="rounded-full border border-cyan-200/20 bg-[#071321]/75 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-cyan-100 backdrop-blur">
-          {studio ? "Studio render" : "Geometría real 3D"}
-        </span>
-      </div>
+      <span className="absolute right-3 top-3 rounded-full border border-emerald-200/30 bg-emerald-300/90 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-emerald-950 shadow-sm">
+        Production
+      </span>
     </div>
   );
 }
 
-function capabilityLabels(slug: string) {
-  const capabilities = forgeV2Capabilities(slug);
-  const labels: string[] = [];
-  if (capabilities.holes) labels.push("Agujeros");
-  if (capabilities.slots) labels.push("Ranuras");
-  if (capabilities.cutouts) labels.push("Cortes");
-  if (capabilities.vents) labels.push("Ventilación");
-  if (capabilities.waves) labels.push("Ondulación");
-  if (capabilities.ribs) labels.push("Refuerzos");
-  if (capabilities.mountingPatterns) labels.push("Patrones");
-  if (capabilities.cableChannels) labels.push("Canales");
-  if (!labels.length) labels.push("Dimensiones", "Texto");
-  return labels.slice(0, 4);
-}
-
 export default function CatalogPage() {
+  const [models, setModels] = useState<HubProduct[]>([]);
   const [q, setQ] = useState("");
   const [family, setFamily] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchCanonicalCatalog("public_only=true")
+      .then((data) => {
+        if (cancelled) return;
+        setModels((data.products || []).map(toHubProduct));
+        setCatalogError(false);
+      })
+      .catch(() => {
+        if (!cancelled) setCatalogError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const families = useMemo(
     () =>
       Array.from(
-        new Set(MODELS.map((model) => model.family).filter(Boolean) as string[])
+        new Set(models.map((model) => model.family).filter(Boolean) as string[])
       ).sort((a, b) => a.localeCompare(b, "es")),
-    []
+    [models]
   );
 
   const filtered = useMemo(() => {
     const t = normalizeModelSearch(q);
-    return MODELS.filter((m) => {
+    return models.filter((model) => {
       const matchesQuery =
         !t ||
-        normalizeModelSearch(m.name).includes(t) ||
-        normalizeModelSearch(m.slug).includes(t) ||
-        normalizeModelSearch(m.description).includes(t) ||
-        normalizeModelSearch(m.family || "").includes(t);
-      const matchesFamily = !family || m.family === family;
+        normalizeModelSearch(model.name).includes(t) ||
+        normalizeModelSearch(model.slug).includes(t) ||
+        normalizeModelSearch(model.description).includes(t) ||
+        normalizeModelSearch(model.family || "").includes(t);
+      const matchesFamily = !family || model.family === family;
       return matchesQuery && matchesFamily;
     });
-  }, [q, family]);
+  }, [models, q, family]);
 
   return (
     <main className="min-h-screen bg-[#f6f8fc] text-[#07111f]">
@@ -121,17 +135,11 @@ export default function CatalogPage() {
             Teknovashop <span className="text-cyan-300">Forge</span>
           </Link>
           <div className="flex items-center gap-2">
-            <Link
-              href="/account"
-              className="hidden rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-bold text-slate-200 transition hover:bg-white/10 sm:inline-flex"
-            >
+            <Link href="/account" className="hidden rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-bold text-slate-200 transition hover:bg-white/10 sm:inline-flex">
               Mis compras
             </Link>
-            <Link
-              href="/forge"
-              className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-black text-white shadow-[0_10px_28px_rgba(37,99,235,.3)] transition hover:-translate-y-0.5 hover:bg-blue-500"
-            >
-              Abrir configurador
+            <Link href="/forge-v2" className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-black text-white shadow-[0_10px_28px_rgba(37,99,235,.3)] transition hover:-translate-y-0.5 hover:bg-blue-500">
+              Abrir Forge V2
             </Link>
           </div>
         </div>
@@ -143,34 +151,27 @@ export default function CatalogPage() {
           <div className="grid gap-8 lg:grid-cols-[1fr_auto] lg:items-end">
             <div>
               <div className="home-pill">
-                <span className="h-1.5 w-1.5 rounded-full bg-cyan-300" />
-                Catálogo paramétrico
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
+                Colección Production
               </div>
               <h1 className="mt-5 max-w-4xl text-4xl font-black leading-[1.02] tracking-[-0.045em] sm:text-5xl">
-                72 bases técnicas. Un sistema para crear piezas <span className="home-gradient-text">realmente tuyas.</span>
+                Solo piezas listas para <span className="home-gradient-text">producto real.</span>
               </h1>
               <p className="mt-5 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
-                Selecciona una geometría real, ajusta solo los parámetros que importan y valida el resultado en una mesa 3D a escala antes de comprar.
+                El catálogo público ya no mezcla prototipos con producto terminado. Cada pieza publicada dispone de geometría validada, Forge y presentación Studio aprobada.
               </p>
             </div>
             <div className="min-w-[280px]">
-              <CatalogFilters
-                value={q}
-                onChange={setQ}
-                family={family}
-                onFamilyChange={setFamily}
-                families={families}
-              />
+              <CatalogFilters value={q} onChange={setQ} family={family} onFamilyChange={setFamily} families={families} />
             </div>
           </div>
 
-          <div className="mt-9 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/10 sm:grid-cols-5">
+          <div className="mt-9 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/10 sm:grid-cols-4">
             {[
-              ["72", "modelos canónicos"],
+              [loading ? "—" : String(models.length), "productos production"],
               ["mm", "medidas reales"],
-              ["SHA-256", "trazabilidad"],
-              ["54", "nuevas bases"],
-              ["3D", "preview protegido"],
+              ["STL", "fabricación validada"],
+              ["V2", "configuración trazable"],
             ].map(([value, label]) => (
               <div key={label} className="bg-[#071321]/85 px-4 py-4 text-center backdrop-blur">
                 <div className="font-black text-cyan-200">{value}</div>
@@ -186,102 +187,57 @@ export default function CatalogPage() {
           <div>
             <p className="home-eyebrow">Colección Forge</p>
             <div className="mt-1 text-sm text-slate-500" role="status" aria-live="polite">
-              Mostrando <strong className="text-slate-900">{filtered.length}</strong> de {MODELS.length} modelos
+              Mostrando <strong className="text-slate-900">{loading ? "—" : filtered.length}</strong> de {loading ? "—" : models.length} productos aprobados
             </div>
           </div>
-          {(q || family) && (
-            <button
-              type="button"
-              onClick={() => {
-                setQ("");
-                setFamily("");
-              }}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-blue-600 shadow-sm hover:border-blue-200 hover:bg-blue-50"
-            >
-              Limpiar filtros
-            </button>
-          )}
-        </div>
-
-        {filtered.length > 0 ? (
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {filtered.map((m, index) => {
-              const capabilities = capabilityLabels(m.slug);
-              return (
-                <article
-                  key={m.id}
-                  className="group overflow-hidden rounded-[1.35rem] border border-slate-200 bg-white shadow-[0_18px_55px_rgba(15,23,42,.065)] transition duration-300 hover:-translate-y-1.5 hover:border-blue-300 hover:shadow-[0_28px_80px_rgba(15,23,42,.14)]"
-                >
-                  <Link href={"/forge-v2/" + encodeURIComponent(m.slug)} className="block">
-                    <CatalogImage model={m} priority={index < 3} />
-                  </Link>
-
-                  <div className="p-5">
-                    <div className="mb-2 flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.14em] text-cyan-700">
-                      <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
-                      {m.family || "Forge"}
-                    </div>
-                    <h2 className="text-[1.05rem] font-black tracking-tight text-[#07111f]">
-                      {m.name}
-                    </h2>
-                    <p className="mt-2 min-h-[3rem] text-sm leading-6 text-slate-500">
-                      {m.description}
-                    </p>
-
-                    <div className="mt-4 flex flex-wrap gap-1.5">
-                      {capabilities.map((label) => (
-                        <span
-                          key={label}
-                          className="rounded-full border border-cyan-100 bg-cyan-50 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.08em] text-cyan-800"
-                        >
-                          {label}
-                        </span>
-                      ))}
-                    </div>
-
-                    <div className="mt-5 grid grid-cols-2 gap-2 border-t border-slate-100 pt-4">
-                      <Link
-                        href={"/forge/" + encodeURIComponent(m.slug)}
-                        className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-black text-slate-700 transition hover:border-blue-200 hover:bg-blue-50"
-                      >
-                        Forge estable
-                      </Link>
-                      <Link
-                        href={"/forge-v2/" + encodeURIComponent(m.slug)}
-                        className="inline-flex items-center justify-center rounded-xl bg-[#071321] px-3 py-2.5 text-xs font-black text-cyan-200 transition hover:bg-[#0c2039]"
-                      >
-                        Forge V2 →
-                      </Link>
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="rounded-3xl border border-dashed border-slate-300 bg-white px-6 py-20 text-center shadow-sm">
-            <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-blue-50 text-blue-600">
-              <CubeMark />
-            </div>
-            <h2 className="mt-5 text-lg font-black">No encontramos ese modelo</h2>
-            <p className="mt-2 text-sm text-slate-500">
-              Prueba con otro nombre, uso o tipo de pieza.
-            </p>
-          </div>
-        )}
-      </section>
-
-      <section className="px-5 pb-14 lg:px-8">
-        <div className="mx-auto flex max-w-7xl flex-col gap-5 rounded-[2rem] bg-[#071321] px-7 py-8 text-white shadow-2xl sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-300">No necesitas empezar de cero</p>
-            <h2 className="mt-2 text-2xl font-black">Elige una base. Hazla tuya.</h2>
-            <p className="mt-2 text-sm text-slate-300">Todas las piezas se validan en el mismo configurador 3D.</p>
-          </div>
-          <Link href="/forge" className="home-primary-btn home-primary-btn-lg shrink-0">
-            Abrir Forge →
+          <Link href="/forge-v2" className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-black text-amber-800 shadow-sm hover:bg-amber-100">
+            Ver Engineering Lab →
           </Link>
         </div>
+
+        {catalogError && (
+          <div className="rounded-3xl border border-red-200 bg-red-50 px-6 py-10 text-center text-sm text-red-700">
+            El catálogo canónico no está disponible. No mostramos un catálogo local potencialmente obsoleto.
+          </div>
+        )}
+
+        {!catalogError && filtered.length > 0 ? (
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {filtered.map((model, index) => (
+              <article key={model.slug} className="group overflow-hidden rounded-[1.35rem] border border-slate-200 bg-white shadow-[0_18px_55px_rgba(15,23,42,.065)] transition duration-300 hover:-translate-y-1.5 hover:border-blue-300 hover:shadow-[0_28px_80px_rgba(15,23,42,.14)]">
+                <Link href={"/forge-v2/" + encodeURIComponent(model.slug)} className="block">
+                  <CatalogImage model={model} priority={index < 3} />
+                </Link>
+                <div className="p-5">
+                  <div className="mb-2 flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.14em] text-cyan-700">
+                    <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
+                    {model.family || "Forge"}
+                  </div>
+                  <h2 className="text-[1.05rem] font-black tracking-tight text-[#07111f]">{model.name}</h2>
+                  <p className="mt-2 min-h-[3rem] text-sm leading-6 text-slate-500">{model.description}</p>
+                  <div className="mt-4 flex flex-wrap gap-1.5">
+                    {labelsFor(model).map((label) => (
+                      <span key={label} className="rounded-full border border-cyan-100 bg-cyan-50 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.08em] text-cyan-800">{label}</span>
+                    ))}
+                  </div>
+                  <div className="mt-5 grid grid-cols-2 gap-2 border-t border-slate-100 pt-4">
+                    <Link href={"/forge/" + encodeURIComponent(model.slug)} className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-black text-slate-700 transition hover:border-blue-200 hover:bg-blue-50">
+                      Forge estable
+                    </Link>
+                    <Link href={"/forge-v2/" + encodeURIComponent(model.slug)} className="inline-flex items-center justify-center rounded-xl bg-[#071321] px-3 py-2.5 text-xs font-black text-cyan-200 transition hover:bg-[#0c2039]">
+                      Forge V2 →
+                    </Link>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : !loading && !catalogError ? (
+          <div className="rounded-3xl border border-dashed border-slate-300 bg-white px-6 py-20 text-center shadow-sm">
+            <h2 className="text-lg font-black">No encontramos ese producto</h2>
+            <p className="mt-2 text-sm text-slate-500">Prueba con otro nombre, uso o familia.</p>
+          </div>
+        ) : null}
       </section>
     </main>
   );
