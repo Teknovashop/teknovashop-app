@@ -1,4 +1,5 @@
 import type { ForgeModel } from "@/data/models";
+import { withPremiumStudio } from "@/lib/catalog-studio-assets";
 
 export type ProductStage = "engineering" | "visual_qa" | "production";
 
@@ -37,6 +38,7 @@ export type HubProduct = ForgeModel & {
 };
 
 export function toHubProduct(product: CanonicalProduct): HubProduct {
+  product = withPremiumStudio(product);
   const thumbnail = product.marketing_image
     ? product.marketing_image.startsWith("/catalog/studio/")
       ? `/api/catalog/studio/${product.slug}`

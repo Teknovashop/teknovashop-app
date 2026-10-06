@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { CanonicalProduct } from "@/lib/canonical-catalog";
+import { withPremiumStudio } from "@/lib/catalog-studio-assets";
 
 const BACKEND = (
   process.env.FORGE_API_URL ||
@@ -22,7 +23,7 @@ export async function getCanonicalProduct(
     );
     if (response.status === 404) return null;
     if (!response.ok) throw new Error(`CATALOG_${response.status}`);
-    return response.json();
+    return withPremiumStudio(await response.json());
   } catch {
     return null;
   }
