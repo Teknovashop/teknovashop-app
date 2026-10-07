@@ -163,116 +163,234 @@ export default function GeometryToolShowcase() {
     setActiveIndex(index);
   }, []);
 
+  const nextTool = useCallback(() => {
+    setActiveIndex((current) => (current + 1) % TOOLS.length);
+  }, []);
+
+  const previousTool = useCallback(() => {
+    setActiveIndex((current) => (current - 1 + TOOLS.length) % TOOLS.length);
+  }, []);
+
   useEffect(() => {
     if (!touring) return;
-    const timer = window.setInterval(() => {
-      setActiveIndex((current) => (current + 1) % TOOLS.length);
-    }, TOOL_DURATION);
+    const timer = window.setInterval(nextTool, TOOL_DURATION);
     return () => window.clearInterval(timer);
-  }, [touring]);
+  }, [nextTool, touring]);
 
-  const progress = useMemo(() => ((activeIndex + 1) / TOOLS.length) * 100, [activeIndex]);
+  const progress = useMemo(
+    () => ((activeIndex + 1) / TOOLS.length) * 100,
+    [activeIndex]
+  );
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[0.78fr_1.22fr] lg:items-stretch">
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" role="listbox" aria-label="Herramientas geométricas">
-        {TOOLS.map((tool, index) => {
-          const active = index === activeIndex;
-          return (
-            <motion.button
-              key={tool.id}
-              type="button"
-              role="option"
-              aria-selected={active}
-              onClick={() => selectTool(index)}
-              whileHover={{ y: -3 }}
-              whileTap={{ scale: 0.98 }}
-              transition={{ duration: 0.18 }}
-              className={
-                "group relative overflow-hidden rounded-2xl border p-4 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-cyan-300/80 " +
-                (active
-                  ? "border-cyan-300/60 bg-cyan-300/[0.09] shadow-[0_0_32px_rgba(34,211,238,.14)]"
-                  : "border-white/10 bg-white/[0.045] hover:border-cyan-300/25 hover:bg-cyan-300/[0.06]")
-              }
-            >
-              {active && (
-                <motion.span
-                  layoutId="geometry-tool-active"
-                  className="absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300 to-transparent"
-                />
-              )}
-              <div className="flex items-start justify-between gap-3">
-                <div className="text-xl font-light text-cyan-300">{tool.icon}</div>
-                <span className={"mt-1 h-2 w-2 rounded-full transition " + (active ? "bg-cyan-300 shadow-[0_0_14px_rgba(103,232,249,.9)]" : "bg-white/10")} />
-              </div>
-              <div className="mt-3 text-sm font-black">{tool.name}</div>
-              <div className="mt-1 text-[11px] leading-5 text-slate-400">{tool.copy}</div>
-            </motion.button>
-          );
-        })}
-      </div>
+    <section
+      aria-label="Demostración interactiva de herramientas geométricas"
+      className="relative mt-2 overflow-hidden rounded-[2rem] border border-white/10 bg-[#06111d] shadow-[0_36px_120px_rgba(0,0,0,.38)]"
+    >
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_82%_12%,rgba(34,211,238,.13),transparent_28%),radial-gradient(circle_at_18%_88%,rgba(37,99,235,.14),transparent_32%)]" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/70 to-transparent" />
 
-      <div className="relative min-h-[340px] overflow-hidden rounded-[1.6rem] border border-cyan-300/15 bg-[#06111d] shadow-[0_28px_80px_rgba(0,0,0,.28)]">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_15%,rgba(34,211,238,.10),transparent_34%),linear-gradient(180deg,rgba(255,255,255,.025),transparent)]" />
-        <div className="relative flex h-full min-h-[340px] flex-col">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3 sm:px-5">
-            <div>
-              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-300">Vista previa interactiva</div>
-              <div className="mt-1 text-sm font-black">{activeTool.name}</div>
+      <div className="relative border-b border-white/10 px-5 py-4 sm:px-6 lg:flex lg:items-center lg:justify-between lg:gap-8">
+        <div className="flex items-center gap-3">
+          <span className="grid h-9 w-9 place-items-center rounded-xl border border-cyan-300/20 bg-cyan-300/10 text-cyan-200 shadow-[0_0_30px_rgba(34,211,238,.14)]">
+            ✦
+          </span>
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-300">
+              Forge interaction lab
             </div>
-            <button
-              type="button"
-              onClick={() => setTouring((value) => !value)}
-              className={
-                "rounded-xl border px-3 py-2 text-[11px] font-black transition " +
-                (touring
-                  ? "border-cyan-300/40 bg-cyan-300/10 text-cyan-200"
-                  : "border-white/10 bg-white/5 text-slate-200 hover:bg-white/10")
-              }
-              aria-pressed={touring}
-            >
-              {touring ? "Pausar tour" : "Ver tour interactivo"}
-            </button>
-          </div>
-
-          <div className="grid flex-1 items-center md:grid-cols-[1fr_210px]">
-            <div className="relative min-h-[260px]">
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={activeTool.id}
-                  initial={{ opacity: 0, scale: 0.985 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 1.015 }}
-                  transition={{ duration: 0.24 }}
-                  className="absolute inset-0"
-                >
-                  <ToolAnimation tool={activeTool} />
-                </motion.div>
-              </AnimatePresence>
+            <div className="mt-1 text-sm font-black text-white">
+              Explora cómo se transforma la geometría
             </div>
-
-            <div className="border-t border-white/10 p-5 md:border-l md:border-t-0">
-              <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Qué hace</div>
-              <p className="mt-3 text-sm leading-6 text-slate-300">{activeTool.detail}</p>
-              <div className="mt-5 rounded-xl border border-white/10 bg-white/[0.035] p-3">
-                <div className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Estado</div>
-                <div className="mt-2 flex items-center gap-2 text-xs font-bold text-emerald-300">
-                  <span className="h-2 w-2 rounded-full bg-emerald-300 shadow-[0_0_12px_rgba(110,231,183,.7)]" />
-                  Demo geométrica
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="h-1 bg-white/5">
-            <motion.div
-              className="h-full bg-gradient-to-r from-cyan-300 to-blue-500"
-              animate={{ width: touring ? ["0%", "100%"] : progress + "%" }}
-              transition={touring ? { duration: TOOL_DURATION / 1000, ease: "linear", repeat: Infinity } : { duration: 0.25 }}
-            />
           </div>
         </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-2 lg:mt-0">
+          <span className="rounded-full border border-emerald-300/20 bg-emerald-300/[0.07] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-200">
+            9 herramientas
+          </span>
+          <button
+            type="button"
+            onClick={() => setTouring((value) => !value)}
+            className={
+              "ui-pressable rounded-xl border px-4 py-2.5 text-[11px] font-black transition " +
+              (touring
+                ? "border-cyan-300/40 bg-cyan-300/12 text-cyan-100 shadow-[0_0_28px_rgba(34,211,238,.12)]"
+                : "border-white/10 bg-white/[0.06] text-slate-100 hover:border-cyan-300/25 hover:bg-white/10")
+            }
+            aria-pressed={touring}
+          >
+            {touring ? "Pausar tour" : "▶ Ver tour interactivo"}
+          </button>
+        </div>
       </div>
-    </div>
+
+      <div className="relative grid lg:grid-cols-[360px_minmax(0,1fr)] xl:grid-cols-[390px_minmax(0,1fr)]">
+        <div className="border-b border-white/10 p-4 sm:p-5 lg:border-b-0 lg:border-r">
+          <div className="mb-3 flex items-end justify-between gap-4">
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                Herramientas
+              </div>
+              <p className="mt-1 text-xs leading-5 text-slate-400">
+                Selecciona una operación y observa su comportamiento.
+              </p>
+            </div>
+            <span className="text-xs font-black tabular-nums text-cyan-300">
+              {String(activeIndex + 1).padStart(2, "0")}/{String(TOOLS.length).padStart(2, "0")}
+            </span>
+          </div>
+
+          <div
+            className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3"
+            role="listbox"
+            aria-label="Herramientas geométricas"
+          >
+            {TOOLS.map((tool, index) => {
+              const active = index === activeIndex;
+              return (
+                <motion.button
+                  key={tool.id}
+                  type="button"
+                  role="option"
+                  aria-selected={active}
+                  onClick={() => selectTool(index)}
+                  whileHover={{ y: -3 }}
+                  whileTap={{ scale: 0.98 }}
+                  transition={{ duration: 0.18 }}
+                  className={
+                    "group relative min-h-[108px] overflow-hidden rounded-2xl border p-3.5 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-cyan-300/80 " +
+                    (active
+                      ? "border-cyan-300/55 bg-gradient-to-b from-cyan-300/[0.13] to-blue-500/[0.06] shadow-[0_14px_38px_rgba(34,211,238,.10)]"
+                      : "border-white/10 bg-white/[0.035] hover:border-cyan-300/25 hover:bg-white/[0.06]")
+                  }
+                >
+                  {active && (
+                    <motion.span
+                      layoutId="geometry-tool-active"
+                      className="absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300 to-transparent"
+                    />
+                  )}
+                  <div className="flex items-start justify-between gap-3">
+                    <span
+                      className={
+                        "grid h-8 w-8 place-items-center rounded-lg border text-lg font-light transition " +
+                        (active
+                          ? "border-cyan-300/25 bg-cyan-300/10 text-cyan-200"
+                          : "border-white/10 bg-white/[0.04] text-slate-300")
+                      }
+                    >
+                      {tool.icon}
+                    </span>
+                    <span
+                      className={
+                        "mt-1.5 h-1.5 w-1.5 rounded-full transition " +
+                        (active
+                          ? "bg-cyan-300 shadow-[0_0_14px_rgba(103,232,249,.9)]"
+                          : "bg-white/10")
+                      }
+                    />
+                  </div>
+                  <div className="mt-3 text-sm font-black text-white">{tool.name}</div>
+                  <div className="mt-1 line-clamp-2 text-[10px] leading-4 text-slate-500">
+                    {tool.copy}
+                  </div>
+                </motion.button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="relative min-h-[520px] overflow-hidden">
+          <div className="pointer-events-none absolute inset-0 opacity-60 [background-image:linear-gradient(rgba(34,211,238,.04)_1px,transparent_1px),linear-gradient(90deg,rgba(34,211,238,.04)_1px,transparent_1px)] [background-size:44px_44px]" />
+
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeTool.id}
+              initial={{ opacity: 0, scale: 0.985, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 1.01, y: -4 }}
+              transition={{ duration: 0.28 }}
+              className="absolute inset-0"
+            >
+              <div className="absolute inset-x-5 top-5 z-10 flex items-start justify-between gap-5 sm:inset-x-7 sm:top-7">
+                <div>
+                  <motion.div
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-300"
+                  >
+                    Operación activa
+                  </motion.div>
+                  <h3 className="mt-2 text-3xl font-black tracking-[-0.04em] text-white sm:text-4xl">
+                    {activeTool.name}
+                  </h3>
+                  <p className="mt-2 max-w-xl text-sm leading-6 text-slate-400">
+                    {activeTool.detail}
+                  </p>
+                </div>
+
+                <div className="hidden rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-right backdrop-blur sm:block">
+                  <div className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-500">
+                    Motor
+                  </div>
+                  <div className="mt-1 flex items-center justify-end gap-2 text-xs font-black text-emerald-300">
+                    <span className="h-2 w-2 rounded-full bg-emerald-300 shadow-[0_0_14px_rgba(110,231,183,.8)]" />
+                    Live preview
+                  </div>
+                </div>
+              </div>
+
+              <div className="absolute inset-x-0 bottom-14 top-28 sm:top-32">
+                <ToolAnimation tool={activeTool} />
+              </div>
+
+              <div className="absolute bottom-5 left-5 right-5 z-10 flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-[#071321]/75 px-4 py-3 backdrop-blur-xl sm:left-7 sm:right-7">
+                <div className="min-w-0">
+                  <div className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">
+                    Demo paramétrica
+                  </div>
+                  <div className="mt-1 truncate text-xs font-bold text-slate-200">
+                    {activeTool.copy}
+                  </div>
+                </div>
+
+                <div className="flex shrink-0 gap-2">
+                  <button
+                    type="button"
+                    onClick={previousTool}
+                    className="ui-pressable grid h-9 w-9 place-items-center rounded-xl border border-white/10 bg-white/[0.05] text-sm text-white hover:bg-white/10"
+                    aria-label="Herramienta anterior"
+                  >
+                    ←
+                  </button>
+                  <button
+                    type="button"
+                    onClick={nextTool}
+                    className="ui-pressable grid h-9 w-9 place-items-center rounded-xl border border-cyan-300/25 bg-cyan-300/10 text-sm text-cyan-100 hover:bg-cyan-300/15"
+                    aria-label="Herramienta siguiente"
+                  >
+                    →
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </AnimatePresence>
+        </div>
+      </div>
+
+      <div className="relative h-1 bg-white/5">
+        <motion.div
+          key={touring ? "tour" : "manual"}
+          className="h-full bg-gradient-to-r from-cyan-300 via-blue-500 to-violet-500"
+          animate={{ width: touring ? ["0%", "100%"] : progress + "%" }}
+          transition={
+            touring
+              ? { duration: TOOL_DURATION / 1000, ease: "linear", repeat: Infinity }
+              : { duration: 0.25 }
+          }
+        />
+      </div>
+    </section>
   );
 }
