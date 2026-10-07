@@ -9,7 +9,7 @@ import HomeHeader from "@/components/HomeHeader";
 import Reveal from "@/components/Reveal";
 import MobileCta from "@/components/MobileCta";
 
-const CONFIGURATOR_HREF = "/forge";
+const CONFIGURATOR_HREF = "/catalog";
 const HERO_VIDEO_SRC =
   process.env.NEXT_PUBLIC_HERO_VIDEO_URL || "/hero/hero.mp4";
 const HERO_VIDEO_POSTER =
@@ -172,7 +172,7 @@ export default function Page() {
             {TEMPLATES.map((template) => (
               <Link
                 key={template[0]}
-                href={"/forge?model=" + encodeURIComponent(template[0])}
+                href={"/forge/" + encodeURIComponent(template[0])}
                 className="home-product-card group"
               >
                 <div className="relative aspect-[4/3] overflow-hidden bg-slate-100">
