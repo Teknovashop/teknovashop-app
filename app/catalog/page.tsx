@@ -87,18 +87,19 @@ export default function CatalogPage() {
   const [family, setFamily] = useState("");
   const [loading, setLoading] = useState(true);
   const [catalogError, setCatalogError] = useState(false);
-  const [cart, setCart] = useState<string[]>([]);
-  const [cartOpen, setCartOpen] = useState(false);
-  const [shareFeedback, setShareFeedback] = useState("");
-
-  useEffect(() => {
+  const [cart, setCart] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
     try {
       const saved = JSON.parse(localStorage.getItem(CART_KEY) || "[]");
-      if (Array.isArray(saved)) setCart(saved.filter((item) => typeof item === "string"));
+      return Array.isArray(saved)
+        ? saved.filter((item): item is string => typeof item === "string")
+        : [];
     } catch {
-      setCart([]);
+      return [];
     }
-  }, []);
+  });
+  const [cartOpen, setCartOpen] = useState(false);
+  const [shareFeedback, setShareFeedback] = useState("");
 
   useEffect(() => {
     try {
