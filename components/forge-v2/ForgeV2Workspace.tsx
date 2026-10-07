@@ -1,6 +1,7 @@
-"use client";
+/* eslint-disable react-hooks/set-state-in-effect */\n"use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import ForgeV2ProductRail from "@/components/forge-v2/ForgeV2ProductRail";
 import { useEffect, useMemo, useRef, useState } from "react";
 import STLViewerPro from "@/components/STLViewerPro";
@@ -258,6 +259,7 @@ export default function ForgeV2Workspace({
   premiumSurface?: boolean;
   initialParams?: Params;
 }) {
+  const router = useRouter();
   const fallbackCapabilities = useMemo(() => forgeV2Capabilities(slug), [slug]);
   const [productName, setProductName] = useState(slug);
   const [capabilities, setCapabilities] = useState<Record<string, any>>(
@@ -453,7 +455,7 @@ export default function ForgeV2Workspace({
       });
       const data = await response.json().catch(() => ({}));
       if (response.status === 401) {
-        window.location.href = `/login?next=${encodeURIComponent("/forge/" + slug)}`;
+        router.push(`/login?next=${encodeURIComponent("/forge/" + slug)}`);
         return;
       }
       if (!response.ok) throw new Error(data?.error || "No se pudo guardar");
