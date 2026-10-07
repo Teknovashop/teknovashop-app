@@ -58,7 +58,7 @@ export default function Pricing() {
 
   async function select(plan: (typeof PLANS)[number]) {
     if (plan.key === "oneoff") {
-      window.location.href = "/forge";
+      window.location.href = "/catalog";
       return;
     }
     if (!COMMERCE_ENABLED) {
