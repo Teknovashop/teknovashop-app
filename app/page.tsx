@@ -8,6 +8,7 @@ import Pricing from "@/components/Pricing";
 import HomeHeader from "@/components/HomeHeader";
 import Reveal from "@/components/Reveal";
 import MobileCta from "@/components/MobileCta";
+import GeometryToolShowcase from "@/components/GeometryToolShowcase";
 
 const CONFIGURATOR_HREF = "/catalog";
 const HERO_VIDEO_SRC =
@@ -253,25 +254,7 @@ export default function Page() {
                   Ver catálogo completo
                 </Link>
               </div>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {[
-                  ["○", "Agujeros", "Diámetro y posición"],
-                  ["▭", "Ranuras", "Largo, ancho y giro"],
-                  ["◉", "Rebajes", "Counterbore técnico"],
-                  ["⌗", "Patrones", "Lineal, rejilla y VESA"],
-                  ["≋", "Ventilación", "Lineal y hexagonal"],
-                  ["∿", "Ondulaciones", "Relieve estructural"],
-                  ["□", "Cortes", "Rectangular y circular"],
-                  ["╱", "Canales", "Paso de cable"],
-                  ["▲", "Refuerzos", "Nervios aditivos"],
-                ].map(([icon, name, copy]) => (
-                  <div key={name} className="rounded-2xl border border-white/10 bg-white/[0.045] p-4 transition hover:border-cyan-300/25 hover:bg-cyan-300/[0.06]">
-                    <div className="text-xl font-light text-cyan-300">{icon}</div>
-                    <div className="mt-3 text-sm font-black">{name}</div>
-                    <div className="mt-1 text-[11px] leading-5 text-slate-400">{copy}</div>
-                  </div>
-                ))}
-              </div>
+              <GeometryToolShowcase />
             </div>
           </Reveal>
 
