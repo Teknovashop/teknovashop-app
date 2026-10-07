@@ -263,7 +263,7 @@ export default function CatalogPage() {
         {!catalogError && filtered.length > 0 ? (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {filtered.map((model, index) => (
-              <article key={model.slug} className="group overflow-hidden rounded-[1.35rem] border border-slate-200 bg-white shadow-[0_18px_55px_rgba(15,23,42,.065)] transition duration-300 hover:-translate-y-1.5 hover:border-blue-300 hover:shadow-[0_28px_80px_rgba(15,23,42,.14)]">
+              <article key={model.slug} className="ui-card group overflow-hidden">
                 <Link href={"/forge/" + encodeURIComponent(model.slug)} className="block">
                   <CatalogImage model={model} priority={index < 3} />
                 </Link>
