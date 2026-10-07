@@ -252,9 +252,11 @@ function capabilitiesFromBackend(product: any, fallback: Record<string, any>) {
 export default function ForgeV2Workspace({
   slug,
   premiumSurface = false,
+  initialParams,
 }: {
   slug: string;
   premiumSurface?: boolean;
+  initialParams?: Params;
 }) {
   const fallbackCapabilities = useMemo(() => forgeV2Capabilities(slug), [slug]);
   const [productName, setProductName] = useState(slug);
@@ -273,7 +275,10 @@ export default function ForgeV2Workspace({
 
   const [fields, setFields] = useState<Record<string, any>>(staticFields);
   const [baseParams, setBaseParams] = useState<Params>(staticBaseParams);
-  const [params, setParams] = useState<Params>(staticBaseParams);
+  const [params, setParams] = useState<Params>(() => ({
+    ...staticBaseParams,
+    ...(initialParams || {}),
+  }));
   const [operations, setOperations] = useState<ForgeV2Operation[]>([]);
   const [history, setHistory] = useState<ForgeV2Operation[][]>([]);
   const [future, setFuture] = useState<ForgeV2Operation[][]>([]);
