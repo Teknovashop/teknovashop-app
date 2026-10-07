@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
@@ -71,11 +72,11 @@ function isCurrent(entitlement: Entitlement) {
 }
 
 export default function AccountPage() {
+  const router = useRouter();
   const [data, setData] = useState<AccountData | null>(null);
   const [loading, setLoading] = useState(true);
 
   async function load() {
-    setLoading(true);
     try {
       const res = await fetch("/api/account", { cache: "no-store" });
       const json = await res.json().catch(() => ({}));
@@ -102,7 +103,8 @@ export default function AccountPage() {
   async function signOut() {
     const supabase = createClient();
     await supabase.auth.signOut();
-    window.location.href = "/";
+    router.push("/");
+    router.refresh();
   }
 
   if (loading) {
