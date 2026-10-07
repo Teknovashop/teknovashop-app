@@ -1,4 +1,5 @@
-/* eslint-disable react-hooks/set-state-in-effect */\n// components/STLViewerPro.tsx
+/* eslint-disable react-hooks/set-state-in-effect */
+// components/STLViewerPro.tsx
 "use client";
 
 import { useEffect, useRef, useState } from "react";
