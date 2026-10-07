@@ -289,7 +289,7 @@ export default function ForgeV2Workspace({
   const [textX, setTextX] = useState(0);
   const [textY, setTextY] = useState(0);
   const [feedback, setFeedback] = useState(
-    "Forge V2 Beta · tu flujo estable V1 permanece disponible"
+    "Forge · tu flujo estable V1 permanece disponible"
   );
   const [busy, setBusy] = useState(false);
   const [drafts, setDrafts] = useState<CloudDraft[]>([]);
@@ -395,7 +395,7 @@ export default function ForgeV2Workspace({
       });
       const data = await response.json().catch(() => ({}));
       if (response.status === 401) {
-        window.location.href = `/login?next=${encodeURIComponent("/forge-v2/" + slug)}`;
+        window.location.href = `/login?next=${encodeURIComponent("/forge/" + slug)}`;
         return;
       }
       if (!response.ok) throw new Error(data?.error || "No se pudo guardar");
@@ -601,7 +601,7 @@ export default function ForgeV2Workspace({
       if (!response.ok)
         throw new Error(data?.detail || data?.error || "Error V2");
       setPreviewUrl(data.preview_url || data.url);
-      setFeedback("V2 generado · artefacto trazable registrado");
+      setFeedback("Diseno generado · artefacto trazable registrado");
     } catch (error: any) {
       setFeedback(error?.message || "No se pudo generar V2");
     } finally {
@@ -791,7 +791,7 @@ export default function ForgeV2Workspace({
         <div className="mx-auto flex max-w-[1680px] flex-wrap items-center justify-between gap-4">
           <div>
             <div className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-300">
-              Teknovashop Forge · V2 Lab
+              Teknovashop Forge · Configurador
             </div>
             <h1 className="mt-1 text-xl font-black">{productName}</h1>
           </div>
@@ -812,7 +812,7 @@ export default function ForgeV2Workspace({
               mesh-v2 · schema 2
             </span>
             <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-3 py-1.5 text-amber-200">
-              Beta aislada · V1 intacto
+              Produccion · engine v2
             </span>
           </div>
         </div>
