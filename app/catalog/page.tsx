@@ -138,8 +138,8 @@ export default function CatalogPage() {
             <Link href="/account" className="hidden rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-bold text-slate-200 transition hover:bg-white/10 sm:inline-flex">
               Mis compras
             </Link>
-            <Link href="/forge-v2" className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-black text-white shadow-[0_10px_28px_rgba(37,99,235,.3)] transition hover:-translate-y-0.5 hover:bg-blue-500">
-              Abrir Forge V2
+            <Link href="/account" className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-black text-white shadow-[0_10px_28px_rgba(37,99,235,.3)] transition hover:-translate-y-0.5 hover:bg-blue-500">
+              Mis diseños
             </Link>
           </div>
         </div>
@@ -190,7 +190,7 @@ export default function CatalogPage() {
               Mostrando <strong className="text-slate-900">{loading ? "—" : filtered.length}</strong> de {loading ? "—" : models.length} productos aprobados
             </div>
           </div>
-          <Link href="/forge-v2" className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-black text-amber-800 shadow-sm hover:bg-amber-100">
+          <Link href="/account" className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-black text-amber-800 shadow-sm hover:bg-amber-100">
             Ver Engineering Lab →
           </Link>
         </div>
@@ -205,7 +205,7 @@ export default function CatalogPage() {
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {filtered.map((model, index) => (
               <article key={model.slug} className="group overflow-hidden rounded-[1.35rem] border border-slate-200 bg-white shadow-[0_18px_55px_rgba(15,23,42,.065)] transition duration-300 hover:-translate-y-1.5 hover:border-blue-300 hover:shadow-[0_28px_80px_rgba(15,23,42,.14)]">
-                <Link href={"/forge-v2/" + encodeURIComponent(model.slug)} className="block">
+                <Link href={"/forge/" + encodeURIComponent(model.slug)} className="block">
                   <CatalogImage model={model} priority={index < 3} />
                 </Link>
                 <div className="p-5">
@@ -222,10 +222,10 @@ export default function CatalogPage() {
                   </div>
                   <div className="mt-5 grid grid-cols-2 gap-2 border-t border-slate-100 pt-4">
                     <Link href={"/forge/" + encodeURIComponent(model.slug)} className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-black text-slate-700 transition hover:border-blue-200 hover:bg-blue-50">
-                      Forge estable
+                      Configurar
                     </Link>
-                    <Link href={"/forge-v2/" + encodeURIComponent(model.slug)} className="inline-flex items-center justify-center rounded-xl bg-[#071321] px-3 py-2.5 text-xs font-black text-cyan-200 transition hover:bg-[#0c2039]">
-                      Forge V2 →
+                    <Link href={"/forge/" + encodeURIComponent(model.slug)} className="inline-flex items-center justify-center rounded-xl bg-[#071321] px-3 py-2.5 text-xs font-black text-cyan-200 transition hover:bg-[#0c2039]">
+                      Abrir Forge →
                     </Link>
                   </div>
                 </div>
