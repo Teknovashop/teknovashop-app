@@ -1,9 +1,8 @@
-// app/forge/[slug]/layout.tsx
-import type { Metadata } from 'next';
-import { SITE } from '@/lib/site';
-import { MODELS } from '@/data/models';
-import { canonicalModelSlug } from '@/lib/model-routing';
-import type { ReactNode } from 'react';
+import type { Metadata } from "next";
+import type { ReactNode } from "react";
+import { SITE } from "@/lib/site";
+import { canonicalModelSlug } from "@/lib/model-routing";
+import { getCanonicalProduct } from "@/lib/server-canonical-catalog";
 
 type Props = {
   children: ReactNode;
@@ -11,55 +10,48 @@ type Props = {
 };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const resolvedParams = await params;
-  const slug = canonicalModelSlug(resolvedParams.slug);
-  const m = MODELS.find((x) => x.slug === slug);
+  const { slug: rawSlug } = await params;
+  const slug = canonicalModelSlug(rawSlug);
+  const product = await getCanonicalProduct(slug);
 
-  const titleBase = m?.name || 'Configurador';
-  const title = titleBase;
-
+  const title = product?.name || "Configurador paramétrico";
   const description =
-    m?.description ||
-    'Configura parámetros, previsualiza en 3D y descarga tu STL listo para imprimir.';
-
-  const canonical = `${SITE.url}/forge/${slug}`;
-  const ogImage =
-    m?.thumbnail || `${SITE.url}/hero/hero.jpg`;
+    product?.description ||
+    "Configura medidas reales, valida la geometría en 3D y genera un diseño trazable listo para fabricar.";
+  const canonical = `${SITE.url}/forge/${encodeURIComponent(slug)}`;
+  const image = product?.marketing_image
+    ? product.marketing_image.startsWith("http")
+      ? product.marketing_image
+      : `${SITE.url}${product.marketing_image}`
+    : `${SITE.url}/hero/hero.jpg`;
 
   return {
     title,
     description,
     alternates: { canonical },
-    robots: { index: !!m, follow: true },
+    robots: { index: Boolean(product?.public), follow: true },
     openGraph: {
-      type: 'website',
-      locale: SITE.locale as any,
+      type: "website",
+      locale: SITE.locale,
       url: canonical,
       siteName: SITE.name,
       title,
       description,
-      images: [ogImage],
+      images: [{ url: image, width: 1200, height: 900, alt: title }],
     },
     twitter: {
-      card: 'summary_large_image',
+      card: "summary_large_image",
       site: SITE.twitter || undefined,
       title,
       description,
-      images: [ogImage],
+      images: [image],
     },
-    keywords: m
-      ? [
-          m.name,
-          'STL',
-          'impresión 3D',
-          'paramétrico',
-          'accesorios',
-          'teknovashop',
-        ]
+    keywords: product
+      ? [product.name, product.family, "STL", "impresión 3D", "paramétrico", "Teknovashop"]
       : undefined,
   };
 }
 
 export default function ForgeModelLayout({ children }: Props) {
-  return <>{children}</>;
+  return children;
 }
