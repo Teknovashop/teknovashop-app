@@ -5,11 +5,12 @@ import { createClient } from "@/lib/supabase/client";
 import { safeReturnPath } from "@/lib/commerce-policy";
 
 export default function LoginPage() {
-  const [next, setNext] = useState("/forge");
+  const [next, setNext] = useState("/catalog");
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    setNext(safeReturnPath(params.get("next")));
+    const returnPath = safeReturnPath(params.get("next"), "/catalog");
+    queueMicrotask(() => setNext(returnPath));
   }, []);
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
