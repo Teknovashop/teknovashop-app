@@ -1,4 +1,5 @@
-/* eslint-disable react-hooks/set-state-in-effect */\n"use client";
+/* eslint-disable react-hooks/set-state-in-effect */
+"use client";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
