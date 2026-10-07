@@ -23,8 +23,10 @@ export default function LoginPage() {
     setStatus("sending");
     setMessage("");
 
+    const configuredSiteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/+$/, "");
+    const publicOrigin = configuredSiteUrl || window.location.origin;
     const redirectTo =
-      window.location.origin +
+      publicOrigin +
       "/auth/callback?next=" +
       encodeURIComponent(next);
 
