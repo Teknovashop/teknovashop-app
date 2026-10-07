@@ -254,7 +254,9 @@ export default function Page() {
                   Ver catálogo completo
                 </Link>
               </div>
-              <GeometryToolShowcase />
+              <div className="lg:col-span-2">
+                <GeometryToolShowcase />
+              </div>
             </div>
           </Reveal>
 
