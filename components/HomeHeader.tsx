@@ -31,7 +31,7 @@ function MenuIcon({ open }: { open: boolean }) {
 }
 
 const NAV = [
-  ["Catalogo", "/catalog"],
+  ["Catálogo", "/catalog"],
   ["Plantillas", "#templates"],
   ["Cómo funciona", "#how"],
   ["Tecnología", "#quality"],
