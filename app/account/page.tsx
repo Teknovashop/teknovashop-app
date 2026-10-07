@@ -89,7 +89,8 @@ export default function AccountPage() {
   }
 
   useEffect(() => {
-    void load();
+    const task = queueMicrotask(() => void load());
+    return () => void task;
   }, []);
 
   const activeSubscriptions = useMemo(
