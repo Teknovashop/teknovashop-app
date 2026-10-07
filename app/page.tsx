@@ -9,7 +9,7 @@ import HomeHeader from "@/components/HomeHeader";
 import Reveal from "@/components/Reveal";
 import MobileCta from "@/components/MobileCta";
 
-const CONFIGURATOR_HREF = "/forge";
+const CONFIGURATOR_HREF = "/catalog";
 const HERO_VIDEO_SRC =
   process.env.NEXT_PUBLIC_HERO_VIDEO_URL || "/hero/hero.mp4";
 const HERO_VIDEO_POSTER =
@@ -91,7 +91,7 @@ export default function Page() {
             <Reveal>
               <div className="home-pill">
                 <span className="h-1.5 w-1.5 rounded-full bg-cyan-300" />
-                Forge V2 · diseño paramétrico guiado
+                Forge · diseño paramétrico guiado
               </div>
 
               <h1 className="mt-6 text-5xl font-black leading-[0.98] tracking-[-0.045em] sm:text-6xl lg:text-7xl">
@@ -144,7 +144,7 @@ export default function Page() {
             {[
               ["72", "productos paramétricos canónicos"],
               ["600+", "pruebas automatizadas"],
-              ["V2", "operaciones versionadas"],
+              ["Forge", "operaciones versionadas"],
               ["SHA-256", "trazabilidad por diseño"],
             ].map((item) => (
               <div key={item[0]} className="px-4 py-5 text-center">
@@ -172,7 +172,7 @@ export default function Page() {
             {TEMPLATES.map((template) => (
               <Link
                 key={template[0]}
-                href={"/forge?model=" + encodeURIComponent(template[0])}
+                href={"/forge/" + encodeURIComponent(template[0])}
                 className="home-product-card group"
               >
                 <div className="relative aspect-[4/3] overflow-hidden bg-slate-100">
@@ -230,7 +230,7 @@ export default function Page() {
               <div>
                 <div className="home-pill">
                   <span className="h-1.5 w-1.5 rounded-full bg-cyan-300" />
-                  Forge V2 · operaciones
+                  Forge · operaciones avanzadas
                 </div>
                 <h2 className="mt-5 text-4xl font-black tracking-[-0.045em] sm:text-5xl">
                   De configurar medidas a <span className="home-gradient-text">editar geometría.</span>
@@ -241,16 +241,16 @@ export default function Page() {
               </div>
               <div className="mb-5 flex flex-wrap gap-2">
                 <Link
-                  href="/forge-v2"
+                  href="/catalog"
                   className="rounded-xl bg-cyan-300 px-4 py-2.5 text-xs font-black text-[#04101d] transition hover:bg-cyan-200"
                 >
-                  Explorar Forge V2
+                  Explorar Forge
                 </Link>
                 <Link
-                  href="/forge-v2/cad-lab"
+                  href="/catalog"
                   className="rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-xs font-black text-white transition hover:bg-white/10"
                 >
-                  Ver CAD Engine Lab
+                  Ver catálogo completo
                 </Link>
               </div>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -328,7 +328,7 @@ export default function Page() {
           <div className="grid gap-4 sm:grid-cols-2">
             {[
               ["72 modelos canónicos", "Cada producto corresponde a una geometría concreta, parametrizable y comprobada."],
-              ["600+ pruebas automatizadas", "Regresión de geometría, parámetros, operaciones V2, exportación y trazabilidad."],
+              ["600+ pruebas automatizadas", "Regresión de geometría, parámetros, operaciones Forge, exportación y trazabilidad."],
               ["Design ID único", "Cada generación puede identificarse, versionarse y licenciarse."],
               ["Manifiesto reproducible", "Parámetros, versión y SHA-256 acompañan al diseño final."],
             ].map((proof) => (

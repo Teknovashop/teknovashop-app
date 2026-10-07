@@ -1,6 +1,8 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import ForgeV2ProductRail from "@/components/forge-v2/ForgeV2ProductRail";
 import { useEffect, useMemo, useRef, useState } from "react";
 import STLViewerPro from "@/components/STLViewerPro";
@@ -252,10 +254,13 @@ function capabilitiesFromBackend(product: any, fallback: Record<string, any>) {
 export default function ForgeV2Workspace({
   slug,
   premiumSurface = false,
+  initialParams,
 }: {
   slug: string;
   premiumSurface?: boolean;
+  initialParams?: Params;
 }) {
+  const router = useRouter();
   const fallbackCapabilities = useMemo(() => forgeV2Capabilities(slug), [slug]);
   const [productName, setProductName] = useState(slug);
   const [capabilities, setCapabilities] = useState<Record<string, any>>(
@@ -273,7 +278,10 @@ export default function ForgeV2Workspace({
 
   const [fields, setFields] = useState<Record<string, any>>(staticFields);
   const [baseParams, setBaseParams] = useState<Params>(staticBaseParams);
-  const [params, setParams] = useState<Params>(staticBaseParams);
+  const [params, setParams] = useState<Params>(() => ({
+    ...staticBaseParams,
+    ...(initialParams || {}),
+  }));
   const [operations, setOperations] = useState<ForgeV2Operation[]>([]);
   const [history, setHistory] = useState<ForgeV2Operation[][]>([]);
   const [future, setFuture] = useState<ForgeV2Operation[][]>([]);
@@ -289,7 +297,7 @@ export default function ForgeV2Workspace({
   const [textX, setTextX] = useState(0);
   const [textY, setTextY] = useState(0);
   const [feedback, setFeedback] = useState(
-    "Forge V2 Beta · tu flujo estable V1 permanece disponible"
+    "Forge · motor paramétrico unificado"
   );
   const [busy, setBusy] = useState(false);
   const [drafts, setDrafts] = useState<CloudDraft[]>([]);
@@ -298,6 +306,7 @@ export default function ForgeV2Workspace({
   const [draftMessage, setDraftMessage] = useState("");
   const [placingId, setPlacingId] = useState<string | null>(null);
   const validationSeq = useRef(0);
+  const localDraftKey = useMemo(() => `teknovashop:forge:${slug}:draft`, [slug]);
 
   function currentTextOps() {
     return textValue.trim()
@@ -327,6 +336,58 @@ export default function ForgeV2Workspace({
   useEffect(() => {
     void refreshDrafts();
   }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(localDraftKey);
+      if (!raw) return;
+      const saved = JSON.parse(raw);
+      if (saved?.params && typeof saved.params === "object") setParams(saved.params);
+      if (Array.isArray(saved?.operations)) setOperations(saved.operations);
+      if (typeof saved?.textValue === "string") setTextValue(saved.textValue);
+      if (saved?.textMode === "engrave" || saved?.textMode === "emboss") setTextMode(saved.textMode);
+      if (saved?.textAnchor === "top" || saved?.textAnchor === "bottom") setTextAnchor(saved.textAnchor);
+      if (Number.isFinite(saved?.textSize)) setTextSize(saved.textSize);
+      if (Number.isFinite(saved?.textDepth)) setTextDepth(saved.textDepth);
+      if (Number.isFinite(saved?.textX)) setTextX(saved.textX);
+      if (Number.isFinite(saved?.textY)) setTextY(saved.textY);
+      setFeedback("Borrador local restaurado");
+    } catch {
+      // Corrupt local state must never block the configurator.
+    }
+  }, [localDraftKey]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        localDraftKey,
+        JSON.stringify({
+          params,
+          operations,
+          textValue,
+          textMode,
+          textAnchor,
+          textSize,
+          textDepth,
+          textX,
+          textY,
+        })
+      );
+    } catch {
+      // Local persistence is best-effort.
+    }
+  }, [
+    localDraftKey,
+    params,
+    operations,
+    textValue,
+    textMode,
+    textAnchor,
+    textSize,
+    textDepth,
+    textX,
+    textY,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -395,7 +456,7 @@ export default function ForgeV2Workspace({
       });
       const data = await response.json().catch(() => ({}));
       if (response.status === 401) {
-        window.location.href = `/login?next=${encodeURIComponent("/forge-v2/" + slug)}`;
+        router.push(`/login?next=${encodeURIComponent("/forge/" + slug)}`);
         return;
       }
       if (!response.ok) throw new Error(data?.error || "No se pudo guardar");
@@ -601,7 +662,7 @@ export default function ForgeV2Workspace({
       if (!response.ok)
         throw new Error(data?.detail || data?.error || "Error V2");
       setPreviewUrl(data.preview_url || data.url);
-      setFeedback("V2 generado · artefacto trazable registrado");
+      setFeedback("Diseno generado · artefacto trazable registrado");
     } catch (error: any) {
       setFeedback(error?.message || "No se pudo generar V2");
     } finally {
@@ -791,28 +852,28 @@ export default function ForgeV2Workspace({
         <div className="mx-auto flex max-w-[1680px] flex-wrap items-center justify-between gap-4">
           <div>
             <div className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-300">
-              Teknovashop Forge · V2 Lab
+              Teknovashop Forge · Configurador
             </div>
             <h1 className="mt-1 text-xl font-black">{productName}</h1>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold">
             <Link
-              href={"/forge/" + slug}
-              className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-slate-300 transition hover:bg-white/10"
-            >
-              ← Volver a Forge estable
-            </Link>
-            <Link
               href="/catalog"
               className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-slate-300 transition hover:bg-white/10"
             >
-              Catálogo
+              ← Catálogo
+            </Link>
+            <Link
+              href="/account"
+              className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-slate-300 transition hover:bg-white/10"
+            >
+              Mis diseños
             </Link>
             <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-slate-300">
-              mesh-v2 · schema 2
+              engine v2 · schema 2
             </span>
             <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-3 py-1.5 text-amber-200">
-              Beta aislada · V1 intacto
+              Producción
             </span>
           </div>
         </div>
@@ -857,7 +918,7 @@ export default function ForgeV2Workspace({
       >
         {premiumSurface && <ForgeV2ProductRail currentSlug={slug} />}
 
-        <aside className="max-h-[calc(100vh-132px)] overflow-y-auto rounded-3xl border border-white/10 bg-white/[0.04] p-4">
+        <aside className="order-2 max-h-none overflow-y-visible rounded-3xl border border-white/10 bg-white/[0.04] p-4 xl:order-none xl:max-h-[calc(100vh-132px)] xl:overflow-y-auto">
           <details className="group rounded-2xl border border-white/10 bg-[#0b1d30]">
             <summary className="cursor-pointer list-none px-4 py-3 text-sm font-black">
               <span className="flex items-center justify-between">
@@ -1163,7 +1224,7 @@ export default function ForgeV2Workspace({
           </div>
         </aside>
 
-        <section className="relative min-w-0 overflow-hidden rounded-3xl border border-cyan-300/15 bg-[#071321] shadow-[0_30px_100px_rgba(0,0,0,.35)]">
+        <section className="order-1 relative min-w-0 overflow-hidden rounded-3xl border border-cyan-300/15 bg-[#071321] shadow-[0_30px_100px_rgba(0,0,0,.35)] xl:order-none">
           {premiumSurface && (
             <div className="pointer-events-none absolute inset-x-4 top-4 z-20 flex items-center justify-between gap-3">
               <div className="rounded-full border border-cyan-200/15 bg-[#06111d]/75 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.16em] text-cyan-200 backdrop-blur-xl">
@@ -1197,7 +1258,7 @@ export default function ForgeV2Workspace({
           )}
         </section>
 
-        <aside className="max-h-[calc(100vh-132px)] overflow-y-auto rounded-3xl border border-white/10 bg-white/[0.04] p-4">
+        <aside className="order-3 max-h-none overflow-y-visible rounded-3xl border border-white/10 bg-white/[0.04] p-4 xl:order-none xl:max-h-[calc(100vh-132px)] xl:overflow-y-auto">
           <div className="flex items-center justify-between">
             <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
               Pila de operaciones
@@ -1373,7 +1434,7 @@ export default function ForgeV2Workspace({
             disabled={busy || hasErrors}
             className="mt-5 w-full rounded-xl bg-cyan-300 px-4 py-3 text-sm font-black text-[#04101d] transition hover:bg-cyan-200 disabled:opacity-50"
           >
-            {busy ? "Generando…" : "Validar y generar V2"}
+            {busy ? "Generando…" : "Validar y generar"}
           </button>
 
           {premiumSurface && isCadV2Product(slug) && (
@@ -1399,7 +1460,7 @@ export default function ForgeV2Workspace({
 
           {premiumSurface && isCadV2Product(slug) && (
             <div className="mt-2 rounded-xl border border-violet-300/10 bg-violet-300/[0.04] px-3 py-2 text-[9px] leading-4 text-violet-100/70">
-              Piloto CAD aislado · compara el resultado B-Rep con mesh-v2 sin sustituir el flujo estable.
+              CAD B-Rep opcional · compara el resultado con el motor paramétrico antes de exportar.
             </div>
           )}
 
@@ -1434,7 +1495,7 @@ export default function ForgeV2Workspace({
 
           {premiumSurface && isCadV2Enclosure(slug) && (
             <div className="mt-2 rounded-xl border border-violet-300/10 bg-violet-300/[0.04] px-3 py-2 text-[9px] leading-4 text-violet-100/70">
-              Familia CAD de cajas aislada · cuerpo hueco y tapa paramétrica; agujeros, ventilación y canales se aplican sobre la tapa.
+              CAD de cajas · cuerpo hueco y tapa paramétrica; agujeros, ventilación y canales se aplican sobre la tapa.
             </div>
           )}
 

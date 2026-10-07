@@ -3,8 +3,29 @@
 @tailwind utilities;
 
 :root {
-  --ink: #07111f;
-  --muted: #64748b;
+  --color-ink: #07111f;
+  --color-ink-soft: #0b2035;
+  --color-canvas: #f6f8fc;
+  --color-surface: #ffffff;
+  --color-muted: #64748b;
+  --color-line: #dbe3ee;
+  --color-brand: #2768ff;
+  --color-brand-strong: #1f5be0;
+  --color-accent: #67e8f9;
+  --color-accent-soft: #a5f3fc;
+  --color-success: #34d399;
+  --radius-sm: .75rem;
+  --radius-md: 1rem;
+  --radius-lg: 1.35rem;
+  --radius-xl: 1.75rem;
+  --shadow-card: 0 18px 55px rgba(15, 23, 42, .065);
+  --shadow-card-hover: 0 28px 80px rgba(15, 23, 42, .14);
+  --shadow-glow: 0 18px 54px rgba(39, 104, 255, .28);
+  --motion-fast: 160ms;
+  --motion-base: 220ms;
+  --ease-premium: cubic-bezier(.2,.8,.2,1);
+  --ink: var(--color-ink);
+  --muted: var(--color-muted);
 }
 
 html,
@@ -261,4 +282,44 @@ a:focus-visible {
   .catalog-media img {
     will-change: transform;
   }
+}
+
+
+/* Unified premium interaction language */
+.ui-card {
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+  transition:
+    transform var(--motion-base) var(--ease-premium),
+    box-shadow var(--motion-base) var(--ease-premium),
+    border-color var(--motion-base) var(--ease-premium);
+}
+.ui-card:hover {
+  transform: translateY(-5px);
+  border-color: #93c5fd;
+  box-shadow: var(--shadow-card-hover);
+}
+.ui-pressable {
+  transition:
+    transform var(--motion-fast) var(--ease-premium),
+    background-color var(--motion-fast) ease,
+    border-color var(--motion-fast) ease,
+    box-shadow var(--motion-fast) ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.ui-pressable:active {
+  transform: scale(.98);
+}
+.ui-glass {
+  border: 1px solid rgba(255,255,255,.1);
+  background: rgba(7,19,33,.78);
+  backdrop-filter: blur(18px);
+}
+.safe-bottom {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+@media (hover: none) {
+  .ui-card:hover { transform: none; }
 }

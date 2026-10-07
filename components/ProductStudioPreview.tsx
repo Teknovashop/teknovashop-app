@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
 type RendererBundle = {
@@ -359,10 +360,13 @@ export default function ProductStudioPreview({
       aria-label={"Vista Studio 3D de " + slug}
     >
       {snapshot && (
-        <img
+        <Image
           src={snapshot}
           alt=""
-          className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-[1.025]"
+          fill
+          unoptimized
+          sizes="(max-width: 640px) 100vw, 33vw"
+          className="object-cover transition duration-700 group-hover:scale-[1.025]"
         />
       )}
 

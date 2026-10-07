@@ -31,7 +31,7 @@ function MenuIcon({ open }: { open: boolean }) {
 }
 
 const NAV = [
-  ["Forge V2", "/forge-v2"],
+  ["Catálogo", "/catalog"],
   ["Plantillas", "#templates"],
   ["Cómo funciona", "#how"],
   ["Tecnología", "#quality"],

@@ -171,9 +171,14 @@ export default function CadLabWorkspace() {
       .catch(() => active && setHealth({ ok: false }));
     return () => {
       active = false;
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
     };
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
 
   async function generate() {
     setBusy(true);

@@ -1,6 +1,9 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
+
+const COMMERCE_ENABLED = process.env.NEXT_PUBLIC_COMMERCE_ENABLED === "1";
 
 async function startSubscription(price: "maker" | "commercial") {
   const res = await fetch("/api/checkout/create-session", {
@@ -52,11 +55,16 @@ const PLANS = [
 ] as const;
 
 export default function Pricing() {
+  const router = useRouter();
   const [loading, setLoading] = useState<string | null>(null);
 
   async function select(plan: (typeof PLANS)[number]) {
     if (plan.key === "oneoff") {
-      window.location.href = "/forge";
+      router.push("/catalog");
+      return;
+    }
+    if (!COMMERCE_ENABLED) {
+      alert("La pasarela de pagos está preparada pero todavía no está activada.");
       return;
     }
     setLoading(plan.key);
@@ -98,7 +106,7 @@ export default function Pricing() {
           </ul>
           <button
             type="button"
-            disabled={!!loading}
+            disabled={!!loading || (!COMMERCE_ENABLED && plan.key !== "oneoff")}
             onClick={() => select(plan)}
             className={
               "mt-7 w-full rounded-xl px-4 py-3 text-sm font-black transition disabled:opacity-60 " +
@@ -107,10 +115,10 @@ export default function Pricing() {
                 : "border border-slate-200 bg-[#f8faff] hover:bg-blue-50")
             }
           >
-            {loading === plan.key ? "Redirigiendo…" : plan.cta}
+            {loading === plan.key ? "Redirigiendo…" : (!COMMERCE_ENABLED && plan.key !== "oneoff" ? "Disponible al activar pagos" : plan.cta)}
           </button>
           <p className="mt-3 text-center text-[10px] text-slate-400">
-            El precio final aparecerá en checkout antes de confirmar.
+            La arquitectura de checkout está desacoplada y se activará con la pasarela de pagos.
           </p>
         </article>
       ))}

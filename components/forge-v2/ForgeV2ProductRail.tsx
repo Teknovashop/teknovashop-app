@@ -88,7 +88,7 @@ export default function ForgeV2ProductRail({
             return (
               <Link
                 key={model.slug}
-                href={"/forge-v2/" + model.slug}
+                href={"/forge/" + model.slug}
                 className={
                   "flex items-center gap-2.5 rounded-xl border p-2 transition " +
                   (current
@@ -128,8 +128,8 @@ export default function ForgeV2ProductRail({
       </div>
 
       <div className="border-t border-white/10 p-3">
-        <Link href="/forge-v2" className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-[10px] font-black text-slate-300 transition hover:bg-white/[0.08]">
-          Explorar catálogo V2 <span>↗</span>
+        <Link href="/catalog" className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-[10px] font-black text-slate-300 transition hover:bg-white/[0.08]">
+          Explorar catálogo <span>↗</span>
         </Link>
       </div>
     </aside>

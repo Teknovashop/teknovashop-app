@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 // components/STLViewerPro.tsx
 "use client";
 

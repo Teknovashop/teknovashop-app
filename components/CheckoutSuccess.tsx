@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 type State = "checking" | "ready" | "waiting" | "error";
@@ -11,17 +12,17 @@ export default function CheckoutSuccess({
   sessionId?: string;
   urlDesignId?: string;
 }) {
-  const [state, setState] = useState<State>("checking");
-  const [message, setMessage] = useState("Verificando el pago con Stripe…");
+  const [state, setState] = useState<State>(sessionId ? "checking" : "error");
+  const [message, setMessage] = useState(
+    sessionId
+      ? "Verificando el pago con Stripe…"
+      : "No se ha recibido el identificador de la sesión de pago."
+  );
   const [plan, setPlan] = useState<string | undefined>();
   const [designId, setDesignId] = useState<string | undefined>();
 
   useEffect(() => {
-    if (!sessionId) {
-      setState("error");
-      setMessage("No se ha recibido el identificador de la sesión de pago.");
-      return;
-    }
+    if (!sessionId) return;
 
     let cancelled = false;
 
@@ -148,18 +149,18 @@ export default function CheckoutSuccess({
               Descargar paquete ZIP
             </a>
           )}
-          <a
+          <Link
             className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50"
             href="/account"
           >
             Mis compras
-          </a>
-          <a
+          </Link>
+          <Link
             className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50"
-            href="/forge"
+            href="/catalog"
           >
-            Volver al configurador
-          </a>
+            Volver al catálogo
+          </Link>
         </div>
 
         {designId && (

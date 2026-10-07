@@ -13,6 +13,8 @@ import {
 } from "@/lib/canonical-catalog";
 import { normalizeModelSearch } from "@/lib/model-routing";
 
+const CART_KEY = "teknovashop:cart:v1";
+
 const LEGACY_IMAGE_TUNING: Record<string, string> = {
   "ssd-holder": "scale-[1.18]",
   "raspi-case": "scale-[1.18]",
@@ -85,6 +87,27 @@ export default function CatalogPage() {
   const [family, setFamily] = useState("");
   const [loading, setLoading] = useState(true);
   const [catalogError, setCatalogError] = useState(false);
+  const [cart, setCart] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const saved = JSON.parse(localStorage.getItem(CART_KEY) || "[]");
+      return Array.isArray(saved)
+        ? saved.filter((item): item is string => typeof item === "string")
+        : [];
+    } catch {
+      return [];
+    }
+  });
+  const [cartOpen, setCartOpen] = useState(false);
+  const [shareFeedback, setShareFeedback] = useState("");
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(CART_KEY, JSON.stringify(cart));
+    } catch {
+      // Persistence is best-effort.
+    }
+  }, [cart]);
 
   useEffect(() => {
     let cancelled = false;
@@ -113,6 +136,38 @@ export default function CatalogPage() {
     [models]
   );
 
+  function toggleCart(slug: string) {
+    setCart((current) =>
+      current.includes(slug)
+        ? current.filter((item) => item !== slug)
+        : [...current, slug]
+    );
+  }
+
+  async function shareProduct(model: HubProduct) {
+    const url = `${window.location.origin}/forge/${encodeURIComponent(model.slug)}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: `${model.name} | Teknovashop Forge`,
+          text: model.description,
+          url,
+        });
+      } else {
+        await navigator.clipboard.writeText(url);
+        setShareFeedback("Enlace copiado");
+        window.setTimeout(() => setShareFeedback(""), 1800);
+      }
+    } catch {
+      // User cancellation is not an error.
+    }
+  }
+
+  const cartModels = useMemo(
+    () => cart.map((slug) => models.find((model) => model.slug === slug)).filter(Boolean) as HubProduct[],
+    [cart, models]
+  );
+
   const filtered = useMemo(() => {
     const t = normalizeModelSearch(q);
     return models.filter((model) => {
@@ -136,11 +191,16 @@ export default function CatalogPage() {
           </Link>
           <div className="flex items-center gap-2">
             <Link href="/account" className="hidden rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-bold text-slate-200 transition hover:bg-white/10 sm:inline-flex">
-              Mis compras
+              Mis diseños
             </Link>
-            <Link href="/forge-v2" className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-black text-white shadow-[0_10px_28px_rgba(37,99,235,.3)] transition hover:-translate-y-0.5 hover:bg-blue-500">
-              Abrir Forge V2
-            </Link>
+            <button
+              type="button"
+              onClick={() => setCartOpen(true)}
+              className="ui-pressable rounded-xl bg-blue-600 px-4 py-2 text-sm font-black text-white shadow-[0_10px_28px_rgba(37,99,235,.3)] hover:bg-blue-500"
+              aria-label={`Abrir carrito con ${cart.length} productos`}
+            >
+              Carrito {cart.length ? `· ${cart.length}` : ""}
+            </button>
           </div>
         </div>
       </header>
@@ -190,7 +250,7 @@ export default function CatalogPage() {
               Mostrando <strong className="text-slate-900">{loading ? "—" : filtered.length}</strong> de {loading ? "—" : models.length} productos aprobados
             </div>
           </div>
-          <Link href="/forge-v2" className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-black text-amber-800 shadow-sm hover:bg-amber-100">
+          <Link href="/account" className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-black text-amber-800 shadow-sm hover:bg-amber-100">
             Ver Engineering Lab →
           </Link>
         </div>
@@ -204,8 +264,8 @@ export default function CatalogPage() {
         {!catalogError && filtered.length > 0 ? (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {filtered.map((model, index) => (
-              <article key={model.slug} className="group overflow-hidden rounded-[1.35rem] border border-slate-200 bg-white shadow-[0_18px_55px_rgba(15,23,42,.065)] transition duration-300 hover:-translate-y-1.5 hover:border-blue-300 hover:shadow-[0_28px_80px_rgba(15,23,42,.14)]">
-                <Link href={"/forge-v2/" + encodeURIComponent(model.slug)} className="block">
+              <article key={model.slug} className="ui-card group overflow-hidden">
+                <Link href={"/forge/" + encodeURIComponent(model.slug)} className="block">
                   <CatalogImage model={model} priority={index < 3} />
                 </Link>
                 <div className="p-5">
@@ -220,13 +280,32 @@ export default function CatalogPage() {
                       <span key={label} className="rounded-full border border-cyan-100 bg-cyan-50 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.08em] text-cyan-800">{label}</span>
                     ))}
                   </div>
-                  <div className="mt-5 grid grid-cols-2 gap-2 border-t border-slate-100 pt-4">
-                    <Link href={"/forge/" + encodeURIComponent(model.slug)} className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-black text-slate-700 transition hover:border-blue-200 hover:bg-blue-50">
-                      Forge estable
+                  <div className="mt-5 grid grid-cols-[minmax(0,1fr)_auto_auto] gap-2 border-t border-slate-100 pt-4">
+                    <Link href={"/forge/" + encodeURIComponent(model.slug)} className="ui-pressable inline-flex items-center justify-center rounded-xl bg-[#071321] px-3 py-2.5 text-xs font-black text-cyan-200 hover:bg-[#0c2039]">
+                      Configurar →
                     </Link>
-                    <Link href={"/forge-v2/" + encodeURIComponent(model.slug)} className="inline-flex items-center justify-center rounded-xl bg-[#071321] px-3 py-2.5 text-xs font-black text-cyan-200 transition hover:bg-[#0c2039]">
-                      Forge V2 →
-                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => toggleCart(model.slug)}
+                      aria-pressed={cart.includes(model.slug)}
+                      aria-label={cart.includes(model.slug) ? "Quitar del carrito" : "Añadir al carrito"}
+                      className={
+                        "ui-pressable rounded-xl border px-3 py-2.5 text-xs font-black " +
+                        (cart.includes(model.slug)
+                          ? "border-blue-200 bg-blue-50 text-blue-700"
+                          : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50")
+                      }
+                    >
+                      {cart.includes(model.slug) ? "✓" : "+"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void shareProduct(model)}
+                      aria-label={"Compartir " + model.name}
+                      className="ui-pressable rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-black text-slate-600 hover:bg-slate-50"
+                    >
+                      ↗
+                    </button>
                   </div>
                 </div>
               </article>
@@ -239,6 +318,56 @@ export default function CatalogPage() {
           </div>
         ) : null}
       </section>
+
+      {shareFeedback && (
+        <div className="fixed bottom-24 left-1/2 z-[70] -translate-x-1/2 rounded-full bg-[#071321] px-4 py-2 text-xs font-black text-white shadow-2xl" role="status">
+          {shareFeedback}
+        </div>
+      )}
+
+      {cartOpen && (
+        <div className="fixed inset-0 z-[80] flex items-end bg-slate-950/45 backdrop-blur-sm sm:items-center sm:justify-center" role="dialog" aria-modal="true" aria-label="Carrito">
+          <button type="button" className="absolute inset-0" aria-label="Cerrar carrito" onClick={() => setCartOpen(false)} />
+          <section className="safe-bottom relative z-10 max-h-[82vh] w-full overflow-y-auto rounded-t-[2rem] border border-slate-200 bg-white p-5 shadow-2xl sm:max-w-lg sm:rounded-[2rem] sm:p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="home-eyebrow">Tu selección</p>
+                <h2 className="mt-1 text-2xl font-black tracking-tight">Carrito</h2>
+                <p className="mt-1 text-sm text-slate-500">Se guarda automáticamente en este dispositivo.</p>
+              </div>
+              <button type="button" onClick={() => setCartOpen(false)} className="ui-pressable rounded-xl border border-slate-200 px-3 py-2 text-sm font-black text-slate-500">×</button>
+            </div>
+
+            <div className="mt-5 space-y-2">
+              {cartModels.length ? cartModels.map((model) => (
+                <div key={model.slug} className="flex items-center gap-3 rounded-2xl border border-slate-200 p-3">
+                  <div className="relative h-14 w-16 shrink-0 overflow-hidden rounded-xl bg-[#091827]">
+                    <Image src={marketingImageFor(model)} alt="" fill sizes="64px" className="object-cover" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-black">{model.name}</div>
+                    <div className="mt-0.5 text-xs text-slate-500">{model.family || "Forge"}</div>
+                  </div>
+                  <button type="button" onClick={() => toggleCart(model.slug)} className="ui-pressable rounded-lg px-2 py-1 text-xs font-black text-slate-400 hover:bg-slate-100" aria-label={"Quitar " + model.name}>×</button>
+                </div>
+              )) : (
+                <div className="rounded-2xl border border-dashed border-slate-300 px-4 py-10 text-center text-sm text-slate-500">
+                  Aún no has añadido ninguna pieza.
+                </div>
+              )}
+            </div>
+
+            <div className="mt-5 grid gap-2 sm:grid-cols-2">
+              <button type="button" onClick={() => setCartOpen(false)} className="ui-pressable rounded-xl border border-slate-200 px-4 py-3 text-sm font-black text-slate-700">
+                Seguir explorando
+              </button>
+              <button type="button" disabled className="rounded-xl bg-[#071321] px-4 py-3 text-sm font-black text-white opacity-55" title="Se activará al conectar la pasarela de pagos">
+                Checkout · pendiente pagos
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </main>
   );
 }

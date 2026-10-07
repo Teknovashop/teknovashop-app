@@ -1,6 +1,6 @@
-// app/forge/pro/page.tsx
+// app/catalog/pro/page.tsx
 import { redirect } from "next/navigation";
 
 export default function ForgeProRedirect() {
-  redirect("/forge");
+  redirect("/catalog");
 }
